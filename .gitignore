@@ -13,3 +13,4 @@ erl_crash.dump
 config/dev.local.exs
 .mcp.json
 .port
+assets/node_modules
