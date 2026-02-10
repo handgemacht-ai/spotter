@@ -11,6 +11,10 @@ config :spotter, Oban,
 
 config :spotter, ecto_repos: [Spotter.Repo], ash_domains: []
 
+config :spotter, SpotterWeb.Endpoint,
+  live_view: [signing_salt: "spotter_lv_salt"],
+  pubsub_server: Spotter.PubSub
+
 config :ash_json_api,
   show_public_calculations_when_loaded?: false,
   authorize_update_destroy_with_error?: true
