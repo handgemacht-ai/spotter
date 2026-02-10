@@ -34,5 +34,6 @@ defmodule Spotter.Transcripts do
     resource Spotter.Transcripts.Session
     resource Spotter.Transcripts.Message
     resource Spotter.Transcripts.Subagent
+    resource Spotter.Transcripts.Annotation
   end
 end

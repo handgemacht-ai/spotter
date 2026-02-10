@@ -65,6 +65,35 @@ Hooks.Terminal = {
       channel.push("input", { data })
     })
 
+    // Selection handling for annotations
+    term.onSelectionChange(() => {
+      const sel = term.getSelection()
+      if (sel) {
+        const pos = term.getSelectionPosition()
+        if (pos) {
+          this.pushEvent("text_selected", {
+            text: sel,
+            start_row: pos.start.y,
+            start_col: pos.start.x,
+            end_row: pos.end.y,
+            end_col: pos.end.x,
+          })
+        }
+      }
+    })
+
+    // Listen for highlight events from LiveView
+    this.handleEvent("highlight_annotation", ({ start_row, start_col, end_row, end_col }) => {
+      try {
+        const length = start_row === end_row
+          ? end_col - start_col
+          : (term.cols - start_col) + end_col + (end_row - start_row - 1) * term.cols
+        term.select(start_col, start_row, length)
+        setTimeout(() => { term.clearSelection() }, 2000)
+      } catch (_e) {
+        // Graceful fallback if API unavailable
+      }
+    })
     this._channel = channel
     this._socket = socket
   },
