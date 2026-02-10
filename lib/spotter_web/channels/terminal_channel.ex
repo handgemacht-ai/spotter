@@ -1,4 +1,10 @@
 defmodule SpotterWeb.TerminalChannel do
+  @moduledoc """
+  Phoenix Channel for streaming tmux pane output to xterm.js terminals.
+
+  Connects to tmux control mode for real-time output and forwards
+  user input back to the tmux pane.
+  """
   use Phoenix.Channel
 
   require Logger
