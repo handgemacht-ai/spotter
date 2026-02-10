@@ -1,0 +1,133 @@
+{
+  "attributes": [
+    {
+      "default": "nil",
+      "size": null,
+      "type": "uuid",
+      "source": "id",
+      "references": null,
+      "primary_key?": true,
+      "allow_nil?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "text",
+      "source": "agent_id",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "text",
+      "source": "slug",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": true,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "utc_datetime_usec",
+      "source": "started_at",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": true,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "utc_datetime_usec",
+      "source": "ended_at",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": true,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "bigint",
+      "source": "message_count",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": true,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "utc_datetime_usec",
+      "source": "inserted_at",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "utc_datetime_usec",
+      "source": "updated_at",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "uuid",
+      "source": "session_id",
+      "references": {
+        "name": "subagents_session_id_fkey",
+        "table": "sessions",
+        "multitenancy": {
+          "global": null,
+          "attribute": null,
+          "strategy": null
+        },
+        "deferrable": false,
+        "on_delete": null,
+        "on_update": null,
+        "destination_attribute": "id",
+        "primary_key?": true,
+        "destination_attribute_default": null,
+        "destination_attribute_generated": null
+      },
+      "primary_key?": false,
+      "allow_nil?": false,
+      "generated?": false
+    }
+  ],
+  "table": "subagents",
+  "hash": "81D7230CD1C7FD889D666DFE9431F5533CCC477F1B7A898BD4EE628BA61B38C7",
+  "repo": "Elixir.Spotter.Repo",
+  "multitenancy": {
+    "global": null,
+    "attribute": null,
+    "strategy": null
+  },
+  "identities": [
+    {
+      "name": "unique_agent_per_session",
+      "keys": [
+        "session_id",
+        "agent_id"
+      ],
+      "base_filter": null,
+      "index_name": "subagents_unique_agent_per_session_index"
+    }
+  ],
+  "strict?": false,
+  "custom_indexes": [],
+  "custom_statements": [],
+  "base_filter": null,
+  "has_create_action": true
+}

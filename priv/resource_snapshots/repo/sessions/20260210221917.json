@@ -1,0 +1,182 @@
+{
+  "attributes": [
+    {
+      "default": "nil",
+      "size": null,
+      "type": "uuid",
+      "source": "id",
+      "references": null,
+      "primary_key?": true,
+      "allow_nil?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "uuid",
+      "source": "session_id",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "text",
+      "source": "slug",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": true,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "text",
+      "source": "transcript_dir",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "text",
+      "source": "cwd",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": true,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "text",
+      "source": "git_branch",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": true,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "text",
+      "source": "version",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": true,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "utc_datetime_usec",
+      "source": "started_at",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": true,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "utc_datetime_usec",
+      "source": "ended_at",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": true,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "bigint",
+      "source": "schema_version",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "bigint",
+      "source": "message_count",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": true,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "utc_datetime_usec",
+      "source": "inserted_at",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "utc_datetime_usec",
+      "source": "updated_at",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "uuid",
+      "source": "project_id",
+      "references": {
+        "name": "sessions_project_id_fkey",
+        "table": "projects",
+        "multitenancy": {
+          "global": null,
+          "attribute": null,
+          "strategy": null
+        },
+        "deferrable": false,
+        "on_delete": null,
+        "on_update": null,
+        "destination_attribute": "id",
+        "primary_key?": true,
+        "destination_attribute_default": null,
+        "destination_attribute_generated": null
+      },
+      "primary_key?": false,
+      "allow_nil?": false,
+      "generated?": false
+    }
+  ],
+  "table": "sessions",
+  "hash": "77A87A822F8C5F016BD32D3A66F9C61C25AE4D8E0CB6C95B17D7A73C4EEA7DBB",
+  "repo": "Elixir.Spotter.Repo",
+  "multitenancy": {
+    "global": null,
+    "attribute": null,
+    "strategy": null
+  },
+  "identities": [
+    {
+      "name": "unique_session_id",
+      "keys": [
+        "session_id"
+      ],
+      "base_filter": null,
+      "index_name": "sessions_unique_session_id_index"
+    }
+  ],
+  "strict?": false,
+  "custom_indexes": [],
+  "custom_statements": [],
+  "base_filter": null,
+  "has_create_action": true
+}

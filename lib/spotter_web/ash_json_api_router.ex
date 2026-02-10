@@ -3,6 +3,6 @@ defmodule SpotterWeb.AshJsonApiRouter do
   JSON API router for Ash-powered resources.
   """
   use AshJsonApi.Router,
-    domains: [],
+    domains: [Spotter.Transcripts],
     open_api: "/open_api"
 end

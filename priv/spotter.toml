@@ -1,0 +1,5 @@
+# Transcript source directory
+transcripts_dir = "~/.claude/projects"
+
+[projects.spotter]
+pattern = "^-home-marco-projects-spotter"

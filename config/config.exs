@@ -9,7 +9,7 @@ config :spotter, Oban,
   repo: Spotter.Repo,
   plugins: [{Oban.Plugins.Cron, []}]
 
-config :spotter, ecto_repos: [Spotter.Repo], ash_domains: []
+config :spotter, ecto_repos: [Spotter.Repo], ash_domains: [Spotter.Transcripts]
 
 config :spotter, SpotterWeb.Endpoint,
   live_view: [signing_salt: "spotter_lv_salt"],

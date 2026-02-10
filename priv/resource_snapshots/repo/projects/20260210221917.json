@@ -1,0 +1,77 @@
+{
+  "attributes": [
+    {
+      "default": "nil",
+      "size": null,
+      "type": "uuid",
+      "source": "id",
+      "references": null,
+      "primary_key?": true,
+      "allow_nil?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "text",
+      "source": "name",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "text",
+      "source": "pattern",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "utc_datetime_usec",
+      "source": "inserted_at",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": false,
+      "generated?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "utc_datetime_usec",
+      "source": "updated_at",
+      "references": null,
+      "primary_key?": false,
+      "allow_nil?": false,
+      "generated?": false
+    }
+  ],
+  "table": "projects",
+  "hash": "4B346D348098A65C9320EB1F9885A786612D3AB061A442C16814957E73582BE0",
+  "repo": "Elixir.Spotter.Repo",
+  "multitenancy": {
+    "global": null,
+    "attribute": null,
+    "strategy": null
+  },
+  "identities": [
+    {
+      "name": "unique_name",
+      "keys": [
+        "name"
+      ],
+      "base_filter": null,
+      "index_name": "projects_unique_name_index"
+    }
+  ],
+  "strict?": false,
+  "custom_indexes": [],
+  "custom_statements": [],
+  "base_filter": null,
+  "has_create_action": true
+}
