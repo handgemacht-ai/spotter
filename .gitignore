@@ -8,3 +8,8 @@ erl_crash.dump
 *.beam
 /config/*.secret.exs
 .elixir_ls/
+
+# Per-worktree generated files (from scripts/setup_worktree.sh)
+config/dev.local.exs
+.mcp.json
+.port

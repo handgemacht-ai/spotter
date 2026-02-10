@@ -11,7 +11,8 @@ defmodule Spotter.Application do
        AshOban.config(
          Application.fetch_env!(:spotter, :ash_domains),
          Application.fetch_env!(:spotter, Oban)
-       )}
+       )},
+      SpotterWeb.Endpoint
     ]
 
     opts = [strategy: :one_for_one, name: Spotter.Supervisor]
