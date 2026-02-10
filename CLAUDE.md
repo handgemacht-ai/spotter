@@ -6,6 +6,27 @@ Ash, Phoenix, LiveView, xterm.js, tmux
 
 The prototype runs on localhost, and has no authentication.
 
+# Worktrees
+
+## Daily workflow
+git gtr new my-feature          # Create worktree folder: my-feature
+
+## Run commands in worktree
+git gtr run my-feature npm test # Run tests
+
+## Navigate to worktree
+gtr cd my-feature               # Requires: eval "$(git gtr init bash)"
+cd "$(git gtr go my-feature)"   # Alternative without shell integration
+
+## List all worktrees
+git gtr list
+
+## Remove when done
+git gtr rm my-feature
+
+## Or remove all worktrees with merged PRs/MRs (requires gh or glab CLI)
+git gtr clean --merged
+
 # Agent Instructions
 
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.

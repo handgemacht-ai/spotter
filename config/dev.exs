@@ -8,10 +8,11 @@ config :spotter, Spotter.Repo,
 config :ash, policies: [show_policy_breakdowns?: true]
 
 config :spotter, SpotterWeb.Endpoint,
-  http: [ip: {127, 0, 0, 1}, port: 1100],
+  http: [ip: {0, 0, 0, 0}, port: 1100],
   adapter: Bandit.PhoenixAdapter,
   server: true,
-  secret_key_base: "dev-only-secret-not-for-production-use-minimum-64-bytes-long-enough-placeholder",
+  secret_key_base:
+    "dev-only-secret-not-for-production-use-minimum-64-bytes-long-enough-placeholder",
   live_reload: [
     patterns: [~r"lib/spotter_web/.*(ex|heex)$"]
   ],

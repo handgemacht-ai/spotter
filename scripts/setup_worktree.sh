@@ -52,7 +52,7 @@ cat > config/dev.local.exs << ELIXIR_EOF
 import Config
 
 config :spotter, SpotterWeb.Endpoint,
-  http: [ip: ${ELIXIR_IP}, port: ${PORT}]
+  http: [ip: {0, 0, 0, 0}, port: ${PORT}]
 ELIXIR_EOF
 echo "==> Generated config/dev.local.exs (ip: $TS_IP, port: $PORT)"
 
@@ -63,6 +63,16 @@ cat > .mcp.json << JSON_EOF
     "tidewave": {
       "type": "http",
       "url": "http://${TS_IP}:${PORT}/tidewave/mcp"
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--headless",
+        "--chromeArg=--no-sandbox",
+        "--chromeArg=--disable-setuid-sandbox"
+      ]
     }
   }
 }
@@ -85,7 +95,7 @@ if command -v tmux &>/dev/null; then
   if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
     echo "==> tmux session '$SESSION_NAME' already exists"
   else
-    tmux new-session -d -s "$SESSION_NAME" -c "$WORKTREE_ROOT"
+    tmux new-session -d -s "$SESSION_NAME" -c "$WORKTREE_ROOT" 'claude --dangerously-skip-permissions'
     echo "==> Created tmux session '$SESSION_NAME'"
   fi
 fi
