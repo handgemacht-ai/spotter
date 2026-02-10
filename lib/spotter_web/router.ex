@@ -4,18 +4,18 @@ defmodule SpotterWeb.Router do
   import Phoenix.LiveView.Router
 
   pipeline :browser do
-    plug :accepts, ["html"]
-    plug :fetch_session
-    plug :fetch_live_flash
-    plug :put_root_layout, html: {SpotterWeb.Layouts, :root}
-    plug :protect_from_forgery
-    plug :put_secure_browser_headers
+    plug(:accepts, ["html"])
+    plug(:fetch_session)
+    plug(:fetch_live_flash)
+    plug(:put_root_layout, html: {SpotterWeb.Layouts, :root})
+    plug(:protect_from_forgery)
+    plug(:put_secure_browser_headers)
   end
 
   scope "/", SpotterWeb do
-    pipe_through :browser
+    pipe_through(:browser)
 
-    live "/", PaneListLive
-    live "/panes/:pane_id", PaneViewLive
+    live("/", PaneListLive)
+    live("/panes/:pane_id", PaneViewLive)
   end
 end

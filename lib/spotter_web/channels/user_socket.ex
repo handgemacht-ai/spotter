@@ -1,7 +1,7 @@
 defmodule SpotterWeb.UserSocket do
   use Phoenix.Socket
 
-  channel "terminal:*", SpotterWeb.TerminalChannel
+  channel("terminal:*", SpotterWeb.TerminalChannel)
 
   @impl true
   def connect(_params, socket, _connect_info) do

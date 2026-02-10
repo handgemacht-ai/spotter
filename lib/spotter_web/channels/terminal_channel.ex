@@ -74,7 +74,9 @@ defmodule SpotterWeb.TerminalChannel do
   def handle_in("resize", %{"cols" => cols, "rows" => rows}, socket) do
     pane_id = socket.assigns.pane_id
 
-    System.cmd("tmux", ["resize-pane", "-t", pane_id, "-x", to_string(cols), "-y", to_string(rows)],
+    System.cmd(
+      "tmux",
+      ["resize-pane", "-t", pane_id, "-x", to_string(cols), "-y", to_string(rows)],
       stderr_to_stdout: true
     )
 
