@@ -17,6 +17,7 @@ defmodule Spotter.Transcripts.Annotation do
 
       accept [
         :session_id,
+        :subagent_id,
         :selected_text,
         :start_row,
         :start_col,
@@ -68,6 +69,10 @@ defmodule Spotter.Transcripts.Annotation do
   relationships do
     belongs_to :session, Spotter.Transcripts.Session do
       allow_nil? false
+    end
+
+    belongs_to :subagent, Spotter.Transcripts.Subagent do
+      allow_nil? true
     end
 
     has_many :message_refs, Spotter.Transcripts.AnnotationMessageRef

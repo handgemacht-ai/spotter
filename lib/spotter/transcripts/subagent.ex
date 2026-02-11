@@ -62,6 +62,9 @@ defmodule Spotter.Transcripts.Subagent do
     belongs_to :session, Spotter.Transcripts.Session do
       allow_nil? false
     end
+
+    has_many :messages, Spotter.Transcripts.Message
+    has_many :annotations, Spotter.Transcripts.Annotation
   end
 
   identities do

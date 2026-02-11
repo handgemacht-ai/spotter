@@ -31,7 +31,8 @@ defmodule Spotter.Transcripts.Message do
         :is_sidechain,
         :agent_id,
         :tool_use_id,
-        :session_id
+        :session_id,
+        :subagent_id
       ]
     end
   end
@@ -85,6 +86,10 @@ defmodule Spotter.Transcripts.Message do
   relationships do
     belongs_to :session, Spotter.Transcripts.Session do
       allow_nil? false
+    end
+
+    belongs_to :subagent, Spotter.Transcripts.Subagent do
+      allow_nil? true
     end
 
     has_many :annotation_refs, Spotter.Transcripts.AnnotationMessageRef

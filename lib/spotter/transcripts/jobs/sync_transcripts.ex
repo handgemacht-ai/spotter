@@ -333,10 +333,48 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   defp sync_subagent_file(session, file) do
     case JsonlParser.parse_subagent_file(file) do
       {:ok, parsed} ->
-        upsert_subagent!(session, parsed)
+        subagent = upsert_subagent!(session, parsed)
+        create_subagent_messages!(session, subagent, parsed.messages)
 
       {:error, reason} ->
         Logger.warning("Failed to parse subagent file #{file}: #{inspect(reason)}")
+    end
+  end
+
+  defp create_subagent_messages!(session, subagent, messages) do
+    existing_count =
+      Spotter.Transcripts.Message
+      |> Ash.Query.filter(subagent_id == ^subagent.id)
+      |> Ash.read!()
+      |> length()
+
+    if existing_count > 0 do
+      Logger.debug(
+        "Subagent #{subagent.agent_id} already has #{existing_count} messages, skipping"
+      )
+    else
+      messages
+      |> Enum.filter(& &1[:timestamp])
+      |> Enum.map(fn msg ->
+        %{
+          uuid: msg[:uuid] || Ash.UUID.generate(),
+          parent_uuid: msg[:parent_uuid],
+          message_id: msg[:message_id],
+          type: msg[:type],
+          role: msg[:role],
+          content: msg[:content],
+          timestamp: msg[:timestamp],
+          is_sidechain: msg[:is_sidechain] || false,
+          agent_id: subagent.agent_id,
+          tool_use_id: msg[:tool_use_id],
+          session_id: session.id,
+          subagent_id: subagent.id
+        }
+      end)
+      |> Enum.chunk_every(@batch_size)
+      |> Enum.each(fn batch ->
+        Ash.bulk_create!(batch, Spotter.Transcripts.Message, :create)
+      end)
     end
   end
 

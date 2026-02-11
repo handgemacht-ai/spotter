@@ -5,7 +5,7 @@ defmodule SpotterWeb.PaneListLive do
   alias Spotter.Services.SessionRegistry
   alias Spotter.Services.Tmux
   alias Spotter.Transcripts.Jobs.SyncTranscripts
-  alias Spotter.Transcripts.{Session, SessionPresenter, ToolCall}
+  alias Spotter.Transcripts.{Session, SessionPresenter, Subagent, ToolCall}
 
   require Ash.Query
 
@@ -83,6 +83,8 @@ defmodule SpotterWeb.PaneListLive do
      |> assign(panes: [], claude_panes: [], loading: true)
      |> assign(sync_status: %{}, sync_stats: %{})
      |> assign(hidden_expanded: %{})
+     |> assign(expanded_subagents: %{})
+     |> assign(subagents_by_session: %{})
      |> mount_computers()
      |> load_panes()
      |> load_session_data()}
@@ -108,6 +110,12 @@ defmodule SpotterWeb.PaneListLive do
     session = Ash.get!(Spotter.Transcripts.Session, id)
     Ash.update!(session, %{}, action: :unhide)
     {:noreply, load_session_data(socket)}
+  end
+
+  def handle_event("toggle_subagents", %{"session-id" => session_id}, socket) do
+    expanded = socket.assigns.expanded_subagents
+    current = Map.get(expanded, session_id, false)
+    {:noreply, assign(socket, expanded_subagents: Map.put(expanded, session_id, !current))}
   end
 
   def handle_event("toggle_hidden_section", %{"project-id" => project_id}, socket) do
@@ -198,7 +206,10 @@ defmodule SpotterWeb.PaneListLive do
 
     session_ids = extract_session_ids(projects)
 
+    subagents_by_session = load_subagents_for_sessions(session_ids)
+
     socket
+    |> assign(subagents_by_session: subagents_by_session)
     |> update_computer_inputs(:session_data, %{projects: projects})
     |> update_computer_inputs(:tool_call_stats, %{session_ids: session_ids})
   end
@@ -235,8 +246,11 @@ defmodule SpotterWeb.PaneListLive do
       end)
 
     session_ids = extract_session_ids(updated_projects)
+    new_ids = Enum.map(new_sessions, & &1.id)
+    new_subagents = load_subagents_for_sessions(new_ids)
 
     socket
+    |> assign(subagents_by_session: Map.merge(socket.assigns.subagents_by_session, new_subagents))
     |> update_computer_inputs(:session_data, %{projects: updated_projects})
     |> update_computer_inputs(:tool_call_stats, %{session_ids: session_ids})
   end
@@ -268,6 +282,16 @@ defmodule SpotterWeb.PaneListLive do
     projects
     |> Enum.flat_map(fn p -> p.visible_sessions ++ p.hidden_sessions end)
     |> Enum.map(& &1.id)
+  end
+
+  defp load_subagents_for_sessions([]), do: %{}
+
+  defp load_subagents_for_sessions(session_ids) do
+    Subagent
+    |> Ash.Query.filter(session_id in ^session_ids)
+    |> Ash.Query.sort(started_at: :desc)
+    |> Ash.read!()
+    |> Enum.group_by(& &1.session_id)
   end
 
   defp relative_time(nil), do: "\u2014"
@@ -360,50 +384,82 @@ defmodule SpotterWeb.PaneListLive do
                     </tr>
                   </thead>
                   <tbody>
-                    <tr :for={session <- project.visible_sessions}>
-                      <td>
-                        <div>{SessionPresenter.primary_label(session)}</div>
-                        <div style="font-size: 0.75em; color: #888;">{SessionPresenter.secondary_label(session)}</div>
-                      </td>
-                      <td>{session.git_branch || "—"}</td>
-                      <td>{session.message_count || 0}</td>
-                      <td>
-                        <% stats = Map.get(@tool_call_stats_stats, session.id) %>
-                        <%= cond do %>
-                          <% stats && stats.total > 0 && stats.failed > 0 -> %>
-                            <span>{stats.total}</span> <span style="color: #f87171;">({stats.failed} failed)</span>
-                          <% stats && stats.total > 0 -> %>
-                            <span>{stats.total}</span>
-                          <% true -> %>
-                            <span>—</span>
-                        <% end %>
-                      </td>
-                      <td>
-                        <% started = SessionPresenter.started_display(session.started_at) %>
-                        <%= if started do %>
-                          <div>{started.relative}</div>
-                          <div style="font-size: 0.75em; color: #888;">{started.absolute}</div>
-                        <% else %>
-                          —
-                        <% end %>
-                      </td>
-                      <td style="display: flex; gap: 0.3rem;">
-                        <button
-                          phx-click="review_session"
-                          phx-value-session-id={session.session_id}
-                          style="padding: 0.2rem 0.6rem; background: #2d4a2d; border: none; border-radius: 4px; color: #7ec87e; cursor: pointer; font-size: 0.8em;"
-                        >
-                          Review
-                        </button>
-                        <button
-                          phx-click="hide_session"
-                          phx-value-id={session.id}
-                          style="padding: 0.2rem 0.5rem; background: #4a3a2d; border: none; border-radius: 4px; color: #d4a574; cursor: pointer; font-size: 0.8em;"
-                        >
-                          Hide
-                        </button>
-                      </td>
-                    </tr>
+                    <%= for session <- project.visible_sessions do %>
+                      <% subagents = Map.get(@subagents_by_session, session.id, []) %>
+                      <tr>
+                        <td>
+                          <div>{SessionPresenter.primary_label(session)}</div>
+                          <div style="font-size: 0.75em; color: #888;">{SessionPresenter.secondary_label(session)}</div>
+                        </td>
+                        <td>{session.git_branch || "—"}</td>
+                        <td>
+                          {session.message_count || 0}
+                          <%= if subagents != [] do %>
+                            <span
+                              phx-click="toggle_subagents"
+                              phx-value-session-id={session.id}
+                              style="color: #b39ddb; font-size: 0.75em; margin-left: 0.3rem; cursor: pointer;"
+                            >
+                              {length(subagents)} agents
+                              <%= if Map.get(@expanded_subagents, session.id, false), do: "▼", else: "▶" %>
+                            </span>
+                          <% end %>
+                        </td>
+                        <td>
+                          <% stats = Map.get(@tool_call_stats_stats, session.id) %>
+                          <%= cond do %>
+                            <% stats && stats.total > 0 && stats.failed > 0 -> %>
+                              <span>{stats.total}</span> <span style="color: #f87171;">({stats.failed} failed)</span>
+                            <% stats && stats.total > 0 -> %>
+                              <span>{stats.total}</span>
+                            <% true -> %>
+                              <span>—</span>
+                          <% end %>
+                        </td>
+                        <td>
+                          <% started = SessionPresenter.started_display(session.started_at) %>
+                          <%= if started do %>
+                            <div>{started.relative}</div>
+                            <div style="font-size: 0.75em; color: #888;">{started.absolute}</div>
+                          <% else %>
+                            —
+                          <% end %>
+                        </td>
+                        <td style="display: flex; gap: 0.3rem;">
+                          <button
+                            phx-click="review_session"
+                            phx-value-session-id={session.session_id}
+                            style="padding: 0.2rem 0.6rem; background: #2d4a2d; border: none; border-radius: 4px; color: #7ec87e; cursor: pointer; font-size: 0.8em;"
+                          >
+                            Review
+                          </button>
+                          <button
+                            phx-click="hide_session"
+                            phx-value-id={session.id}
+                            style="padding: 0.2rem 0.5rem; background: #4a3a2d; border: none; border-radius: 4px; color: #d4a574; cursor: pointer; font-size: 0.8em;"
+                          >
+                            Hide
+                          </button>
+                        </td>
+                      </tr>
+                      <%= if Map.get(@expanded_subagents, session.id, false) do %>
+                        <tr :for={sa <- subagents} style="opacity: 0.8; font-size: 0.9em;">
+                          <td style="padding-left: 2rem;">{sa.slug || String.slice(sa.agent_id, 0, 7)}</td>
+                          <td></td>
+                          <td>{sa.message_count || 0}</td>
+                          <td></td>
+                          <td>{relative_time(sa.started_at)}</td>
+                          <td>
+                            <a
+                              href={"/sessions/#{session.session_id}/agents/#{sa.agent_id}"}
+                              style="padding: 0.2rem 0.6rem; background: #2d4a2d; border-radius: 4px; color: #7ec87e; text-decoration: none; font-size: 0.8em;"
+                            >
+                              View
+                            </a>
+                          </td>
+                        </tr>
+                      <% end %>
+                    <% end %>
                   </tbody>
                 </table>
                 <%= if project.visible_has_more do %>
@@ -448,35 +504,67 @@ defmodule SpotterWeb.PaneListLive do
                         </tr>
                       </thead>
                       <tbody>
-                        <tr :for={session <- project.hidden_sessions}>
-                          <td>
-                            <div>{SessionPresenter.primary_label(session)}</div>
-                            <div style="font-size: 0.75em; color: #888;">{SessionPresenter.secondary_label(session)}</div>
-                          </td>
-                          <td>{session.git_branch || "—"}</td>
-                          <td>{session.message_count || 0}</td>
-                          <td>
-                            <% stats = Map.get(@tool_call_stats_stats, session.id) %>
-                            <%= cond do %>
-                              <% stats && stats.total > 0 && stats.failed > 0 -> %>
-                                <span>{stats.total}</span> <span style="color: #f87171;">({stats.failed} failed)</span>
-                              <% stats && stats.total > 0 -> %>
-                                <span>{stats.total}</span>
-                              <% true -> %>
-                                <span>—</span>
-                            <% end %>
-                          </td>
-                          <td>{relative_time(session.hidden_at)}</td>
-                          <td>
-                            <button
-                              phx-click="unhide_session"
-                              phx-value-id={session.id}
-                              style="padding: 0.2rem 0.5rem; background: #2d4a2d; border: none; border-radius: 4px; color: #7ec87e; cursor: pointer; font-size: 0.8em;"
-                            >
-                              Unhide
-                            </button>
-                          </td>
-                        </tr>
+                        <%= for session <- project.hidden_sessions do %>
+                          <% subagents = Map.get(@subagents_by_session, session.id, []) %>
+                          <tr>
+                            <td>
+                              <div>{SessionPresenter.primary_label(session)}</div>
+                              <div style="font-size: 0.75em; color: #888;">{SessionPresenter.secondary_label(session)}</div>
+                            </td>
+                            <td>{session.git_branch || "—"}</td>
+                            <td>
+                              {session.message_count || 0}
+                              <%= if subagents != [] do %>
+                                <span
+                                  phx-click="toggle_subagents"
+                                  phx-value-session-id={session.id}
+                                  style="color: #b39ddb; font-size: 0.75em; margin-left: 0.3rem; cursor: pointer;"
+                                >
+                                  {length(subagents)} agents
+                                  <%= if Map.get(@expanded_subagents, session.id, false), do: "▼", else: "▶" %>
+                                </span>
+                              <% end %>
+                            </td>
+                            <td>
+                              <% stats = Map.get(@tool_call_stats_stats, session.id) %>
+                              <%= cond do %>
+                                <% stats && stats.total > 0 && stats.failed > 0 -> %>
+                                  <span>{stats.total}</span> <span style="color: #f87171;">({stats.failed} failed)</span>
+                                <% stats && stats.total > 0 -> %>
+                                  <span>{stats.total}</span>
+                                <% true -> %>
+                                  <span>—</span>
+                              <% end %>
+                            </td>
+                            <td>{relative_time(session.hidden_at)}</td>
+                            <td>
+                              <button
+                                phx-click="unhide_session"
+                                phx-value-id={session.id}
+                                style="padding: 0.2rem 0.5rem; background: #2d4a2d; border: none; border-radius: 4px; color: #7ec87e; cursor: pointer; font-size: 0.8em;"
+                              >
+                                Unhide
+                              </button>
+                            </td>
+                          </tr>
+                          <%= if Map.get(@expanded_subagents, session.id, false) do %>
+                            <tr :for={sa <- subagents} style="opacity: 0.8; font-size: 0.9em;">
+                              <td style="padding-left: 2rem;">{sa.slug || String.slice(sa.agent_id, 0, 7)}</td>
+                              <td></td>
+                              <td>{sa.message_count || 0}</td>
+                              <td></td>
+                              <td>{relative_time(sa.started_at)}</td>
+                              <td>
+                                <a
+                                  href={"/sessions/#{session.session_id}/agents/#{sa.agent_id}"}
+                                  style="padding: 0.2rem 0.6rem; background: #2d4a2d; border-radius: 4px; color: #7ec87e; text-decoration: none; font-size: 0.8em;"
+                                >
+                                  View
+                                </a>
+                              </td>
+                            </tr>
+                          <% end %>
+                        <% end %>
                       </tbody>
                     </table>
                     <%= if project.hidden_has_more do %>

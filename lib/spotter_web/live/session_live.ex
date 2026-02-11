@@ -426,7 +426,7 @@ defmodule SpotterWeb.SessionLive do
 
   defp load_session_messages(session) do
     Message
-    |> Ash.Query.filter(session_id == ^session.id)
+    |> Ash.Query.filter(session_id == ^session.id and is_nil(subagent_id))
     |> Ash.Query.sort(timestamp: :asc)
     |> Ash.read!()
     |> Enum.map(fn msg ->
