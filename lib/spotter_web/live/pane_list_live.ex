@@ -21,6 +21,7 @@ defmodule SpotterWeb.PaneListLive do
      |> assign(panes: [], claude_panes: [], loading: true)
      |> assign(sync_status: %{}, sync_stats: %{})
      |> assign(hidden_expanded: %{})
+     |> assign(selected_project_id: nil)
      |> load_panes()
      |> load_projects()}
   end
@@ -51,6 +52,14 @@ defmodule SpotterWeb.PaneListLive do
     hidden_expanded = socket.assigns.hidden_expanded
     current = Map.get(hidden_expanded, project_id, false)
     {:noreply, assign(socket, hidden_expanded: Map.put(hidden_expanded, project_id, !current))}
+  end
+
+  def handle_event("filter_project", %{"project-id" => "all"}, socket) do
+    {:noreply, assign(socket, selected_project_id: nil)}
+  end
+
+  def handle_event("filter_project", %{"project-id" => project_id}, socket) do
+    {:noreply, assign(socket, selected_project_id: project_id)}
   end
 
   def handle_event(
@@ -267,7 +276,25 @@ defmodule SpotterWeb.PaneListLive do
             No projects synced yet. Click Sync to start.
           </div>
         <% else %>
-          <div :for={project <- @projects} style="margin-bottom: 1.5rem;">
+          <div :if={length(@projects) > 1} style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
+            <button
+              phx-click="filter_project"
+              phx-value-project-id="all"
+              style={"padding: 0.4rem 0.8rem; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; color: #e0e0e0; background: #{if @selected_project_id == nil, do: "#1a6b3c", else: "#333"};"}
+            >
+              All ({Enum.sum(Enum.map(@projects, &length(&1.visible_sessions)))})
+            </button>
+            <button
+              :for={project <- @projects}
+              phx-click="filter_project"
+              phx-value-project-id={project.id}
+              style={"padding: 0.4rem 0.8rem; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; color: #e0e0e0; background: #{if @selected_project_id == project.id, do: "#1a6b3c", else: "#333"};"}
+            >
+              {project.name} ({length(project.visible_sessions)})
+            </button>
+          </div>
+
+          <div :for={project <- @projects} :if={@selected_project_id == nil or @selected_project_id == project.id} style="margin-bottom: 1.5rem;">
             <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem;">
               <h3 style="margin: 0; color: #ccc;">
                 {project.name}
