@@ -249,6 +249,46 @@ defmodule Spotter.Transcripts.ResourcesTest do
 
       assert ann.source == :terminal
     end
+
+    test "defaults state to open", %{session: session} do
+      ann =
+        Ash.create!(Annotation, %{
+          session_id: session.id,
+          selected_text: "text",
+          comment: "open by default"
+        })
+
+      assert ann.state == :open
+    end
+
+    test "close action transitions state to closed", %{session: session} do
+      ann =
+        Ash.create!(Annotation, %{
+          session_id: session.id,
+          selected_text: "text",
+          comment: "will be closed"
+        })
+
+      assert ann.state == :open
+
+      closed = Ash.update!(ann, %{}, action: :close)
+      assert closed.state == :closed
+    end
+
+    test "closing an already-closed annotation is idempotent", %{session: session} do
+      ann =
+        Ash.create!(Annotation, %{
+          session_id: session.id,
+          selected_text: "text",
+          comment: "close twice"
+        })
+
+      closed = Ash.update!(ann, %{}, action: :close)
+      assert closed.state == :closed
+
+      closed_again = Ash.update!(closed, %{}, action: :close)
+      assert closed_again.state == :closed
+    end
   end
 
   describe "AnnotationMessageRef" do

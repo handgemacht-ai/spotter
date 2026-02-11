@@ -23,13 +23,19 @@ defmodule Spotter.Transcripts.Annotation do
         :end_row,
         :end_col,
         :comment,
-        :source
+        :source,
+        :state
       ]
     end
 
     update :update do
       primary? true
       accept [:comment]
+    end
+
+    update :close do
+      accept []
+      change set_attribute(:state, :closed)
     end
   end
 
@@ -48,6 +54,12 @@ defmodule Spotter.Transcripts.Annotation do
     attribute :end_row, :integer, allow_nil?: true
     attribute :end_col, :integer, allow_nil?: true
     attribute :comment, :string, allow_nil?: false
+
+    attribute :state, :atom do
+      allow_nil? false
+      default :open
+      constraints one_of: [:open, :closed]
+    end
 
     create_timestamp :inserted_at
     update_timestamp :updated_at
