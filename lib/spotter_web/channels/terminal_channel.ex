@@ -83,9 +83,12 @@ defmodule SpotterWeb.TerminalChannel do
     {lines, remaining} = split_complete_lines(buffered)
 
     # tmux control mode outputs lines like %output %<pane_id> <data>
+    # Only forward output from the target pane, ignore other panes in the session
+    target_pane = socket.assigns.pane_id
+
     Enum.each(lines, fn line ->
       case parse_control_line(line) do
-        {:output, _target_pane, content} ->
+        {:output, ^target_pane, content} ->
           push(socket, "output", %{data: decode_output(content)})
 
         _ ->

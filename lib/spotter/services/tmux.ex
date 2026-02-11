@@ -21,6 +21,7 @@ defmodule Spotter.Services.Tmux do
           output
           |> String.split("\n", trim: true)
           |> Enum.map(&parse_pane_line/1)
+          |> Enum.uniq_by(& &1.pane_id)
 
         {:ok, panes}
 
