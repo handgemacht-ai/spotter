@@ -117,16 +117,21 @@ defmodule Spotter.Services.Tmux do
   Launches a review tmux session for a Claude Code session.
   Creates a detached session named `spotter-review-<short-id>` running
   `claude --resume <session_id> --fork-session`.
+
+  Options:
+    * `:cwd` - working directory to start the tmux session in.
+      If the directory doesn't exist it is created (handles deleted worktrees).
   """
-  def launch_review_session(session_id) do
+  def launch_review_session(session_id, opts \\ []) do
     short_id = String.slice(session_id, 0, 8)
     name = "spotter-review-#{short_id}"
+    cwd = resolve_cwd(Keyword.get(opts, :cwd))
 
-    case System.cmd(
-           "tmux",
-           ["new-session", "-d", "-s", name, "claude", "--resume", session_id, "--fork-session"],
-           stderr_to_stdout: true
-         ) do
+    base_args = ["new-session", "-d", "-s", name]
+    cwd_args = if cwd, do: ["-c", cwd], else: []
+    cmd_args = ["claude", "--resume", session_id, "--fork-session"]
+
+    case System.cmd("tmux", base_args ++ cwd_args ++ cmd_args, stderr_to_stdout: true) do
       {_, 0} -> {:ok, name}
       {output, _} -> {:error, String.trim(output)}
     end
@@ -173,6 +178,19 @@ defmodule Spotter.Services.Tmux do
   end
 
   # Private helpers
+
+  defp resolve_cwd(nil), do: nil
+
+  defp resolve_cwd(cwd) do
+    if File.dir?(cwd) do
+      cwd
+    else
+      File.mkdir_p!(cwd)
+      cwd
+    end
+  rescue
+    _ -> nil
+  end
 
   defp pf(field), do: "\#{#{field}}\t"
 

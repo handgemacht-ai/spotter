@@ -96,7 +96,8 @@ defmodule SpotterWeb.PaneListLive do
   end
 
   def handle_event("review_session", %{"session-id" => session_id}, socket) do
-    Task.start(fn -> Tmux.launch_review_session(session_id) end)
+    cwd = lookup_session_cwd(session_id)
+    Task.start(fn -> Tmux.launch_review_session(session_id, cwd: cwd) end)
     {:noreply, push_navigate(socket, to: "/sessions/#{session_id}")}
   end
 
@@ -162,6 +163,13 @@ defmodule SpotterWeb.PaneListLive do
      socket
      |> assign(sync_status: Map.put(socket.assigns.sync_status, name, :error))
      |> assign(sync_stats: Map.put(socket.assigns.sync_stats, name, data))}
+  end
+
+  defp lookup_session_cwd(session_id) do
+    case Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one() do
+      {:ok, %Session{cwd: cwd}} when is_binary(cwd) -> cwd
+      _ -> nil
+    end
   end
 
   defp load_panes(socket) do
