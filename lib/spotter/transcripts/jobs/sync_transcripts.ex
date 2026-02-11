@@ -13,6 +13,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   require Ash.Query
 
   @batch_size 500
+  @max_sessions_per_sync 20
 
   @doc """
   Enqueues sync jobs for all configured projects.
@@ -106,11 +107,21 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   end
 
   defp sync_directory(project, dir) do
-    # Sync session JSONL files, return count of sessions synced
-    files =
+    all_files =
       dir
       |> Path.join("*.jsonl")
       |> Path.wildcard()
+
+    files =
+      all_files
+      |> Enum.sort_by(fn path -> File.stat!(path, time: :posix).mtime end, :desc)
+      |> Enum.take(@max_sessions_per_sync)
+
+    if length(all_files) > @max_sessions_per_sync do
+      Logger.info(
+        "Syncing #{length(files)} of #{length(all_files)} sessions in #{Path.basename(dir)} (limited to #{@max_sessions_per_sync} most recent)"
+      )
+    end
 
     Enum.each(files, fn file ->
       sync_session_file(project, dir, file)
