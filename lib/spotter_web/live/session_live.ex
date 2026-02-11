@@ -537,12 +537,13 @@ defmodule SpotterWeb.SessionLive do
         <% end %>
 
         <%= if @rendered_lines != [] do %>
-          <div id="transcript-messages" phx-hook="TranscriptSelection">
+          <div id="transcript-messages" phx-hook="TranscriptHighlighter" phx-update="replace">
             <%= for line <- @rendered_lines do %>
               <div
                 id={"msg-#{line.line_number}"}
                 data-message-id={line.message_id}
                 class={transcript_row_classes(line, @current_message_id, @clicked_subagent)}
+                data-render-mode={to_string(line[:render_mode] || "plain")}
               >
                 <%= if @show_debug do %>
                   <% anchor = Enum.find(@anchors, & &1.tl == line.line_number) %>
@@ -561,7 +562,11 @@ defmodule SpotterWeb.SessionLive do
                     agent
                   </span>
                 <% end %>
-                <span class="row-text"><%= line.line %></span>
+                <%= if line[:render_mode] == :code do %>
+                  <pre class="row-text" style="margin:0;display:inline;"><code class={"language-#{line[:code_language] || "plaintext"}"}><%= line.line %></code></pre>
+                <% else %>
+                  <span class="row-text"><%= line.line %></span>
+                <% end %>
               </div>
             <% end %>
           </div>

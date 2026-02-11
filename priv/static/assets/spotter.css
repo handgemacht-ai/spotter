@@ -168,3 +168,71 @@
 .transcript-thread {
   margin-bottom: 2px;
 }
+
+/* highlight.js code blocks */
+.transcript-row pre.row-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.transcript-row pre.row-text code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: inherit;
+  padding: 0;
+  background: transparent;
+}
+
+/* Light highlight.js theme (adapted from github-light) */
+.hljs {
+  background: transparent;
+  color: var(--transcript-text);
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-section,
+.hljs-link {
+  color: #d73a49;
+}
+
+.hljs-function .hljs-keyword {
+  color: #d73a49;
+}
+
+.hljs-string,
+.hljs-title,
+.hljs-name,
+.hljs-type,
+.hljs-attribute,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition,
+.hljs-variable,
+.hljs-template-tag,
+.hljs-template-variable {
+  color: #032f62;
+}
+
+.hljs-comment,
+.hljs-quote,
+.hljs-deletion,
+.hljs-meta {
+  color: #6a737d;
+}
+
+.hljs-number,
+.hljs-regexp,
+.hljs-built_in,
+.hljs-params {
+  color: #005cc5;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: bold;
+}

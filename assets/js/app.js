@@ -4,8 +4,38 @@ import { LiveSocket } from "phoenix_live_view"
 import { Terminal } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
 import { WebLinksAddon } from "@xterm/addon-web-links"
+import hljs from "highlight.js/lib/core"
+import elixir from "highlight.js/lib/languages/elixir"
+import bash from "highlight.js/lib/languages/bash"
+import json from "highlight.js/lib/languages/json"
+import diff from "highlight.js/lib/languages/diff"
+import plaintext from "highlight.js/lib/languages/plaintext"
+
+hljs.registerLanguage("elixir", elixir)
+hljs.registerLanguage("bash", bash)
+hljs.registerLanguage("json", json)
+hljs.registerLanguage("diff", diff)
+hljs.registerLanguage("plaintext", plaintext)
+
+function highlightTranscriptCode(rootEl) {
+  const blocks = rootEl.querySelectorAll('[data-render-mode="code"] code')
+  for (const block of blocks) {
+    if (block.dataset.hljs === "done") continue
+    hljs.highlightElement(block)
+    block.dataset.hljs = "done"
+  }
+}
 
 const Hooks = {}
+
+Hooks.TranscriptHighlighter = {
+  mounted() {
+    highlightTranscriptCode(this.el)
+  },
+  updated() {
+    highlightTranscriptCode(this.el)
+  },
+}
 
 Hooks.Terminal = {
   mounted() {
