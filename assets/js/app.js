@@ -175,11 +175,16 @@ Hooks.Terminal = {
     if (!this._showDebug) return
 
     const anchors = this._debugAnchors
-    if (!anchors) return
-
     const overlay = document.createElement("div")
     overlay.className = "debug-anchor-overlay"
     overlay.style.cssText = "position:absolute;top:0;right:0;z-index:100;background:rgba(0,0,0,0.85);color:#e0e0e0;padding:8px;border-radius:0 0 0 6px;font-size:0.7em;max-height:200px;overflow-y:auto;"
+
+    if (!anchors || anchors.length === 0) {
+      overlay.innerHTML = '<div style="color:#888;">No anchor data available</div>'
+      this.el.style.position = "relative"
+      this.el.appendChild(overlay)
+      return
+    }
 
     const typeColors = {
       tool_use: "#f0c674",

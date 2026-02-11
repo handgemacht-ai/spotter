@@ -506,7 +506,9 @@ defmodule SpotterWeb.SessionLive do
            id="transcript-panel">
         <div style="display: flex; align-items: center; margin: 0 0 0.75rem 0;">
           <h3 style="margin: 0; color: #64b5f6;">Transcript</h3>
-          <span style="color: #444; font-size: 0.7em; margin-left: auto;">Ctrl+Shift+D: debug</span>
+          <span style={"font-size: 0.7em; margin-left: auto; #{if @show_debug, do: "color: #f0c674; font-weight: bold;", else: "color: #444;"}"}>
+            {if @show_debug, do: "DEBUG ON", else: "Ctrl+Shift+D: debug"}
+          </span>
         </div>
 
         <%= if @errors != [] do %>
