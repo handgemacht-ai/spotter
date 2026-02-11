@@ -94,6 +94,27 @@ Hooks.Terminal = {
         // Graceful fallback if API unavailable
       }
     })
+    // Scroll sync: debounced terminal scroll → push visible text to LiveView
+    let scrollTimeout = null
+    term.onScroll(() => {
+      clearTimeout(scrollTimeout)
+      scrollTimeout = setTimeout(() => {
+        const buffer = term.buffer.active
+        const lines = []
+        for (let i = buffer.viewportY; i < buffer.viewportY + term.rows; i++) {
+          const line = buffer.getLine(i)
+          if (line) lines.push(line.translateToString(true))
+        }
+        this.pushEvent("terminal_scrolled", { visible_text: lines.join("\n") })
+      }, 300)
+    })
+
+    // Listen for scroll_to_message events from LiveView
+    this.handleEvent("scroll_to_message", ({ id }) => {
+      const el = document.querySelector(`[data-message-id="${id}"]`)
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" })
+    })
+
     this._channel = channel
     this._socket = socket
   },

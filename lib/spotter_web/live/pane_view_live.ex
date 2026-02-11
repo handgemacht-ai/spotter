@@ -1,8 +1,8 @@
 defmodule SpotterWeb.PaneViewLive do
   use Phoenix.LiveView
 
-  alias Spotter.Services.{SessionRegistry, Tmux}
-  alias Spotter.Transcripts.Annotation
+  alias Spotter.Services.{SessionRegistry, TranscriptRenderer, Tmux}
+  alias Spotter.Transcripts.{Annotation, Message, Session}
   require Ash.Query
 
   @impl true
@@ -28,6 +28,7 @@ defmodule SpotterWeb.PaneViewLive do
     end
 
     annotations = load_annotations(session_id)
+    available_sessions = load_available_sessions()
 
     {:ok,
      assign(socket,
@@ -40,7 +41,13 @@ defmodule SpotterWeb.PaneViewLive do
        selection_start_row: nil,
        selection_start_col: nil,
        selection_end_row: nil,
-       selection_end_col: nil
+       selection_end_col: nil,
+       available_sessions: available_sessions,
+       session: nil,
+       messages: [],
+       rendered_lines: [],
+       current_message_id: nil,
+       show_transcript: true
      )}
   end
 
@@ -137,6 +144,40 @@ defmodule SpotterWeb.PaneViewLive do
     end
   end
 
+  def handle_event("select_session", %{"session_id" => session_id}, socket) do
+    case Ash.get(Session, session_id) do
+      {:ok, session} ->
+        messages = load_session_messages(session)
+        rendered_lines = TranscriptRenderer.render(messages)
+
+        {:noreply,
+         assign(socket,
+           session: session,
+           messages: messages,
+           rendered_lines: rendered_lines,
+           current_message_id: nil
+         )}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("terminal_scrolled", %{"visible_text" => visible_text}, socket) do
+    current_message_id = find_matching_message(visible_text, socket.assigns.rendered_lines)
+
+    socket =
+      if current_message_id && current_message_id != socket.assigns.current_message_id do
+        socket
+        |> assign(current_message_id: current_message_id)
+        |> push_event("scroll_to_message", %{id: current_message_id})
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
   defp load_annotations(nil), do: []
 
   defp load_annotations(session_id) do
@@ -144,6 +185,43 @@ defmodule SpotterWeb.PaneViewLive do
     |> Ash.Query.filter(session_id == ^session_id)
     |> Ash.Query.sort(inserted_at: :desc)
     |> Ash.read!()
+  end
+
+  defp load_available_sessions do
+    Session
+    |> Ash.Query.sort(started_at: :desc)
+    |> Ash.Query.limit(20)
+    |> Ash.read!()
+  end
+
+  defp load_session_messages(session) do
+    Message
+    |> Ash.Query.filter(session_id == ^session.id)
+    |> Ash.Query.sort(timestamp: :asc)
+    |> Ash.read!()
+    |> Enum.map(fn msg ->
+      %{
+        uuid: msg.uuid,
+        type: msg.type,
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp
+      }
+    end)
+  end
+
+  defp find_matching_message(visible_text, rendered_lines) do
+    visible_text
+    |> String.split("\n")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.find_value(&match_line_to_message(&1, rendered_lines))
+  end
+
+  defp match_line_to_message(trimmed_line, rendered_lines) do
+    Enum.find_value(rendered_lines, fn %{line: line, message_id: msg_id} ->
+      if String.contains?(line, trimmed_line), do: msg_id
+    end)
   end
 
   @impl true
@@ -157,7 +235,7 @@ defmodule SpotterWeb.PaneViewLive do
       </span>
     </div>
     <div style="display: flex; gap: 0; height: calc(100vh - 50px);">
-      <div style="flex: 1; overflow-x: auto; padding: 1rem;">
+      <div style="flex: 2; overflow-x: auto; padding: 1rem;">
         <div style="display: inline-block; min-width: 100%;">
           <div
             id="terminal"
@@ -170,6 +248,42 @@ defmodule SpotterWeb.PaneViewLive do
           >
           </div>
         </div>
+      </div>
+      <div style="flex: 1; background: #0d1117; padding: 1rem; overflow-y: auto; border-left: 1px solid #2a2a4a;"
+           id="transcript-panel">
+        <h3 style="margin: 0 0 0.75rem 0; color: #64b5f6;">Transcript</h3>
+
+        <form phx-change="select_session" style="margin-bottom: 1rem;">
+          <select
+            name="session_id"
+            style="width: 100%; background: #1a1a2e; color: #e0e0e0; border: 1px solid #2a2a4a; border-radius: 4px; padding: 0.4rem; font-size: 0.85em;"
+          >
+            <option value="">Select a session...</option>
+            <%= for s <- @available_sessions do %>
+              <option value={s.id} selected={@session && @session.id == s.id}>
+                <%= s.slug || String.slice(to_string(s.session_id), 0..7) %> - <%= if s.started_at, do: Calendar.strftime(s.started_at, "%m/%d %H:%M"), else: "?" %>
+              </option>
+            <% end %>
+          </select>
+        </form>
+
+        <%= if @rendered_lines != [] do %>
+          <div id="transcript-messages" style="font-family: 'JetBrains Mono', monospace; font-size: 0.8em;">
+            <%= for line <- @rendered_lines do %>
+              <div
+                id={"msg-#{line.line_number}"}
+                data-message-id={line.message_id}
+                style={"padding: 2px 6px; #{if @current_message_id == line.message_id, do: "background: #1a2744; border-left: 2px solid #64b5f6;", else: "border-left: 2px solid transparent;"}"}
+              >
+                <span style={type_color(line.type)}><%= line.line %></span>
+              </div>
+            <% end %>
+          </div>
+        <% else %>
+          <p style="color: #666; font-style: italic; font-size: 0.85em;">
+            Select a session to view its transcript.
+          </p>
+        <% end %>
       </div>
       <div style="flex: 1; background: #16213e; padding: 1rem; overflow-y: auto; border-left: 1px solid #2a2a4a;">
         <h3 style="margin: 0 0 1rem 0; color: #64b5f6;">Annotations</h3>
@@ -229,4 +343,8 @@ defmodule SpotterWeb.PaneViewLive do
     </div>
     """
   end
+
+  defp type_color(:assistant), do: "color: #e0e0e0;"
+  defp type_color(:user), do: "color: #7ec8e3;"
+  defp type_color(_), do: "color: #888;"
 end

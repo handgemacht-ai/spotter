@@ -1,0 +1,450 @@
+claude --resume 491e126e-1e71-469c-ade2-fcc8af567c74 --dangerously-skip-permissions
+
+marco in 🌐 handgemacht-hetzner in spotter on  master [!] is 📦 v0.1.0 via 💧 v1.19.2 (OTP 28)
+❯ claude --resume 491e126e-1e71-469c-ade2-fcc8af567c74 --dangerously-skip-permissions
+
+ ▐▛███▜▌   Claude Code v2.1.39
+▝▜█████▛▘  Opus 4.6 · Claude Max
+  ▘▘ ▝▝    ~/projects/spotter
+
+❯ /handgemacht:create-beads websearch to learn how to fastest setup credo, dialyzer, mix_audit (basically all supported by https://github.com/bradleygolden/claude-marketplace-elixir)
+
+Maybe there are igniter scripts?
+
+❯ Create beads (epic + tasks + dependencies) with a structured preview before execution.
+
+  > **SCOPE**: This skill ONLY creates beads (epic + tasks + dependencies via `bd create`).
+  > It does NOT write code, modify project files, or perform implementation.
+  > Do NOT enter plan mode for implementation. Do NOT explore code beyond what's needed for accurate bead descriptions.
+
+  **Arguments**: websearch to learn how to fastest setup credo, dialyzer, mix_audit (basically all supported by https://github.com/bradleygolden/claude-marketplace-elixir)
+
+  Maybe there are igniter scripts?
+
+  ## Instructions
+
+  Follow these phases in strict order. DO NOT create any beads until the user explicitly approves the plan.
+
+  ### Phase 1: Understand Input
+
+  Parse `websearch to learn how to fastest setup credo, dialyzer, mix_audit (basically all supported by https://github.com/bradleygolden/claude-marketplace-elixir)
+
+  Maybe there are igniter scripts?` for either:
+  - A **description** of what to create (e.g., "user authentication system")
+  - A **file path** to a spec, pitch, or design document
+
+  If a file path is provided, read it. If the description is vague or missing key details, use AskUserQuestion to clarify scope, target area, and constraints before proceeding.
+
+  **Rig prefix**: Ask which rig these beads belong to (e.g., `aufgabenschmiede`, `control_panel`, `deacon`). The rig prefix determines where beads are stored and routed. If the arguments or file path make the rig obvious, confirm it; otherwise ask explicitly.
+
+  ### Phase 2: Explore (if needed)
+
+  If the work references existing code or integrates with existing systems:
+  - Use Glob/Grep/Read to explore the codebase
+  - Identify exact file paths, patterns, and architecture
+  - This informs accurate task descriptions with real paths (not guesses)
+
+  Skip this phase if the work is greenfield with no existing code dependencies.
+
+  ### Phase 3: Draft Bead Content
+
+  Use the Task tool with `subagent_type=Plan` to draft the **complete bead content** — not summaries, but the exact descriptions that will be written into each bead. The Plan agent must produce:
+
+  1. **Epic description** (the epic IS the pitch — it contains everything needed to understand why and what):
+
+     ```
+     ## Problem
+     [What's broken or missing? Why does it matter now?]
+
+     ## Solution
+     [Rough description of the approach — fat-marker sketches, not wireframes]
+
+     ## Acceptance Tests
+     - GIVEN [setup state] WHEN [action] THEN [expected outcome]
+     - ...
+
+     ## Rabbit Holes
+     [Tricky areas where complexity could explode scope]
+
+     ## No-gos
+     [What we're explicitly NOT doing — scope fences]
+
+     ---
+     Rig: [rig-prefix]. Appetite: [automated|reviewed|supervised].
+     Target: [directory]. Architecture: [constraints]. Sources: [file paths].
+     ```
+
+  2. **Full task descriptions** — for each task, draft the **complete description text** that will go into `bd create --description`. Each task description MUST include all of the following sections (per bead quality standards):
+
+     - Opening paragraph: what to do and why
+     - **Output files**: exact paths to create or modify
+     - **Technical specs**: exact values, config syntax, API patterns, function signatures
+     - **Component usage**: which components/imports are needed and where they come from
+     - **Source references**: full paths to existing files to read before implementing
+     - **Edge cases**: encoding, compatibility, error handling specifics
+     - **Architecture constraints**: framework patterns, naming conventions
+     - **Definition of Done**: include ONLY the items relevant to this task (from the full DoD list below). The assignee MUST check all included items.
+
+     Do NOT write summaries. Write the actual spec that an agent will execute from.
+
+     **Definition of Done (full list; include only relevant items in each task bead):**
+     - All requirements in the task description are implemented.
+     - For unrelated changes, new beads with label:refinement were created. No unrelated changes were implemented.
+     - Tests to verify the behaviour exist or were added, and executed and pass.
+
+  3. **Dependencies**: which tasks block which others
+
+  4. **Validate** each task against the Self-Contained Task Checklist (see reference below)
+
+  ### Phase 4: Present Full Bead Content (CHECKPOINT)
+
+  Present the **exact content** that will be written into each bead. The user must see the full spec, not a summary table. Use this format:
+
+  ```
+  ## Proposed Beads
+
+  ### Epic: [Title]
+
+  **Description** (this is what goes into the epic bead):
+
+  > ## Problem
+  > [Full problem statement]
+  >
+  > ## Solution
+  > [Full solution description]
+  >
+  > ## Acceptance Tests
+  > - GIVEN ... WHEN ... THEN ...
+  >
+  > ## Rabbit Holes
+  > [Full list]
+  >
+  > ## No-gos
+  > [Full list]
+  >
+  > ---
+  > Rig: [prefix]. Appetite: [level]. Target: [dir]. Architecture: [constraints]. Sources: [paths].
+
+  ---
+
+  ### Task 1: [Title]
+  Depends on: —
+
+  **Description** (this is what goes into the task bead):
+
+  > [Full multi-paragraph description with all sections:
+  > output files, technical specs, component usage,
+  > source references, edge cases, architecture constraints,
+  > definition of done (only relevant items).
+  > This is the EXACT text that will be passed to bd create.]
+
+  ---
+
+  ### Task 2: [Title]
+  Depends on: Task 1
+
+  **Description** (this is what goes into the task bead):
+
+  > [Full description — same level of detail as above]
+
+  ---
+  (repeat for all tasks)
+  ```
+
+  **Critical**: The quoted description blocks must contain the EXACT text that will be written into the beads. No summaries, no "see above", no abbreviations. What the user sees is what gets created.
+
+  Then call `EnterPlanMode`, write the full bead content to the plan file, and call `ExitPlanMode` to request user approval. The user can approve, reject, or provide feedback through the plan mode UI.
+
+  If the user rejects with feedback, incorporate it and re-present. Repeat until approved or cancelled.
+
+  **Important**: Use AskUserQuestion only for clarifying questions in Phase 1/2. Plan approval MUST go through ExitPlanMode.
+
+  ### Phase 5: Create Beads (only after plan approval)
+
+  1. Create the epic (use `--rig` to route to the correct rig). Copy the description verbatim from the approved plan:
+  ```bash
+  bd create --title="[Epic title]" --type=epic --priority=[0-4] --rig=[rig-prefix] --description="[EXACT description from the approved plan — copy verbatim]"
+  ```
+
+  2. Create each task as a child of the epic. Copy descriptions verbatim from the approved plan:
+  ```bash
+  bd create --title="[Task title]" --type=task --priority=[0-4] --parent=[epic-id] --description="[EXACT description from the approved plan — copy verbatim]"
+  ```
+
+  3. Set up dependencies:
+  ```bash
+  bd dep add [task-id] [depends-on-id]
+  ```
+
+  4. Present the final summary:
+  ```
+  ## Beads Created
+
+  Epic [epic-id]: [title]
+
+  | Bead ID | Task | Depends On |
+  |---------|------|-----------|
+  | [id] | [title] | — |
+  | [id] | [title] | [id] |
+
+  Run `bd ready` to see available work.
+  ```
+
+  ---
+
+  ## Reference: Bead Quality Standards
+
+  Apply these standards during Phase 3 (drafting) before presenting the plan.
+
+  # Bead Quality Standards
+
+  Standards for creating well-structured, self-contained beads that an agent can execute with zero outside context.
+
+  ## Self-Contained Task Checklist
+
+  Before finalizing any task description, include all of the following:
+
+  - [ ] **Why** — Why this change is necessary (problem, pain point, or opportunity). Epics MUST have a why; tasks inherit from their epic but can add task-specific motivation
+  - [ ] **Output files** — Exact file paths to create or modify
+  - [ ] **Content/copy** — All text, data, and configuration verbatim. Never write "see mockup", "German text here", or "TBD"
+  - [ ] **Technical specs** — Exact values: CSS tokens, timing numbers, config syntax, API patterns. No vague instructions
+  - [ ] **Component usage** — Which components and imports are needed, and where they come from
+  - [ ] **Source references** — Full paths to existing files, documentation, or other material to read. Use repo-relative paths (e.g., `aufgabenschmiede/lib/...`). Never reference rigs by name — always point to concrete file paths
+  - [ ] **Code structure** — Class names, nesting, element attributes, function signatures
+  - [ ] **Edge cases** — Encoding requirements, browser compatibility, accessibility attributes
+  - [ ] **Architecture constraints** — Framework version, plugin config location, naming conventions
+
+  Epics carry the full pitch and need: problem (why), solution (approach), acceptance tests (GIVEN/WHEN/THEN), rabbit holes, no-gos, appetite, target directory, architecture constraints, source references.
+
+  ## Anti-Patterns
+
+  Avoid these in bead descriptions:
+
+  - "See the plan for details" or "refer to the mockup"
+  - Missing output file paths
+  - Descriptions that restate the title without adding specifics
+  - Vague instructions: "add appropriate styling", "configure correctly", "handle errors properly"
+  - "German text" without the actual German text included
+  - Referencing other beads by ID without explaining what they provide
+  - Referencing rigs by name — use repo-relative file paths instead
+  - Missing animation timings, color values, or config syntax
+  - Using `bd edit` (opens $EDITOR, blocks agents — use `bd update` with inline flags instead)
+
+  ## Quality Self-Check
+
+  Run through these before finalizing. Every answer must pass.
+
+  | Question | Pass if... |
+  |----------|-----------|
+  | Does the epic contain the full pitch? | Problem, solution, acceptance tests, rabbit holes, no-gos, appetite — all present |
+  | Are output file paths listed? | Every file to create or modify is named with its full path |
+  | Is all content included verbatim? | No placeholders, "TBD", or references to external sources |
+  | Are technical values exact? | Specific numbers, tokens, syntax — nothing vague |
+  | Are dependencies explicit? | Blocker bead IDs named, with what they provide |
+  | Are source references listed? | Paths to material to read before implementing; no rig names, only file paths |
+  | Could an agent execute this with zero context? | No clarifying questions needed |
+
+  If any question fails, enrich the bead description before proceeding.
+
+
+● I'll research the setup options and then draft beads for you.
+
+● Web Search("credo elixir igniter installer 2025 2026")
+  ⎿  Did 1 search in 9s
+
+● Let me check the current project state and whether any of these are already configured.
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● Web Search("sobelow igniter install elixir phoenix security")
+  ⎿  Did 1 search in 9s
+
+● Read 1 file (ctrl+o to expand)
+
+● Let me check if any of these packages have Igniter installers.
+
+● Web Search(""mix igniter.install" credo dialyxir sobelow")
+  ⎿  Did 1 search in 5s
+
+● Good - I have enough context now. Key findings:
+
+  - No Igniter installers exist for credo, dialyxir, mix_audit, or sobelow — they're simple deps added to mix.exs
+  - mix igniter.install can add them to mix.exs automatically (it handles the dep addition even without custom installers)
+  - The project already has igniter as a dependency
+  - None of these tools are currently in the project
+
+  Before drafting beads, I need to clarify:
+
+● User answered Claude's questions:
+  ⎿  · Which rig do these beads belong to? (This is a single-app project — should I use 'spotter'?) → No rig
+     · Which tools should we set up? → Credo + Dialyxir + mix_audit
+
+● Now let me draft the beads.
+
+● Plan(Draft beads for linting setup) Haiku 4.5
+  ⎿  Done (9 tool uses · 33.9k tokens · 39s)
+
+● Good. Let me write the plan for your approval.
+
+  Proposed Beads
+
+  Epic: Setup Code Quality Tools (Credo, Dialyxir, mix_audit)
+
+  Description:
+
+  Problem
+
+  Spotter has no automated code quality checks. No static analysis, type checking, or dependency vulnerability scanning.
+
+  Solution
+
+  Add three standard Elixir quality tools as dev dependencies:
+  - Credo for static code analysis and style checking
+  - Dialyxir for gradual type checking via Dialyzer
+  - mix_audit for dependency vulnerability scanning
+
+  Install via mix igniter.install, generate Credo config, and add a unified mix quality alias.
+
+  Acceptance Tests
+
+  - GIVEN tools installed WHEN mix quality runs THEN credo, dialyzer, and deps.audit all execute
+  - GIVEN .credo.exs exists WHEN mix credo runs THEN project style rules are applied
+  - GIVEN PLT built WHEN mix dialyzer runs THEN type analysis completes using cache
+
+  Rabbit Holes
+
+  - Dialyzer PLT building is slow on first run (2+ minutes) — just document, don't optimize
+  - Credo defaults may be strict — keep defaults, tune later
+
+  No-gos
+
+  - No CI/CD integration yet (separate task)
+  - No custom Credo checks
+  - No fixing existing code to satisfy checkers
+
+  ---Appetite: small. Target: mix.exs, .credo.exs. Architecture: Igniter for dep installation. Sources: mix.exs.
+
+  ---
+  Task 1: Install quality tools and configure Credo
+
+  Depends on: —
+
+  Description:
+
+  Install Credo, Dialyxir, and mix_audit via Igniter, generate Credo config, and verify all tools work.
+
+  Output files:
+  - mix.exs — updated with three new dependencies
+  - .credo.exs — generated Credo configuration
+  - mix.lock — updated
+
+  Technical specs:
+
+  Dependencies to add:
+  {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+  {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+  {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false}
+
+  Steps:
+  1. Run mix igniter.install credo dialyxir mix_audit — adds all three deps
+  2. Run mix credo gen.config — generates .credo.exs with defaults
+  3. Verify: mix credo list, mix dialyzer, mix deps.audit
+
+  Source references:
+  - mix.exs (lines 27-45): existing deps section
+
+  Edge cases:
+  - First mix dialyzer run takes 2-3 min building PLT — expected
+  - Credo may report style issues in existing code — don't fix in this task
+  - If igniter can't install, fall back to manual dep entry in mix.exs
+
+  Definition of Done:
+  - All three tools installed and runnable
+  - .credo.exs exists with defaults
+  - mix credo, mix dialyzer, mix deps.audit all complete
+
+  ---
+  Task 2: Add mix quality alias
+
+  Depends on: Task 1
+
+  Description:
+
+  Add a mix quality alias to mix.exs that runs all three quality tools in sequence.
+
+  Output files (modify):
+  - mix.exs — add quality alias to aliases() function
+
+  Technical specs:
+
+  Update aliases() (currently at line 74-76):
+  defp aliases() do
+    [
+      test: ["ash.setup --quiet", "test"],
+      quality: ["credo", "dialyzer", "deps.audit"]
+    ]
+  end
+
+  Runs in order: credo → dialyzer → deps.audit. Stops on first failure.
+
+  Source references:
+  - mix.exs aliases() function (lines 74-76)
+
+  Definition of Done:
+  - mix quality alias works and runs all three tools
+  - All changes committed
+
+
+● Write(plan.md)
+  ⎿  Wrote 104 lines to plan.md
+     # Plan: Setup Code Quality Tools (Credo, Dialyxir, mix_audit)
+
+     ## Epic: Setup Code Quality Tools (Credo, Dialyxir, mix_audit)
+
+     ### Description
+
+     ## Problem
+     Spotter has no automated code quality checks. No static analysis, type checking, or dependency vulnerability scanning.
+
+     ## Solution
+     … +94 lines (ctrl+o to expand)
+
+● Exited plan mode
+  ⎿  Interrupted · What should Claude do instead?
+
+❯ create the beads
+
+● Bash(bd create --title="Setup Code Quality Tools (Credo, Dialyxir, mix_audit)" --type=epic --priority=2 --description="## Problem
+      Spotter has no automated code quali…)
+  ⎿  ✓ Created issue: spotter-0p7
+       Title: Setup Code Quality Tools (Credo, Dialyxir, mix_audit)
+       Priority: P2
+       Status: open
+
+● Bash(bd create --title="Add mix quality alias" --type=task --priority=2 --parent=spotter-0p7 --description="Add a mix quality alias to mix.exs that runs all three qu…)
+  ⎿  ✓ Created issue: spotter-0p7.2
+       Title: Add mix quality alias
+       Priority: P2
+       Status: open
+
+● Bash(bd dep add spotter-0p7.2 spotter-0p7.1)
+  ⎿  ✓ Added dependency: spotter-0p7.2 depends on spotter-0p7.1 (blocks)
+
+● Beads Created
+
+  Epic spotter-0p7: Setup Code Quality Tools (Credo, Dialyxir, mix_audit)
+  ┌───────────────┬───────────────────────────────────────────┬───────────────┐
+  │    Bead ID    │                   Task                    │  Depends On   │
+  ├───────────────┼───────────────────────────────────────────┼───────────────┤
+  │ spotter-0p7.1 │ Install quality tools and configure Credo │ —             │
+  ├───────────────┼───────────────────────────────────────────┼───────────────┤
+  │ spotter-0p7.2 │ Add mix quality alias                     │ spotter-0p7.1 │
+  └───────────────┴───────────────────────────────────────────┴───────────────┘
+  Run bd ready to see available work.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Try "how do I log an error?"
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  marco@handgemacht-hetzner:~/projects/spotter (master~2) [O 4.6] [ctx:22%] [cache:100%] [↑0 ↓0]
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · 2 files +12 -7
+
