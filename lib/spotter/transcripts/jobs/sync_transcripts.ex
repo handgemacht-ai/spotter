@@ -129,6 +129,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
       {:ok, parsed} ->
         session = upsert_session!(project, transcript_dir, parsed)
         create_messages!(session, parsed.messages)
+        create_tool_calls!(session, parsed.messages)
         sync_subagents(session, dir, parsed.session_id)
 
       {:error, reason} ->
@@ -202,6 +203,75 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
       end)
     end
   end
+
+  defp create_tool_calls!(session, messages) do
+    tool_name_map = build_tool_name_map(messages)
+
+    tool_calls =
+      messages
+      |> Enum.filter(&(&1[:type] in [:tool_result, :user]))
+      |> Enum.flat_map(&extract_tool_results/1)
+      |> Enum.map(&build_tool_call_attrs(&1, tool_name_map, session.id))
+      |> Enum.reject(&is_nil(&1.tool_use_id))
+
+    Enum.each(Enum.chunk_every(tool_calls, @batch_size), fn batch ->
+      Ash.bulk_create!(batch, Spotter.Transcripts.ToolCall, :upsert)
+    end)
+  end
+
+  defp build_tool_name_map(messages) do
+    messages
+    |> Enum.filter(&(&1[:type] in [:assistant, :tool_use]))
+    |> Enum.flat_map(&extract_tool_use_names/1)
+    |> Map.new()
+  end
+
+  defp extract_tool_use_names(%{content: content}) when is_list(content) do
+    content
+    |> Enum.filter(&(is_map(&1) && &1["type"] == "tool_use"))
+    |> Enum.map(&{&1["id"], &1["name"]})
+  end
+
+  defp extract_tool_use_names(_), do: []
+
+  defp extract_tool_results(msg) do
+    case msg[:content] do
+      content when is_list(content) ->
+        Enum.filter(content, &(is_map(&1) && &1["type"] == "tool_result"))
+
+      _ ->
+        []
+    end
+  end
+
+  defp build_tool_call_attrs(block, tool_name_map, session_id) do
+    is_error = block["is_error"] == true
+
+    error_content =
+      if is_error,
+        do: block["content"] |> extract_text_content() |> String.slice(0, 500),
+        else: nil
+
+    %{
+      tool_use_id: block["tool_use_id"],
+      tool_name: Map.get(tool_name_map, block["tool_use_id"], "Unknown"),
+      is_error: is_error,
+      error_content: error_content,
+      session_id: session_id
+    }
+  end
+
+  defp extract_text_content(content) when is_binary(content), do: content
+
+  defp extract_text_content(content) when is_list(content) do
+    Enum.map_join(content, "\n", fn
+      %{"text" => text} -> text
+      other when is_binary(other) -> other
+      _ -> ""
+    end)
+  end
+
+  defp extract_text_content(_), do: ""
 
   defp sync_subagents(session, dir, session_id) when is_binary(session_id) do
     subagents_dir = Path.join([dir, session_id, "subagents"])

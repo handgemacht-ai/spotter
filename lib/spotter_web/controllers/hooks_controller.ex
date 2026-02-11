@@ -4,6 +4,7 @@ defmodule SpotterWeb.HooksController do
 
   alias Spotter.Transcripts.FileSnapshot
   alias Spotter.Transcripts.Session
+  alias Spotter.Transcripts.ToolCall
 
   require Ash.Query
 
@@ -28,6 +29,42 @@ defmodule SpotterWeb.HooksController do
   end
 
   def file_snapshot(conn, _params) do
+    conn |> put_status(:bad_request) |> json(%{error: "session_id is required"})
+  end
+
+  def tool_call(conn, %{"session_id" => session_id} = params)
+      when is_binary(session_id) do
+    case find_session(session_id) do
+      {:ok, session} ->
+        error_content =
+          case params["error_content"] do
+            nil -> nil
+            content when is_binary(content) -> String.slice(content, 0, 1000)
+            _ -> nil
+          end
+
+        attrs = %{
+          session_id: session.id,
+          tool_use_id: params["tool_use_id"],
+          tool_name: params["tool_name"],
+          is_error: params["is_error"] || false,
+          error_content: error_content
+        }
+
+        case Ash.create(ToolCall, attrs, action: :upsert) do
+          {:ok, _tool_call} ->
+            conn |> put_status(:created) |> json(%{ok: true})
+
+          {:error, changeset} ->
+            conn |> put_status(:unprocessable_entity) |> json(%{error: inspect(changeset)})
+        end
+
+      {:error, :session_not_found} ->
+        conn |> put_status(:not_found) |> json(%{error: "session not found"})
+    end
+  end
+
+  def tool_call(conn, _params) do
     conn |> put_status(:bad_request) |> json(%{error: "session_id is required"})
   end
 

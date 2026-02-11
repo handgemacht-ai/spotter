@@ -2,7 +2,7 @@ defmodule SpotterWeb.SessionLive do
   use Phoenix.LiveView
 
   alias Spotter.Services.{SessionRegistry, Tmux, TranscriptRenderer}
-  alias Spotter.Transcripts.{Annotation, Message, Session}
+  alias Spotter.Transcripts.{Annotation, Message, Session, ToolCall}
   require Ash.Query
 
   @impl true
@@ -20,7 +20,8 @@ defmodule SpotterWeb.SessionLive do
     end
 
     annotations = load_annotations(session_id)
-    {messages, rendered_lines} = load_transcript(session_id)
+    {session_record, messages, rendered_lines} = load_transcript(session_id)
+    errors = load_errors(session_record)
 
     {:ok,
      assign(socket,
@@ -36,6 +37,7 @@ defmodule SpotterWeb.SessionLive do
        selection_end_col: nil,
        messages: messages,
        rendered_lines: rendered_lines,
+       errors: errors,
        current_message_id: nil,
        show_transcript: true
      )}
@@ -142,6 +144,22 @@ defmodule SpotterWeb.SessionLive do
     end
   end
 
+  def handle_event("jump_to_error", %{"tool-use-id" => tool_use_id}, socket) do
+    line_index =
+      Enum.find_index(socket.assigns.rendered_lines, fn line ->
+        line[:tool_use_id] == tool_use_id
+      end)
+
+    socket =
+      if line_index do
+        push_event(socket, "scroll_to_transcript_line", %{index: line_index})
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
   def handle_event("terminal_scrolled", %{"visible_text" => visible_text}, socket) do
     current_message_id = find_matching_message(visible_text, socket.assigns.rendered_lines)
 
@@ -199,13 +217,22 @@ defmodule SpotterWeb.SessionLive do
     case Ash.get(Session, session_id) do
       {:ok, session} ->
         messages = load_session_messages(session)
-        {messages, TranscriptRenderer.render(messages)}
+        {session, messages, TranscriptRenderer.render(messages)}
 
       _ ->
-        {[], []}
+        {nil, [], []}
     end
   rescue
-    _ -> {[], []}
+    _ -> {nil, [], []}
+  end
+
+  defp load_errors(nil), do: []
+
+  defp load_errors(session) do
+    ToolCall
+    |> Ash.Query.filter(session_id == ^session.id and is_error == true)
+    |> Ash.Query.sort(inserted_at: :asc)
+    |> Ash.read!()
   end
 
   defp load_annotations(session_id) do
@@ -282,6 +309,25 @@ defmodule SpotterWeb.SessionLive do
       <div style="flex: 1; background: #0d1117; padding: 1rem; overflow-y: auto; border-left: 1px solid #2a2a4a;"
            id="transcript-panel">
         <h3 style="margin: 0 0 0.75rem 0; color: #64b5f6;">Transcript</h3>
+
+        <%= if @errors != [] do %>
+          <div style="margin-bottom: 1rem; background: #1a1a2e; border-radius: 6px; padding: 0.75rem;">
+            <div style="color: #f87171; font-size: 0.85em; font-weight: bold; margin-bottom: 0.5rem;">
+              Errors ({length(@errors)})
+            </div>
+            <div :for={error <- @errors}
+              phx-click="jump_to_error"
+              phx-value-tool-use-id={error.tool_use_id}
+              style="padding: 4px 6px; margin-bottom: 4px; cursor: pointer; border-radius: 4px; font-size: 0.8em;"
+              class="hover:bg-gray-800"
+            >
+              <span style="color: #f87171; font-weight: bold;">{error.tool_name}</span>
+              <span :if={error.error_content} style="color: #888; margin-left: 0.5rem;">
+                {String.slice(error.error_content, 0, 100)}
+              </span>
+            </div>
+          </div>
+        <% end %>
 
         <%= if @rendered_lines != [] do %>
           <div id="transcript-messages" style="font-family: 'JetBrains Mono', monospace; font-size: 0.8em;">

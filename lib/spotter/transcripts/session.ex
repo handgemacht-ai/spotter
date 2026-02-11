@@ -49,6 +49,16 @@ defmodule Spotter.Transcripts.Session do
         :message_count
       ]
     end
+
+    update :hide do
+      accept []
+      change set_attribute(:hidden_at, &DateTime.utc_now/0)
+    end
+
+    update :unhide do
+      accept []
+      change set_attribute(:hidden_at, nil)
+    end
   end
 
   attributes do
@@ -73,6 +83,7 @@ defmodule Spotter.Transcripts.Session do
     end
 
     attribute :message_count, :integer
+    attribute :hidden_at, :utc_datetime_usec, allow_nil?: true
 
     create_timestamp :inserted_at
     update_timestamp :updated_at
@@ -86,6 +97,7 @@ defmodule Spotter.Transcripts.Session do
     has_many :messages, Spotter.Transcripts.Message
     has_many :subagents, Spotter.Transcripts.Subagent
     has_many :annotations, Spotter.Transcripts.Annotation
+    has_many :tool_calls, Spotter.Transcripts.ToolCall
   end
 
   identities do

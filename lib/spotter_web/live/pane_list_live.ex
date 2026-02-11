@@ -5,6 +5,8 @@ defmodule SpotterWeb.PaneListLive do
   alias Spotter.Services.Tmux
   alias Spotter.Transcripts.Jobs.SyncTranscripts
 
+  alias Spotter.Transcripts.ToolCall
+
   require Ash.Query
 
   @impl true
@@ -17,6 +19,7 @@ defmodule SpotterWeb.PaneListLive do
      socket
      |> assign(panes: [], claude_panes: [], loading: true)
      |> assign(sync_status: %{}, sync_stats: %{})
+     |> assign(hidden_expanded: %{})
      |> load_panes()
      |> load_projects()}
   end
@@ -29,6 +32,24 @@ defmodule SpotterWeb.PaneListLive do
   def handle_event("review_session", %{"session-id" => session_id}, socket) do
     Task.start(fn -> Tmux.launch_review_session(session_id) end)
     {:noreply, push_navigate(socket, to: "/sessions/#{session_id}")}
+  end
+
+  def handle_event("hide_session", %{"id" => id}, socket) do
+    session = Ash.get!(Spotter.Transcripts.Session, id)
+    Ash.update!(session, %{}, action: :hide)
+    {:noreply, load_projects(socket)}
+  end
+
+  def handle_event("unhide_session", %{"id" => id}, socket) do
+    session = Ash.get!(Spotter.Transcripts.Session, id)
+    Ash.update!(session, %{}, action: :unhide)
+    {:noreply, load_projects(socket)}
+  end
+
+  def handle_event("toggle_hidden_section", %{"project-id" => project_id}, socket) do
+    hidden_expanded = socket.assigns.hidden_expanded
+    current = Map.get(hidden_expanded, project_id, false)
+    {:noreply, assign(socket, hidden_expanded: Map.put(hidden_expanded, project_id, !current))}
   end
 
   def handle_event("sync_transcripts", _params, socket) do
@@ -89,8 +110,34 @@ defmodule SpotterWeb.PaneListLive do
       Spotter.Transcripts.Project
       |> Ash.Query.load(sessions: Ash.Query.sort(Spotter.Transcripts.Session, started_at: :desc))
       |> Ash.read!()
+      |> Enum.map(fn project ->
+        {visible, hidden} = Enum.split_with(project.sessions, &is_nil(&1.hidden_at))
+        Map.merge(project, %{visible_sessions: visible, hidden_sessions: hidden})
+      end)
 
-    assign(socket, projects: projects)
+    tool_call_stats = load_tool_call_stats(projects)
+
+    assign(socket, projects: projects, tool_call_stats: tool_call_stats)
+  end
+
+  defp load_tool_call_stats(projects) do
+    session_ids =
+      projects
+      |> Enum.flat_map(& &1.sessions)
+      |> Enum.map(& &1.id)
+
+    if session_ids == [] do
+      %{}
+    else
+      ToolCall
+      |> Ash.Query.filter(session_id in ^session_ids)
+      |> Ash.read!()
+      |> Enum.group_by(& &1.session_id)
+      |> Map.new(fn {sid, calls} ->
+        failed = Enum.count(calls, & &1.is_error)
+        {sid, %{total: length(calls), failed: failed}}
+      end)
+    end
   end
 
   defp relative_time(nil), do: "—"
@@ -141,43 +188,123 @@ defmodule SpotterWeb.PaneListLive do
               <h3 style="margin: 0; color: #ccc;">
                 {project.name}
                 <span style="color: #666; font-weight: normal; font-size: 0.85em;">
-                  ({length(project.sessions)} sessions)
+                  ({length(project.visible_sessions)} sessions)
                 </span>
               </h3>
               <.sync_indicator status={Map.get(@sync_status, project.name)} stats={Map.get(@sync_stats, project.name)} />
             </div>
 
-            <%= if project.sessions == [] do %>
+            <%= if project.visible_sessions == [] and project.hidden_sessions == [] do %>
               <div style="padding: 0.5rem; color: #666; font-size: 0.9em;">No sessions yet.</div>
             <% else %>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Session</th>
-                    <th>Branch</th>
-                    <th>Messages</th>
-                    <th>Started</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr :for={session <- project.sessions}>
-                    <td>{session_label(session)}</td>
-                    <td>{session.git_branch || "—"}</td>
-                    <td>{session.message_count || 0}</td>
-                    <td>{relative_time(session.started_at)}</td>
-                    <td>
-                      <button
-                        phx-click="review_session"
-                        phx-value-session-id={session.session_id}
-                        style="padding: 0.2rem 0.6rem; background: #2d4a2d; border: none; border-radius: 4px; color: #7ec87e; cursor: pointer; font-size: 0.8em;"
-                      >
-                        Review
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              <%= if project.visible_sessions != [] do %>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Session</th>
+                      <th>Branch</th>
+                      <th>Messages</th>
+                      <th>Tools</th>
+                      <th>Started</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr :for={session <- project.visible_sessions}>
+                      <td>{session_label(session)}</td>
+                      <td>{session.git_branch || "—"}</td>
+                      <td>{session.message_count || 0}</td>
+                      <td>
+                        <% stats = Map.get(@tool_call_stats, session.id) %>
+                        <%= cond do %>
+                          <% stats && stats.total > 0 && stats.failed > 0 -> %>
+                            <span>{stats.total}</span> <span style="color: #f87171;">({stats.failed} failed)</span>
+                          <% stats && stats.total > 0 -> %>
+                            <span>{stats.total}</span>
+                          <% true -> %>
+                            <span>—</span>
+                        <% end %>
+                      </td>
+                      <td>{relative_time(session.started_at)}</td>
+                      <td style="display: flex; gap: 0.3rem;">
+                        <button
+                          phx-click="review_session"
+                          phx-value-session-id={session.session_id}
+                          style="padding: 0.2rem 0.6rem; background: #2d4a2d; border: none; border-radius: 4px; color: #7ec87e; cursor: pointer; font-size: 0.8em;"
+                        >
+                          Review
+                        </button>
+                        <button
+                          phx-click="hide_session"
+                          phx-value-id={session.id}
+                          style="padding: 0.2rem 0.5rem; background: #4a3a2d; border: none; border-radius: 4px; color: #d4a574; cursor: pointer; font-size: 0.8em;"
+                        >
+                          Hide
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              <% end %>
+
+              <%= if project.hidden_sessions != [] do %>
+                <div style="margin-top: 0.5rem;">
+                  <button
+                    phx-click="toggle_hidden_section"
+                    phx-value-project-id={project.id}
+                    style="background: none; border: none; color: #888; cursor: pointer; font-size: 0.85em; padding: 0.2rem 0;"
+                  >
+                    <%= if Map.get(@hidden_expanded, project.id, false) do %>
+                      ▼ Hidden sessions ({length(project.hidden_sessions)})
+                    <% else %>
+                      ▶ Hidden sessions ({length(project.hidden_sessions)})
+                    <% end %>
+                  </button>
+
+                  <%= if Map.get(@hidden_expanded, project.id, false) do %>
+                    <table style="opacity: 0.7;">
+                      <thead>
+                        <tr>
+                          <th>Session</th>
+                          <th>Branch</th>
+                          <th>Messages</th>
+                          <th>Tools</th>
+                          <th>Hidden</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr :for={session <- project.hidden_sessions}>
+                          <td>{session_label(session)}</td>
+                          <td>{session.git_branch || "—"}</td>
+                          <td>{session.message_count || 0}</td>
+                          <td>
+                            <% stats = Map.get(@tool_call_stats, session.id) %>
+                            <%= cond do %>
+                              <% stats && stats.total > 0 && stats.failed > 0 -> %>
+                                <span>{stats.total}</span> <span style="color: #f87171;">({stats.failed} failed)</span>
+                              <% stats && stats.total > 0 -> %>
+                                <span>{stats.total}</span>
+                              <% true -> %>
+                                <span>—</span>
+                            <% end %>
+                          </td>
+                          <td>{relative_time(session.hidden_at)}</td>
+                          <td>
+                            <button
+                              phx-click="unhide_session"
+                              phx-value-id={session.id}
+                              style="padding: 0.2rem 0.5rem; background: #2d4a2d; border: none; border-radius: 4px; color: #7ec87e; cursor: pointer; font-size: 0.8em;"
+                            >
+                              Unhide
+                            </button>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  <% end %>
+                </div>
+              <% end %>
             <% end %>
           </div>
         <% end %>

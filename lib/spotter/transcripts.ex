@@ -31,6 +31,11 @@ defmodule Spotter.Transcripts do
         get :read
         index :read
       end
+
+      base_route "/tool_calls", Spotter.Transcripts.ToolCall do
+        get :read
+        index :read
+      end
     end
   end
 
@@ -41,5 +46,6 @@ defmodule Spotter.Transcripts do
     resource Spotter.Transcripts.Subagent
     resource Spotter.Transcripts.Annotation
     resource Spotter.Transcripts.FileSnapshot
+    resource Spotter.Transcripts.ToolCall
   end
 end
