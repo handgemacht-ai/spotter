@@ -1,13 +1,15 @@
 defmodule SpotterWeb.SessionLive do
   use Phoenix.LiveView
 
-  alias Spotter.Services.{SessionRegistry, Tmux, TranscriptRenderer}
+  alias Spotter.Services.{ReviewSessionRegistry, SessionRegistry, Tmux, TranscriptRenderer}
   alias Spotter.Transcripts.{Annotation, Commit, Message, Session, SessionCommitLink, ToolCall}
   require Ash.Query
 
+  @review_heartbeat_interval 10_000
+
   @impl true
   def mount(%{"session_id" => session_id}, _session, socket) do
-    pane_id = find_pane_for_session(session_id)
+    {pane_id, review_session_name} = find_pane_with_review_info(session_id)
 
     {cols, rows} = pane_dimensions(pane_id)
 
@@ -16,6 +18,11 @@ defmodule SpotterWeb.SessionLive do
 
       if is_nil(pane_id) do
         Process.send_after(self(), :check_pane, 1_000)
+      end
+
+      if review_session_name do
+        ReviewSessionRegistry.register(review_session_name)
+        Process.send_after(self(), :review_heartbeat, @review_heartbeat_interval)
       end
     end
 
@@ -29,6 +36,7 @@ defmodule SpotterWeb.SessionLive do
        pane_id: pane_id,
        session_id: session_id,
        session_record: session_record,
+       review_session_name: review_session_name,
        cols: cols,
        rows: rows,
        annotations: annotations,
@@ -47,26 +55,46 @@ defmodule SpotterWeb.SessionLive do
   end
 
   @impl true
+  def terminate(_reason, socket) do
+    if name = socket.assigns[:review_session_name] do
+      ReviewSessionRegistry.deregister(name)
+    end
+
+    :ok
+  end
+
+  @impl true
   def handle_info(:check_pane, socket) do
-    case find_pane_for_session(socket.assigns.session_id) do
-      nil ->
+    case find_pane_with_review_info(socket.assigns.session_id) do
+      {nil, _} ->
         Process.send_after(self(), :check_pane, 1_000)
         {:noreply, socket}
 
-      pane_id ->
+      {pane_id, review_session_name} ->
         {cols, rows} = pane_dimensions(pane_id)
+        socket = maybe_start_heartbeat(socket, review_session_name)
         {:noreply, assign(socket, pane_id: pane_id, cols: cols, rows: rows)}
     end
   end
 
   def handle_info({:session_registered, _pane_id, session_id}, socket) do
     if session_id == socket.assigns.session_id and is_nil(socket.assigns.pane_id) do
-      pane_id = find_pane_for_session(session_id)
+      {pane_id, review_session_name} = find_pane_with_review_info(session_id)
       {cols, rows} = pane_dimensions(pane_id)
+      socket = maybe_start_heartbeat(socket, review_session_name)
       {:noreply, assign(socket, pane_id: pane_id, cols: cols, rows: rows)}
     else
       {:noreply, socket}
     end
+  end
+
+  def handle_info(:review_heartbeat, socket) do
+    if name = socket.assigns[:review_session_name] do
+      ReviewSessionRegistry.heartbeat(name)
+      Process.send_after(self(), :review_heartbeat, @review_heartbeat_interval)
+    end
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -176,26 +204,33 @@ defmodule SpotterWeb.SessionLive do
     {:noreply, socket}
   end
 
-  defp find_pane_for_session(session_id) do
-    # Try registry first (live panes)
+  defp find_pane_with_review_info(session_id) do
     case SessionRegistry.get_pane_id(session_id) do
       nil -> find_review_pane(session_id)
-      pane_id -> pane_id
+      pane_id -> {pane_id, nil}
     end
   end
 
   defp find_review_pane(session_id) do
     review_name = "spotter-review-#{String.slice(session_id, 0, 8)}"
 
-    case Tmux.list_panes() do
-      {:ok, panes} ->
-        case Enum.find(panes, &(&1.session_name == review_name)) do
-          %{pane_id: pane_id} -> pane_id
-          nil -> nil
-        end
+    with {:ok, panes} <- Tmux.list_panes(),
+         %{pane_id: pane_id} <- Enum.find(panes, &(&1.session_name == review_name)) do
+      {pane_id, review_name}
+    else
+      _ -> {nil, nil}
+    end
+  end
 
-      _ ->
-        nil
+  defp maybe_start_heartbeat(socket, nil), do: socket
+
+  defp maybe_start_heartbeat(socket, review_session_name) do
+    if is_nil(socket.assigns[:review_session_name]) do
+      ReviewSessionRegistry.register(review_session_name)
+      Process.send_after(self(), :review_heartbeat, @review_heartbeat_interval)
+      assign(socket, review_session_name: review_session_name)
+    else
+      socket
     end
   end
 

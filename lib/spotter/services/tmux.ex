@@ -133,6 +133,16 @@ defmodule Spotter.Services.Tmux do
     e in ErlangError -> {:error, Exception.message(e)}
   end
 
+  @doc """
+  Kills a tmux session by name. Returns `:ok` regardless of outcome.
+  """
+  def kill_session(name) do
+    System.cmd("tmux", ["kill-session", "-t", name], stderr_to_stdout: true)
+    :ok
+  rescue
+    _ -> :ok
+  end
+
   # Private helpers
 
   defp pf(field), do: "\#{#{field}}\t"
