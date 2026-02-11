@@ -38,6 +38,7 @@ defmodule Spotter.MixProject do
       {:ash_oban, "~> 0.7"},
       {:ash_sqlite, "~> 0.2"},
       {:ash_json_api, "~> 1.0"},
+      {:ash_computer, "~> 0.2.0"},
       {:ash_phoenix, "~> 2.0"},
       {:ash, "~> 3.0"},
       {:bandit, "~> 1.0", only: [:dev]},

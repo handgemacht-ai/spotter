@@ -1,5 +1,6 @@
 defmodule SpotterWeb.PaneListLive do
   use Phoenix.LiveView
+  use AshComputer.LiveView
 
   alias Spotter.Services.SessionRegistry
   alias Spotter.Services.Tmux
@@ -9,6 +10,67 @@ defmodule SpotterWeb.PaneListLive do
   require Ash.Query
 
   @sessions_per_page 20
+
+  computer :project_filter do
+    input :selected_project_id do
+      initial nil
+    end
+
+    val :projects do
+      compute(fn _inputs ->
+        try do
+          Spotter.Transcripts.Project |> Ash.read!()
+        rescue
+          _ -> []
+        end
+      end)
+
+      depends_on([])
+    end
+
+    event :filter_project do
+      handle(fn _values, %{"project-id" => project_id} ->
+        if project_id == "all" do
+          %{selected_project_id: nil}
+        else
+          %{selected_project_id: project_id}
+        end
+      end)
+    end
+  end
+
+  computer :session_data do
+    input :projects do
+      initial []
+    end
+  end
+
+  computer :tool_call_stats do
+    input :session_ids do
+      initial []
+    end
+
+    val :stats do
+      compute(fn %{session_ids: session_ids} ->
+        if session_ids == [] do
+          %{}
+        else
+          try do
+            ToolCall
+            |> Ash.Query.filter(session_id in ^session_ids)
+            |> Ash.read!()
+            |> Enum.group_by(& &1.session_id)
+            |> Map.new(fn {sid, calls} ->
+              failed = Enum.count(calls, & &1.is_error)
+              {sid, %{total: length(calls), failed: failed}}
+            end)
+          rescue
+            _ -> %{}
+          end
+        end
+      end)
+    end
+  end
 
   @impl true
   def mount(_params, _session, socket) do
@@ -21,9 +83,9 @@ defmodule SpotterWeb.PaneListLive do
      |> assign(panes: [], claude_panes: [], loading: true)
      |> assign(sync_status: %{}, sync_stats: %{})
      |> assign(hidden_expanded: %{})
-     |> assign(selected_project_id: nil)
+     |> mount_computers()
      |> load_panes()
-     |> load_projects()}
+     |> load_session_data()}
   end
 
   @impl true
@@ -39,13 +101,13 @@ defmodule SpotterWeb.PaneListLive do
   def handle_event("hide_session", %{"id" => id}, socket) do
     session = Ash.get!(Spotter.Transcripts.Session, id)
     Ash.update!(session, %{}, action: :hide)
-    {:noreply, load_projects(socket)}
+    {:noreply, load_session_data(socket)}
   end
 
   def handle_event("unhide_session", %{"id" => id}, socket) do
     session = Ash.get!(Spotter.Transcripts.Session, id)
     Ash.update!(session, %{}, action: :unhide)
-    {:noreply, load_projects(socket)}
+    {:noreply, load_session_data(socket)}
   end
 
   def handle_event("toggle_hidden_section", %{"project-id" => project_id}, socket) do
@@ -54,28 +116,19 @@ defmodule SpotterWeb.PaneListLive do
     {:noreply, assign(socket, hidden_expanded: Map.put(hidden_expanded, project_id, !current))}
   end
 
-  def handle_event("filter_project", %{"project-id" => "all"}, socket) do
-    {:noreply, assign(socket, selected_project_id: nil)}
-  end
-
-  def handle_event("filter_project", %{"project-id" => project_id}, socket) do
-    {:noreply, assign(socket, selected_project_id: project_id)}
-  end
-
   def handle_event(
         "load_more_sessions",
         %{"project-id" => project_id, "visibility" => visibility},
         socket
       ) do
     visibility = String.to_existing_atom(visibility)
-    socket = append_session_page(socket, project_id, visibility)
-    {:noreply, socket}
+    {:noreply, append_session_page(socket, project_id, visibility)}
   end
 
   def handle_event("sync_transcripts", _params, socket) do
     SyncTranscripts.sync_all()
 
-    project_names = Enum.map(socket.assigns.projects, & &1.name)
+    project_names = Enum.map(socket.assigns.session_data_projects, & &1.name)
 
     sync_status =
       Map.new(project_names, fn name -> {name, :syncing} end)
@@ -93,7 +146,7 @@ defmodule SpotterWeb.PaneListLive do
      socket
      |> assign(sync_status: Map.put(socket.assigns.sync_status, name, :completed))
      |> assign(sync_stats: Map.put(socket.assigns.sync_stats, name, data))
-     |> load_projects()}
+     |> load_session_data()}
   end
 
   def handle_info({:sync_error, %{project: name} = data}, socket) do
@@ -125,7 +178,7 @@ defmodule SpotterWeb.PaneListLive do
     assign(socket, panes: other_panes, claude_panes: registered_panes, loading: false)
   end
 
-  defp load_projects(socket) do
+  defp load_session_data(socket) do
     projects =
       Spotter.Transcripts.Project
       |> Ash.read!()
@@ -143,50 +196,50 @@ defmodule SpotterWeb.PaneListLive do
         })
       end)
 
-    tool_call_stats = load_tool_call_stats(projects)
+    session_ids = extract_session_ids(projects)
 
-    assign(socket, projects: projects, tool_call_stats: tool_call_stats)
+    socket
+    |> update_computer_inputs(:session_data, %{projects: projects})
+    |> update_computer_inputs(:tool_call_stats, %{session_ids: session_ids})
   end
 
   defp append_session_page(socket, project_id, visibility) do
-    project = Enum.find(socket.assigns.projects, &(&1.id == project_id))
-    keys = pagination_keys(visibility)
+    projects = socket.assigns.session_data_projects
+    project = Enum.find(projects, &(&1.id == project_id))
+    has_more_key = :"#{visibility}_has_more"
 
-    if project && Map.get(project, keys.has_more) do
-      do_append_session_page(socket, project, visibility, keys)
+    if project && Map.get(project, has_more_key) do
+      do_append_session_page(socket, project, projects, visibility)
     else
       socket
     end
   end
 
-  defp do_append_session_page(socket, project, visibility, keys) do
+  defp do_append_session_page(socket, project, projects, visibility) do
+    cursor_key = :"#{visibility}_cursor"
+    sessions_key = :"#{visibility}_sessions"
+    has_more_key = :"#{visibility}_has_more"
+
     {new_sessions, meta} =
-      load_project_sessions(project.id, visibility, after: Map.get(project, keys.cursor))
+      load_project_sessions(project.id, visibility, after: Map.get(project, cursor_key))
 
     updated_project =
       project
-      |> Map.update!(keys.sessions, &(&1 ++ new_sessions))
-      |> Map.put(keys.cursor, meta.next_cursor)
-      |> Map.put(keys.has_more, meta.has_more)
+      |> Map.update!(sessions_key, &(&1 ++ new_sessions))
+      |> Map.put(cursor_key, meta.next_cursor)
+      |> Map.put(has_more_key, meta.has_more)
 
-    projects =
-      Enum.map(socket.assigns.projects, fn p ->
+    updated_projects =
+      Enum.map(projects, fn p ->
         if p.id == project.id, do: updated_project, else: p
       end)
 
-    new_stats = load_tool_call_stats_for(Enum.map(new_sessions, & &1.id))
+    session_ids = extract_session_ids(updated_projects)
 
-    assign(socket,
-      projects: projects,
-      tool_call_stats: Map.merge(socket.assigns.tool_call_stats, new_stats)
-    )
+    socket
+    |> update_computer_inputs(:session_data, %{projects: updated_projects})
+    |> update_computer_inputs(:tool_call_stats, %{session_ids: session_ids})
   end
-
-  defp pagination_keys(:visible),
-    do: %{cursor: :visible_cursor, has_more: :visible_has_more, sessions: :visible_sessions}
-
-  defp pagination_keys(:hidden),
-    do: %{cursor: :hidden_cursor, has_more: :hidden_has_more, sessions: :hidden_sessions}
 
   defp load_project_sessions(project_id, visibility, opts \\ []) do
     cursor = Keyword.get(opts, :after)
@@ -211,26 +264,10 @@ defmodule SpotterWeb.PaneListLive do
     {page.results, meta}
   end
 
-  defp load_tool_call_stats(projects) do
-    session_ids =
-      projects
-      |> Enum.flat_map(fn p -> p.visible_sessions ++ p.hidden_sessions end)
-      |> Enum.map(& &1.id)
-
-    load_tool_call_stats_for(session_ids)
-  end
-
-  defp load_tool_call_stats_for([]), do: %{}
-
-  defp load_tool_call_stats_for(session_ids) do
-    ToolCall
-    |> Ash.Query.filter(session_id in ^session_ids)
-    |> Ash.read!()
-    |> Enum.group_by(& &1.session_id)
-    |> Map.new(fn {sid, calls} ->
-      failed = Enum.count(calls, & &1.is_error)
-      {sid, %{total: length(calls), failed: failed}}
-    end)
+  defp extract_session_ids(projects) do
+    projects
+    |> Enum.flat_map(fn p -> p.visible_sessions ++ p.hidden_sessions end)
+    |> Enum.map(& &1.id)
   end
 
   defp relative_time(nil), do: "\u2014"
@@ -267,30 +304,30 @@ defmodule SpotterWeb.PaneListLive do
           <button phx-click="sync_transcripts">Sync</button>
         </div>
 
-        <%= if @projects == [] do %>
+        <%= if @session_data_projects == [] do %>
           <div class="empty-state" style="padding: 1rem; color: #888;">
             No projects synced yet. Click Sync to start.
           </div>
         <% else %>
-          <div :if={length(@projects) > 1} style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
+          <div :if={length(@session_data_projects) > 1} style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
             <button
-              phx-click="filter_project"
+              phx-click={event(:project_filter, :filter_project)}
               phx-value-project-id="all"
-              style={"padding: 0.4rem 0.8rem; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; color: #e0e0e0; background: #{if @selected_project_id == nil, do: "#1a6b3c", else: "#333"};"}
+              style={"padding: 0.4rem 0.8rem; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; color: #e0e0e0; background: #{if @project_filter_selected_project_id == nil, do: "#1a6b3c", else: "#333"};"}
             >
-              All ({Enum.sum(Enum.map(@projects, &length(&1.visible_sessions)))})
+              All ({Enum.sum(Enum.map(@session_data_projects, &length(&1.visible_sessions)))})
             </button>
             <button
-              :for={project <- @projects}
-              phx-click="filter_project"
+              :for={project <- @session_data_projects}
+              phx-click={event(:project_filter, :filter_project)}
               phx-value-project-id={project.id}
-              style={"padding: 0.4rem 0.8rem; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; color: #e0e0e0; background: #{if @selected_project_id == project.id, do: "#1a6b3c", else: "#333"};"}
+              style={"padding: 0.4rem 0.8rem; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; color: #e0e0e0; background: #{if @project_filter_selected_project_id == project.id, do: "#1a6b3c", else: "#333"};"}
             >
               {project.name} ({length(project.visible_sessions)})
             </button>
           </div>
 
-          <div :for={project <- @projects} :if={@selected_project_id == nil or @selected_project_id == project.id} style="margin-bottom: 1.5rem;">
+          <div :for={project <- @session_data_projects} :if={@project_filter_selected_project_id == nil or @project_filter_selected_project_id == project.id} style="margin-bottom: 1.5rem;">
             <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem;">
               <h3 style="margin: 0; color: #ccc;">
                 {project.name}
@@ -331,7 +368,7 @@ defmodule SpotterWeb.PaneListLive do
                       <td>{session.git_branch || "—"}</td>
                       <td>{session.message_count || 0}</td>
                       <td>
-                        <% stats = Map.get(@tool_call_stats, session.id) %>
+                        <% stats = Map.get(@tool_call_stats_stats, session.id) %>
                         <%= cond do %>
                           <% stats && stats.total > 0 && stats.failed > 0 -> %>
                             <span>{stats.total}</span> <span style="color: #f87171;">({stats.failed} failed)</span>
@@ -419,7 +456,7 @@ defmodule SpotterWeb.PaneListLive do
                           <td>{session.git_branch || "—"}</td>
                           <td>{session.message_count || 0}</td>
                           <td>
-                            <% stats = Map.get(@tool_call_stats, session.id) %>
+                            <% stats = Map.get(@tool_call_stats_stats, session.id) %>
                             <%= cond do %>
                               <% stats && stats.total > 0 && stats.failed > 0 -> %>
                                 <span>{stats.total}</span> <span style="color: #f87171;">({stats.failed} failed)</span>
