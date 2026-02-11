@@ -193,7 +193,7 @@ defmodule SpotterWeb.PaneListLive do
         :hidden -> Ash.Query.filter(query, not is_nil(hidden_at))
       end
 
-    page_opts = [keyset?: true, limit: @sessions_per_page]
+    page_opts = [limit: @sessions_per_page]
     page_opts = if cursor, do: Keyword.put(page_opts, :after, cursor), else: page_opts
 
     page = query |> Ash.Query.page(page_opts) |> Ash.read!()
