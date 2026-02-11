@@ -23,6 +23,8 @@ defmodule SpotterWeb.Router do
     post("/hooks/file-snapshot", HooksController, :file_snapshot)
     post("/hooks/tool-call", HooksController, :tool_call)
     post("/hooks/commit-event", HooksController, :commit_event)
+
+    get("/review-context/:token", ReviewContextController, :show)
   end
 
   scope "/", SpotterWeb do

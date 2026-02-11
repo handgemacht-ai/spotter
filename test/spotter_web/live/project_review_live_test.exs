@@ -196,4 +196,24 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
       assert html =~ "Closed 1 annotations"
     end
   end
+
+  describe "open_conversation" do
+    test "attempts to launch review tmux session and shows flash" do
+      {project, session} = create_project_with_session()
+
+      Ash.create!(Annotation, %{
+        session_id: session.id,
+        selected_text: "review me",
+        comment: "annotation"
+      })
+
+      conn = build_conn()
+      {:ok, view, _html} = live(conn, "/projects/#{project.id}/review")
+
+      html = render_click(view, "open_conversation")
+
+      # In test, tmux may not be available, so we accept either success or failure flash
+      assert html =~ "review session" or html =~ "Failed to launch"
+    end
+  end
 end

@@ -1,8 +1,11 @@
 defmodule SpotterWeb.ProjectReviewLive do
   use Phoenix.LiveView
 
+  alias Spotter.Services.{ReviewTokenStore, Tmux}
   alias Spotter.Transcripts.{Annotation, Project, Session}
   require Ash.Query
+
+  @review_port Application.compile_env(:spotter, [SpotterWeb.Endpoint, :http, :port], 1100)
 
   @impl true
   def mount(%{"project_id" => project_id}, _session, socket) do
@@ -47,6 +50,19 @@ defmodule SpotterWeb.ProjectReviewLive do
      socket
      |> put_flash(:info, "Closed #{closed_count} annotations")
      |> load_review_data()}
+  end
+
+  def handle_event("open_conversation", _params, socket) do
+    project = socket.assigns.project
+    token = ReviewTokenStore.mint(project.id)
+
+    case Tmux.launch_project_review(project.id, token, @review_port) do
+      {:ok, name} ->
+        {:noreply, put_flash(socket, :info, "Launched review session: #{name}")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :info, "Failed to launch: #{reason}")}
+    end
   end
 
   defp load_review_data(socket) do
@@ -106,6 +122,10 @@ defmodule SpotterWeb.ProjectReviewLive do
         {Phoenix.Flash.get(@flash, :info)}
       </div>
 
+      <div :if={Phoenix.Flash.get(@flash, :error)} style="background: #3a1a1a; color: #f87171; padding: 0.5rem 1rem; border-radius: 4px; margin-bottom: 1rem; font-size: 0.9em;">
+        {Phoenix.Flash.get(@flash, :error)}
+      </div>
+
       <%= if is_nil(@project) do %>
         <p style="color: #888; font-style: italic;">
           The requested project does not exist.
@@ -120,12 +140,20 @@ defmodule SpotterWeb.ProjectReviewLive do
             <span style="color: #888; font-size: 0.9em;">
               {length(@open_annotations)} open annotations across {map_size(@sessions_by_id)} sessions
             </span>
-            <button
-              phx-click="close_review_session"
-              style="padding: 0.3rem 0.8rem; background: #6b1a1a; border: none; border-radius: 4px; color: #f87171; cursor: pointer; font-size: 0.8em;"
-            >
-              Close review session
-            </button>
+            <div style="display: flex; gap: 0.5rem;">
+              <button
+                phx-click="open_conversation"
+                style="padding: 0.3rem 0.8rem; background: #1a3a1a; border: none; border-radius: 4px; color: #4ade80; cursor: pointer; font-size: 0.8em;"
+              >
+                Open conversation
+              </button>
+              <button
+                phx-click="close_review_session"
+                style="padding: 0.3rem 0.8rem; background: #6b1a1a; border: none; border-radius: 4px; color: #f87171; cursor: pointer; font-size: 0.8em;"
+              >
+                Close review session
+              </button>
+            </div>
           </div>
 
           <%= for ann <- @open_annotations do %>
