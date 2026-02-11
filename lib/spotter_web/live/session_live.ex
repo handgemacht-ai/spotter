@@ -1,7 +1,14 @@
 defmodule SpotterWeb.SessionLive do
   use Phoenix.LiveView
 
-  alias Spotter.Services.{ReviewSessionRegistry, SessionRegistry, Tmux, TranscriptRenderer}
+  alias Spotter.Services.{
+    ReviewSessionRegistry,
+    SessionRegistry,
+    Tmux,
+    TranscriptRenderer,
+    TranscriptSync
+  }
+
   alias Spotter.Transcripts.{Annotation, Commit, Message, Session, SessionCommitLink, ToolCall}
   require Ash.Query
 
@@ -30,28 +37,36 @@ defmodule SpotterWeb.SessionLive do
     annotations = load_annotations(session_record)
     errors = load_errors(session_record)
     commit_links = load_commit_links(session_id)
+    {breakpoint_map, anchors} = compute_sync_data(pane_id, rendered_lines)
 
-    {:ok,
-     assign(socket,
-       pane_id: pane_id,
-       session_id: session_id,
-       session_record: session_record,
-       review_session_name: review_session_name,
-       cols: cols,
-       rows: rows,
-       annotations: annotations,
-       selected_text: nil,
-       selection_start_row: nil,
-       selection_start_col: nil,
-       selection_end_row: nil,
-       selection_end_col: nil,
-       messages: messages,
-       rendered_lines: rendered_lines,
-       errors: errors,
-       commit_links: commit_links,
-       current_message_id: nil,
-       show_transcript: true
-     )}
+    socket =
+      assign(socket,
+        pane_id: pane_id,
+        session_id: session_id,
+        session_record: session_record,
+        review_session_name: review_session_name,
+        cols: cols,
+        rows: rows,
+        annotations: annotations,
+        selected_text: nil,
+        selection_start_row: nil,
+        selection_start_col: nil,
+        selection_end_row: nil,
+        selection_end_col: nil,
+        messages: messages,
+        rendered_lines: rendered_lines,
+        errors: errors,
+        commit_links: commit_links,
+        current_message_id: nil,
+        show_transcript: true,
+        breakpoint_map: breakpoint_map,
+        anchors: anchors,
+        show_debug: false
+      )
+
+    socket = push_sync_events(socket)
+
+    {:ok, socket}
   end
 
   @impl true
@@ -72,8 +87,14 @@ defmodule SpotterWeb.SessionLive do
 
       {pane_id, review_session_name} ->
         {cols, rows} = pane_dimensions(pane_id)
-        socket = maybe_start_heartbeat(socket, review_session_name)
-        {:noreply, assign(socket, pane_id: pane_id, cols: cols, rows: rows)}
+
+        socket =
+          socket
+          |> maybe_start_heartbeat(review_session_name)
+          |> assign(pane_id: pane_id, cols: cols, rows: rows)
+          |> recompute_and_push_sync()
+
+        {:noreply, socket}
     end
   end
 
@@ -81,8 +102,14 @@ defmodule SpotterWeb.SessionLive do
     if session_id == socket.assigns.session_id and is_nil(socket.assigns.pane_id) do
       {pane_id, review_session_name} = find_pane_with_review_info(session_id)
       {cols, rows} = pane_dimensions(pane_id)
-      socket = maybe_start_heartbeat(socket, review_session_name)
-      {:noreply, assign(socket, pane_id: pane_id, cols: cols, rows: rows)}
+
+      socket =
+        socket
+        |> maybe_start_heartbeat(review_session_name)
+        |> assign(pane_id: pane_id, cols: cols, rows: rows)
+        |> recompute_and_push_sync()
+
+      {:noreply, socket}
     else
       {:noreply, socket}
     end
@@ -189,6 +216,11 @@ defmodule SpotterWeb.SessionLive do
     {:noreply, socket}
   end
 
+  def handle_event("toggle_debug", _params, socket) do
+    {:noreply, assign(socket, show_debug: !socket.assigns.show_debug)}
+  end
+
+  # Legacy fallback — removed once breakpoint sync is stable
   def handle_event("terminal_scrolled", %{"visible_text" => visible_text}, socket) do
     current_message_id = find_matching_message(visible_text, socket.assigns.rendered_lines)
 
@@ -202,6 +234,40 @@ defmodule SpotterWeb.SessionLive do
       end
 
     {:noreply, socket}
+  end
+
+  defp compute_sync_data(nil, _rendered_lines), do: {[], []}
+
+  defp compute_sync_data(pane_id, rendered_lines) do
+    case Tmux.capture_pane(pane_id) do
+      {:ok, capture} ->
+        terminal_lines = TranscriptSync.prepare_terminal_lines(capture)
+        anchors = TranscriptSync.find_anchors(rendered_lines, terminal_lines)
+        breakpoint_map = TranscriptSync.interpolate(anchors, length(terminal_lines))
+        {breakpoint_map, anchors}
+
+      {:error, _} ->
+        {[], []}
+    end
+  end
+
+  defp push_sync_events(socket) do
+    if connected?(socket) and socket.assigns.breakpoint_map != [] do
+      socket
+      |> push_event("breakpoint_map", %{entries: socket.assigns.breakpoint_map})
+      |> push_event("debug_anchors", %{anchors: socket.assigns.anchors})
+    else
+      socket
+    end
+  end
+
+  defp recompute_and_push_sync(socket) do
+    {breakpoint_map, anchors} =
+      compute_sync_data(socket.assigns.pane_id, socket.assigns.rendered_lines)
+
+    socket
+    |> assign(breakpoint_map: breakpoint_map, anchors: anchors)
+    |> push_sync_events()
   end
 
   defp find_pane_with_review_info(session_id) do
@@ -346,7 +412,10 @@ defmodule SpotterWeb.SessionLive do
       </div>
       <div style="flex: 1; background: #0d1117; padding: 1rem; overflow-y: auto; border-left: 1px solid #2a2a4a;"
            id="transcript-panel">
-        <h3 style="margin: 0 0 0.75rem 0; color: #64b5f6;">Transcript</h3>
+        <div style="display: flex; align-items: center; margin: 0 0 0.75rem 0;">
+          <h3 style="margin: 0; color: #64b5f6;">Transcript</h3>
+          <span style="color: #444; font-size: 0.7em; margin-left: auto;">Ctrl+Shift+D: debug</span>
+        </div>
 
         <%= if @errors != [] do %>
           <div style="margin-bottom: 1rem; background: #1a1a2e; border-radius: 6px; padding: 0.75rem;">
@@ -375,6 +444,12 @@ defmodule SpotterWeb.SessionLive do
                 data-message-id={line.message_id}
                 style={"padding: 2px 6px; #{if @current_message_id == line.message_id, do: "background: #1a2744; border-left: 2px solid #64b5f6;", else: "border-left: 2px solid transparent;"}"}
               >
+                <%= if @show_debug do %>
+                  <% anchor = Enum.find(@anchors, & &1.tl == line.line_number) %>
+                  <span :if={anchor} style={"display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;background:#{anchor_color(anchor.type)};"}
+                    title={"#{anchor.type} → terminal line #{anchor.t}"}
+                  />
+                <% end %>
                 <span style={type_color(line.type)}><%= line.line %></span>
               </div>
             <% end %>
@@ -510,4 +585,10 @@ defmodule SpotterWeb.SessionLive do
   defp type_color(:assistant), do: "color: #e0e0e0;"
   defp type_color(:user), do: "color: #7ec8e3;"
   defp type_color(_), do: "color: #888;"
+
+  defp anchor_color(:tool_use), do: "#f0c674"
+  defp anchor_color(:user), do: "#7ec8e3"
+  defp anchor_color(:result), do: "#81c784"
+  defp anchor_color(:text), do: "#ce93d8"
+  defp anchor_color(_), do: "#888"
 end

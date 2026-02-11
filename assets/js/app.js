@@ -36,9 +36,23 @@ Hooks.Terminal = {
 
     this._term = term
     this._fitAddon = fitAddon
+    this._breakpointMap = null
+    this._debugAnchors = null
+    this._lastSyncedId = null
+    this._showDebug = false
 
     this._onResize = () => fitAddon.fit()
     window.addEventListener("resize", this._onResize)
+
+    this._onKeyDown = (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === "D") {
+        e.preventDefault()
+        this._showDebug = !this._showDebug
+        this._renderDebugOverlay()
+        this.pushEvent("toggle_debug", {})
+      }
+    }
+    window.addEventListener("keydown", this._onKeyDown)
   },
 
   _connectChannel(term, paneId) {
@@ -94,19 +108,42 @@ Hooks.Terminal = {
         // Graceful fallback if API unavailable
       }
     })
-    // Scroll sync: debounced terminal scroll → push visible text to LiveView
+
+    // Breakpoint map from server (precomputed sync data)
+    this.handleEvent("breakpoint_map", ({ entries }) => {
+      this._breakpointMap = entries
+    })
+
+    // Debug anchor data from server
+    this.handleEvent("debug_anchors", ({ anchors }) => {
+      this._debugAnchors = anchors
+      if (this._showDebug) this._renderDebugOverlay()
+    })
+
+    // Scroll sync: use breakpoint map for instant local lookup, fallback to server roundtrip
     let scrollTimeout = null
     term.onScroll(() => {
       clearTimeout(scrollTimeout)
       scrollTimeout = setTimeout(() => {
-        const buffer = term.buffer.active
-        const lines = []
-        for (let i = buffer.viewportY; i < buffer.viewportY + term.rows; i++) {
-          const line = buffer.getLine(i)
-          if (line) lines.push(line.translateToString(true))
+        const topLine = term.buffer.active.viewportY
+        if (this._breakpointMap && this._breakpointMap.length > 0) {
+          const messageId = this._lookupMessage(topLine)
+          if (messageId && messageId !== this._lastSyncedId) {
+            this._lastSyncedId = messageId
+            const el = document.querySelector(`[data-message-id="${messageId}"]`)
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" })
+          }
+        } else {
+          // Legacy fallback: send visible text to server
+          const buffer = term.buffer.active
+          const lines = []
+          for (let i = buffer.viewportY; i < buffer.viewportY + term.rows; i++) {
+            const line = buffer.getLine(i)
+            if (line) lines.push(line.translateToString(true))
+          }
+          this.pushEvent("terminal_scrolled", { visible_text: lines.join("\n") })
         }
-        this.pushEvent("terminal_scrolled", { visible_text: lines.join("\n") })
-      }, 300)
+      }, 150)
     })
 
     // Listen for scroll_to_message events from LiveView
@@ -119,8 +156,57 @@ Hooks.Terminal = {
     this._socket = socket
   },
 
+  _lookupMessage(terminalLine) {
+    const map = this._breakpointMap
+    if (!map || map.length === 0) return null
+    let lo = 0, hi = map.length - 1, result = map[0].id
+    while (lo <= hi) {
+      const mid = (lo + hi) >>> 1
+      if (map[mid].t <= terminalLine) { result = map[mid].id; lo = mid + 1 }
+      else { hi = mid - 1 }
+    }
+    return result
+  },
+
+  _renderDebugOverlay() {
+    const existing = this.el.querySelector(".debug-anchor-overlay")
+    if (existing) existing.remove()
+
+    if (!this._showDebug) return
+
+    const anchors = this._debugAnchors
+    if (!anchors) return
+
+    const overlay = document.createElement("div")
+    overlay.className = "debug-anchor-overlay"
+    overlay.style.cssText = "position:absolute;top:0;right:0;z-index:100;background:rgba(0,0,0,0.85);color:#e0e0e0;padding:8px;border-radius:0 0 0 6px;font-size:0.7em;max-height:200px;overflow-y:auto;"
+
+    const typeColors = {
+      tool_use: "#f0c674",
+      user: "#7ec8e3",
+      result: "#81c784",
+      text: "#ce93d8",
+    }
+
+    const counts = {}
+    for (const a of anchors) {
+      counts[a.type] = (counts[a.type] || 0) + 1
+    }
+
+    let legend = `<div style="margin-bottom:4px;font-weight:bold;">Anchors: ${anchors.length} found</div>`
+    for (const [type, count] of Object.entries(counts)) {
+      const color = typeColors[type] || "#888"
+      legend += `<span style="color:${color};margin-right:8px;">● ${type}: ${count}</span>`
+    }
+    overlay.innerHTML = legend
+
+    this.el.style.position = "relative"
+    this.el.appendChild(overlay)
+  },
+
   destroyed() {
     window.removeEventListener("resize", this._onResize)
+    window.removeEventListener("keydown", this._onKeyDown)
     if (this._channel) this._channel.leave()
     if (this._socket) this._socket.disconnect()
     if (this._term) this._term.dispose()
