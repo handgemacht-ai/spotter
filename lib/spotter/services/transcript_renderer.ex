@@ -11,28 +11,17 @@ defmodule Spotter.Services.TranscriptRenderer do
   @doc """
   Renders a list of parsed messages into line maps.
 
-  Returns a list of `%{line: string, message_id: string, type: atom, line_number: integer, tool_use_id: string | nil}`.
-
-  Accepts optional `offset` keyword argument for line numbering in incremental rendering.
+  Returns a list of `%{line: string, message_id: string, type: atom, line_number: integer}`.
   """
-  @spec render([map()], keyword()) :: [map()]
-  def render(messages, opts \\ []) do
-    offset = Keyword.get(opts, :offset, 0)
-
+  @spec render([map()]) :: [map()]
+  def render(messages) do
     messages
     |> Enum.flat_map(fn msg ->
       msg
       |> render_message()
-      |> Enum.map(fn line ->
-        %{
-          line: line,
-          message_id: msg[:uuid],
-          type: msg[:type],
-          tool_use_id: msg[:tool_use_id]
-        }
-      end)
+      |> Enum.map(fn line -> %{line: line, message_id: msg[:uuid], type: msg[:type]} end)
     end)
-    |> Enum.with_index(offset + 1)
+    |> Enum.with_index(1)
     |> Enum.map(fn {entry, idx} -> Map.put(entry, :line_number, idx) end)
   end
 

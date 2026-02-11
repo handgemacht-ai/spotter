@@ -15,11 +15,7 @@ defmodule Spotter.Transcripts.Message do
   end
 
   actions do
-    defaults [:destroy]
-
-    read :read do
-      pagination keyset?: true, required?: false, countable: :by_default
-    end
+    defaults [:read, :destroy]
 
     create :create do
       primary? true

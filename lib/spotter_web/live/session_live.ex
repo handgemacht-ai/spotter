@@ -19,7 +19,7 @@ defmodule SpotterWeb.SessionLive do
       end
     end
 
-    {session_record, messages, rendered_lines, pagination_meta} = load_transcript(session_id)
+    {session_record, messages, rendered_lines} = load_transcript(session_id)
     annotations = load_annotations(session_record)
     errors = load_errors(session_record)
     commit_links = load_commit_links(session_id)
@@ -42,9 +42,7 @@ defmodule SpotterWeb.SessionLive do
        errors: errors,
        commit_links: commit_links,
        current_message_id: nil,
-       show_transcript: true,
-       has_more: pagination_meta.has_more,
-       next_cursor: pagination_meta.next_cursor
+       show_transcript: true
      )}
   end
 
@@ -147,36 +145,6 @@ defmodule SpotterWeb.SessionLive do
     end
   end
 
-  def handle_event("load_more_messages", _params, socket) do
-    if socket.assigns.has_more && socket.assigns.next_cursor do
-      case load_session_messages_after(
-             socket.assigns.session_record,
-             socket.assigns.next_cursor
-           ) do
-        {new_messages, pagination_meta} ->
-          new_rendered =
-            TranscriptRenderer.render(new_messages, offset: length(socket.assigns.rendered_lines))
-
-          socket =
-            socket
-            |> assign(
-              messages: socket.assigns.messages ++ new_messages,
-              rendered_lines: socket.assigns.rendered_lines ++ new_rendered,
-              has_more: pagination_meta.has_more,
-              next_cursor: pagination_meta.next_cursor
-            )
-            |> push_event("scroll_to_load_more_anchor", %{})
-
-          {:noreply, socket}
-
-        _ ->
-          {:noreply, socket}
-      end
-    else
-      {:noreply, socket}
-    end
-  end
-
   def handle_event("jump_to_error", %{"tool-use-id" => tool_use_id}, socket) do
     line_index =
       Enum.find_index(socket.assigns.rendered_lines, fn line ->
@@ -187,11 +155,7 @@ defmodule SpotterWeb.SessionLive do
       if line_index do
         push_event(socket, "scroll_to_transcript_line", %{index: line_index})
       else
-        put_flash(
-          socket,
-          :info,
-          "Error message not yet loaded. Click 'Load More' to fetch additional messages."
-        )
+        socket
       end
 
     {:noreply, socket}
@@ -253,14 +217,14 @@ defmodule SpotterWeb.SessionLive do
   defp load_transcript(session_id) do
     case Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one() do
       {:ok, %Session{} = session} ->
-        {messages, pagination_meta} = load_session_messages(session)
-        {session, messages, TranscriptRenderer.render(messages), pagination_meta}
+        messages = load_session_messages(session)
+        {session, messages, TranscriptRenderer.render(messages)}
 
       _ ->
-        {nil, [], [], %{has_more: false, next_cursor: nil}}
+        {nil, [], []}
     end
   rescue
-    _ -> {nil, [], [], %{has_more: false, next_cursor: nil}}
+    _ -> {nil, [], []}
   end
 
   defp load_errors(nil), do: []
@@ -282,63 +246,19 @@ defmodule SpotterWeb.SessionLive do
   end
 
   defp load_session_messages(session) do
-    page_result =
-      Message
-      |> Ash.Query.filter(session_id == ^session.id)
-      |> Ash.Query.sort(timestamp: :asc)
-      |> Ash.Query.page(keyset?: true, limit: 100)
-      |> Ash.read!()
-
-    messages =
-      page_result.results
-      |> Enum.map(fn msg ->
-        %{
-          uuid: msg.uuid,
-          type: msg.type,
-          role: msg.role,
-          content: msg.content,
-          timestamp: msg.timestamp,
-          tool_use_id: msg.tool_use_id
-        }
-      end)
-
-    pagination_meta = %{
-      has_more: page_result.more?,
-      next_cursor: page_result.after
-    }
-
-    {messages, pagination_meta}
-  end
-
-  defp load_session_messages_after(session, cursor) do
-    page_result =
-      Message
-      |> Ash.Query.filter(session_id == ^session.id)
-      |> Ash.Query.sort(timestamp: :asc)
-      |> Ash.Query.page(keyset?: true, limit: 100, after: cursor)
-      |> Ash.read!()
-
-    messages =
-      page_result.results
-      |> Enum.map(fn msg ->
-        %{
-          uuid: msg.uuid,
-          type: msg.type,
-          role: msg.role,
-          content: msg.content,
-          timestamp: msg.timestamp,
-          tool_use_id: msg.tool_use_id
-        }
-      end)
-
-    pagination_meta = %{
-      has_more: page_result.more?,
-      next_cursor: page_result.after
-    }
-
-    {messages, pagination_meta}
-  rescue
-    _ -> nil
+    Message
+    |> Ash.Query.filter(session_id == ^session.id)
+    |> Ash.Query.sort(timestamp: :asc)
+    |> Ash.read!()
+    |> Enum.map(fn msg ->
+      %{
+        uuid: msg.uuid,
+        type: msg.type,
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp
+      }
+    end)
   end
 
   defp find_matching_message(visible_text, rendered_lines) do
@@ -424,18 +344,6 @@ defmodule SpotterWeb.SessionLive do
               </div>
             <% end %>
           </div>
-
-          <%= if @has_more do %>
-            <div id="load-more-anchor" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #2a2a4a; text-align: center;">
-              <button
-                phx-click="load_more_messages"
-                phx-disable-with="Loading..."
-                style="background: #1a3a52; color: #64b5f6; border: 1px solid #64b5f6; border-radius: 4px; padding: 0.5rem 1rem; cursor: pointer; font-size: 0.85em; font-family: inherit;"
-              >
-                Load More Messages ({length(@messages)} loaded)
-              </button>
-            </div>
-          <% end %>
         <% else %>
           <p style="color: #666; font-style: italic; font-size: 0.85em;">
             No transcript available for this session.
