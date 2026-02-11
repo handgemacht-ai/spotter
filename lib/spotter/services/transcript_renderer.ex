@@ -31,7 +31,7 @@ defmodule Spotter.Services.TranscriptRenderer do
       |> render_message_enriched(session_cwd)
       |> Enum.map(fn line_meta ->
         line_meta
-        |> Map.put(:message_id, msg[:uuid])
+        |> Map.put(:message_id, msg[:id] || msg[:uuid])
         |> Map.put(:type, msg[:type])
         |> put_subagent_ref(msg)
       end)
