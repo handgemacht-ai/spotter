@@ -6,6 +6,30 @@
         "command": "${CLAUDE_PLUGIN_ROOT}/scripts/notify-session.sh",
         "timeout": 5000
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/pre-tool-capture.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/post-tool-capture.sh",
+            "timeout": 10000
+          }
+        ]
+      }
     ]
   }
 }

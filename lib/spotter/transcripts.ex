@@ -26,6 +26,11 @@ defmodule Spotter.Transcripts do
         get :read
         index :read
       end
+
+      base_route "/file_snapshots", Spotter.Transcripts.FileSnapshot do
+        get :read
+        index :read
+      end
     end
   end
 
@@ -35,5 +40,6 @@ defmodule Spotter.Transcripts do
     resource Spotter.Transcripts.Message
     resource Spotter.Transcripts.Subagent
     resource Spotter.Transcripts.Annotation
+    resource Spotter.Transcripts.FileSnapshot
   end
 end

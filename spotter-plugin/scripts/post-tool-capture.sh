@@ -1,0 +1,209 @@
+#!/usr/bin/env bash
+# Post-tool capture: reads file state after Write/Edit/Bash tools execute,
+# compares with pre-tool baseline, and POSTs snapshots to Spotter.
+# Fails silently to never block Claude.
+
+set -euo pipefail
+trap 'exit 0' ERR
+
+INPUT="$(cat)"
+
+TOOL_NAME="$(echo "$INPUT" | jq -r '.tool_name // empty')"
+TOOL_USE_ID="$(echo "$INPUT" | jq -r '.tool_use_id // empty')"
+SESSION_ID="$(echo "$INPUT" | jq -r '.session_id // empty')"
+
+if [ -z "$TOOL_USE_ID" ] || [ -z "$SESSION_ID" ]; then
+  exit 0
+fi
+
+# Determine Spotter URL
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
+PORT_FILE="$PLUGIN_DIR/../.port"
+
+if [ -f "$PORT_FILE" ]; then
+  PORT="$(cat "$PORT_FILE")"
+else
+  PORT=1100
+fi
+
+SPOTTER_URL="${SPOTTER_URL:-http://127.0.0.1:${PORT}}"
+TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%S.%6NZ)"
+
+post_snapshot() {
+  local json="$1"
+  curl -s -o /dev/null -X POST \
+    "${SPOTTER_URL}/api/hooks/file-snapshot" \
+    -H "Content-Type: application/json" \
+    -d "$json" \
+    --connect-timeout 2 \
+    --max-time 5 \
+    2>/dev/null || true
+}
+
+get_relative_path() {
+  local abs_path="$1"
+  local toplevel
+  toplevel="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+  if [ -n "$toplevel" ]; then
+    echo "${abs_path#"$toplevel"/}"
+  else
+    echo "$abs_path"
+  fi
+}
+
+is_text_file() {
+  local path="$1"
+  if [ ! -f "$path" ]; then
+    return 1
+  fi
+  local mime
+  mime="$(file --mime-type -b "$path" 2>/dev/null || echo "unknown")"
+  case "$mime" in
+    text/*|application/json|application/javascript|application/xml) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+is_under_size_limit() {
+  local path="$1"
+  local size
+  size="$(wc -c < "$path" 2>/dev/null || echo 0)"
+  [ "$size" -le 1048576 ]
+}
+
+read_file_content() {
+  local path="$1"
+  if [ -f "$path" ] && is_text_file "$path" && is_under_size_limit "$path"; then
+    jq -Rs '.' < "$path"
+  else
+    echo "null"
+  fi
+}
+
+case "$TOOL_NAME" in
+  Write|Edit)
+    FILE_PATH="$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')"
+    if [ -z "$FILE_PATH" ]; then
+      exit 0
+    fi
+
+    TEMP_FILE="/tmp/spotter-before-${TOOL_USE_ID}.json"
+
+    # Read before content from temp file
+    CONTENT_BEFORE="null"
+    if [ -f "$TEMP_FILE" ]; then
+      SKIP="$(jq -r '.skip // empty' < "$TEMP_FILE")"
+      if [ "$SKIP" = "true" ]; then
+        rm -f "$TEMP_FILE"
+        exit 0
+      fi
+      CONTENT_BEFORE="$(jq '.content' < "$TEMP_FILE")"
+      rm -f "$TEMP_FILE"
+    fi
+
+    # Read after content
+    CONTENT_AFTER="$(read_file_content "$FILE_PATH")"
+
+    # Determine change type
+    if [ "$CONTENT_BEFORE" = "null" ] && [ "$CONTENT_AFTER" != "null" ]; then
+      CHANGE_TYPE="created"
+    elif [ "$CONTENT_AFTER" = "null" ]; then
+      CHANGE_TYPE="deleted"
+    else
+      CHANGE_TYPE="modified"
+    fi
+
+    REL_PATH="$(get_relative_path "$FILE_PATH")"
+
+    # Determine source
+    if [ "$TOOL_NAME" = "Write" ]; then
+      SOURCE="write"
+    else
+      SOURCE="edit"
+    fi
+
+    JSON="$(jq -n \
+      --arg session_id "$SESSION_ID" \
+      --arg tool_use_id "$TOOL_USE_ID" \
+      --arg file_path "$FILE_PATH" \
+      --arg relative_path "$REL_PATH" \
+      --argjson content_before "$CONTENT_BEFORE" \
+      --argjson content_after "$CONTENT_AFTER" \
+      --arg change_type "$CHANGE_TYPE" \
+      --arg source "$SOURCE" \
+      --arg timestamp "$TIMESTAMP" \
+      '{session_id: $session_id, tool_use_id: $tool_use_id, file_path: $file_path, relative_path: $relative_path, content_before: $content_before, content_after: $content_after, change_type: $change_type, source: $source, timestamp: $timestamp}'
+    )"
+
+    post_snapshot "$JSON"
+    ;;
+
+  Bash)
+    BASELINE_FILE="/tmp/spotter-git-baseline-${TOOL_USE_ID}.txt"
+
+    if ! git rev-parse --git-dir > /dev/null 2>&1; then
+      rm -f "$BASELINE_FILE"
+      exit 0
+    fi
+
+    # Capture current state
+    CURRENT_FILE="/tmp/spotter-git-current-${TOOL_USE_ID}.txt"
+    {
+      git diff --name-only HEAD 2>/dev/null || true
+      git status --porcelain 2>/dev/null | awk '{print $2}' || true
+    } | sort -u > "$CURRENT_FILE"
+
+    # Find newly changed files (in current but not in baseline)
+    if [ -f "$BASELINE_FILE" ]; then
+      CHANGED_FILES="$(comm -13 "$BASELINE_FILE" "$CURRENT_FILE" 2>/dev/null || true)"
+    else
+      CHANGED_FILES="$(cat "$CURRENT_FILE")"
+    fi
+
+    rm -f "$BASELINE_FILE" "$CURRENT_FILE"
+
+    TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"
+
+    echo "$CHANGED_FILES" | while IFS= read -r rel_file; do
+      [ -z "$rel_file" ] && continue
+
+      abs_file="${TOPLEVEL}/${rel_file}"
+
+      # Skip binary/large files
+      if ! is_text_file "$abs_file" || ! is_under_size_limit "$abs_file"; then
+        continue
+      fi
+
+      CONTENT_AFTER="$(read_file_content "$abs_file")"
+
+      # Try to get before content from git
+      CONTENT_BEFORE="$(git show "HEAD:${rel_file}" 2>/dev/null | jq -Rs '.' || echo "null")"
+
+      if [ "$CONTENT_BEFORE" = "null" ]; then
+        CHANGE_TYPE="created"
+      elif [ ! -f "$abs_file" ]; then
+        CHANGE_TYPE="deleted"
+      else
+        CHANGE_TYPE="modified"
+      fi
+
+      JSON="$(jq -n \
+        --arg session_id "$SESSION_ID" \
+        --arg tool_use_id "$TOOL_USE_ID" \
+        --arg file_path "$abs_file" \
+        --arg relative_path "$rel_file" \
+        --argjson content_before "$CONTENT_BEFORE" \
+        --argjson content_after "$CONTENT_AFTER" \
+        --arg change_type "$CHANGE_TYPE" \
+        --arg source "bash" \
+        --arg timestamp "$TIMESTAMP" \
+        '{session_id: $session_id, tool_use_id: $tool_use_id, file_path: $file_path, relative_path: $relative_path, content_before: $content_before, content_after: $content_after, change_type: $change_type, source: $source, timestamp: $timestamp}'
+      )"
+
+      post_snapshot "$JSON"
+    done
+    ;;
+esac
+
+exit 0
