@@ -11,7 +11,6 @@ erl_crash.dump
 
 # Per-worktree generated files (from scripts/setup_worktree.sh)
 config/dev.local.exs
-.mcp.json
 .port
 assets/node_modules
 priv/static/assets/
