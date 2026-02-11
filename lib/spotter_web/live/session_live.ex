@@ -442,7 +442,8 @@ defmodule SpotterWeb.SessionLive do
         type: msg.type,
         role: msg.role,
         content: msg.content,
-        timestamp: msg.timestamp
+        timestamp: msg.timestamp,
+        agent_id: msg.agent_id
       }
     end)
   end
