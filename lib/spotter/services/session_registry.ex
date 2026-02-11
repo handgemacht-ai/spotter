@@ -27,6 +27,13 @@ defmodule Spotter.Services.SessionRegistry do
     end
   end
 
+  def get_pane_id(session_id) do
+    case :ets.match(@table, {:"$1", session_id}) do
+      [[pane_id] | _] -> pane_id
+      _ -> nil
+    end
+  end
+
   @impl true
   def init(_) do
     :ets.new(@table, [:named_table, :public, :set])

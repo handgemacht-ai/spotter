@@ -112,6 +112,27 @@ defmodule Spotter.Services.Tmux do
     "%#{num}"
   end
 
+  @doc """
+  Launches a review tmux session for a Claude Code session.
+  Creates a detached session named `spotter-review-<short-id>` running
+  `claude --resume <session_id> --fork-session`.
+  """
+  def launch_review_session(session_id) do
+    short_id = String.slice(session_id, 0, 8)
+    name = "spotter-review-#{short_id}"
+
+    case System.cmd(
+           "tmux",
+           ["new-session", "-d", "-s", name, "claude", "--resume", session_id, "--fork-session"],
+           stderr_to_stdout: true
+         ) do
+      {_, 0} -> {:ok, name}
+      {output, _} -> {:error, String.trim(output)}
+    end
+  rescue
+    e in ErlangError -> {:error, Exception.message(e)}
+  end
+
   # Private helpers
 
   defp pf(field), do: "\#{#{field}}\t"

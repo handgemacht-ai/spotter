@@ -1,6 +1,7 @@
 defmodule SpotterWeb.PaneListLive do
   use Phoenix.LiveView
 
+  alias Spotter.Services.SessionRegistry
   alias Spotter.Services.Tmux
   alias Spotter.Transcripts.Jobs.SyncTranscripts
 
@@ -23,6 +24,11 @@ defmodule SpotterWeb.PaneListLive do
   @impl true
   def handle_event("refresh", _params, socket) do
     {:noreply, load_panes(socket)}
+  end
+
+  def handle_event("review_session", %{"session-id" => session_id}, socket) do
+    Task.start(fn -> Tmux.launch_review_session(session_id) end)
+    {:noreply, push_navigate(socket, to: "/sessions/#{session_id}")}
   end
 
   def handle_event("sync_transcripts", _params, socket) do
@@ -69,7 +75,13 @@ defmodule SpotterWeb.PaneListLive do
           {[], []}
       end
 
-    assign(socket, panes: other_panes, claude_panes: claude_panes, loading: false)
+    # Only show plugin-registered panes, exclude review sessions
+    registered_panes =
+      claude_panes
+      |> Enum.reject(&String.starts_with?(&1.session_name, "spotter-review-"))
+      |> Enum.filter(&SessionRegistry.get_session_id(&1.pane_id))
+
+    assign(socket, panes: other_panes, claude_panes: registered_panes, loading: false)
   end
 
   defp load_projects(socket) do
@@ -145,6 +157,7 @@ defmodule SpotterWeb.PaneListLive do
                     <th>Branch</th>
                     <th>Messages</th>
                     <th>Started</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -153,6 +166,15 @@ defmodule SpotterWeb.PaneListLive do
                     <td>{session.git_branch || "—"}</td>
                     <td>{session.message_count || 0}</td>
                     <td>{relative_time(session.started_at)}</td>
+                    <td>
+                      <button
+                        phx-click="review_session"
+                        phx-value-session-id={session.session_id}
+                        style="padding: 0.2rem 0.6rem; background: #2d4a2d; border: none; border-radius: 4px; color: #7ec87e; cursor: pointer; font-size: 0.8em;"
+                      >
+                        Review
+                      </button>
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -228,7 +250,7 @@ defmodule SpotterWeb.PaneListLive do
           <td>{pane.window_index}:{pane.pane_index}</td>
           <td>{pane.pane_current_command}</td>
           <td>{pane.pane_width}x{pane.pane_height}</td>
-          <td><a href={"/panes/#{Tmux.pane_id_to_num(pane.pane_id)}"}>Connect</a></td>
+          <td><a href={"/sessions/#{SessionRegistry.get_session_id(pane.pane_id)}"}>Connect</a></td>
         </tr>
       </tbody>
     </table>
