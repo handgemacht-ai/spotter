@@ -245,6 +245,380 @@ defmodule Spotter.Services.TranscriptRendererTest do
     end
   end
 
+  describe "render/2 enriched metadata" do
+    test "includes kind, tool_use_id, thread_key, subagent_ref, code_language, render_mode" do
+      messages = [
+        %{
+          type: :assistant,
+          content: %{"blocks" => [%{"type" => "text", "text" => "Hello"}]},
+          uuid: "msg-1"
+        }
+      ]
+
+      [line] = TranscriptRenderer.render(messages)
+
+      assert %{
+               kind: :text,
+               tool_use_id: nil,
+               thread_key: nil,
+               subagent_ref: nil,
+               code_language: nil,
+               render_mode: :plain
+             } = line
+    end
+  end
+
+  describe "thinking rendering in render/2" do
+    test "includes thinking blocks from assistant messages" do
+      messages = [
+        %{
+          type: :assistant,
+          content: %{
+            "blocks" => [
+              %{"type" => "thinking", "thinking" => "Let me think about this"},
+              %{"type" => "text", "text" => "Here's my answer"}
+            ]
+          },
+          uuid: "msg-1"
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      thinking_lines = Enum.filter(result, &(&1.kind == :thinking))
+      assert thinking_lines != []
+      assert Enum.any?(thinking_lines, &(&1.line =~ "Let me think"))
+      assert Enum.all?(thinking_lines, &(&1.render_mode == :plain))
+    end
+
+    test "includes top-level thinking messages" do
+      messages = [
+        %{type: :thinking, content: %{"text" => "thinking..."}, uuid: "msg-1"}
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      assert result != []
+      assert hd(result).kind == :thinking
+      assert hd(result).render_mode == :plain
+    end
+
+    test "render_message/1 still skips thinking (backward compat)" do
+      msg = %{type: :thinking, content: %{"text" => "thinking..."}, uuid: "abc"}
+      assert TranscriptRenderer.render_message(msg) == []
+    end
+  end
+
+  describe "tool threading" do
+    test "tool_use and tool_result share thread_key" do
+      messages = [
+        %{
+          type: :assistant,
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Bash",
+                "id" => "toolu_123",
+                "input" => %{"command" => "ls"}
+              }
+            ]
+          },
+          uuid: "msg-1"
+        },
+        %{
+          type: :user,
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_123",
+                "content" => "file1.txt\nfile2.txt"
+              }
+            ]
+          },
+          uuid: "msg-2"
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      tool_use_line = Enum.find(result, &(&1.kind == :tool_use))
+      tool_result_lines = Enum.filter(result, &(&1.kind == :tool_result))
+
+      assert tool_use_line.thread_key == "toolu_123"
+      assert tool_use_line.tool_use_id == "toolu_123"
+      assert Enum.all?(tool_result_lines, &(&1.thread_key == "toolu_123"))
+      assert Enum.all?(tool_result_lines, &(&1.tool_use_id == "toolu_123"))
+    end
+
+    test "tool_use without id uses fallback thread_key" do
+      messages = [
+        %{
+          type: :assistant,
+          content: %{
+            "blocks" => [
+              %{"type" => "tool_use", "name" => "Bash", "input" => %{"command" => "ls"}}
+            ]
+          },
+          uuid: "msg-1"
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      tool_use_line = Enum.find(result, &(&1.kind == :tool_use))
+
+      assert tool_use_line.thread_key == "tool-use-Bash"
+      assert tool_use_line.tool_use_id == nil
+    end
+
+    test "tool_result without tool_use_id uses fallback thread_key" do
+      messages = [
+        %{
+          type: :user,
+          content: %{
+            "blocks" => [%{"type" => "tool_result", "content" => "ok"}]
+          },
+          uuid: "msg-1"
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      line = hd(result)
+
+      assert line.kind == :tool_result
+      assert line.thread_key == "unmatched-result"
+    end
+  end
+
+  describe "code detection" do
+    test "detects fenced code blocks with language" do
+      messages = [
+        %{
+          type: :assistant,
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "text",
+                "text" => "Here's code:\n```elixir\ndef foo, do: :bar\n```\nDone."
+              }
+            ]
+          },
+          uuid: "msg-1"
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      code_lines = Enum.filter(result, &(&1.render_mode == :code))
+      plain_lines = Enum.filter(result, &(&1.render_mode == :plain))
+
+      assert length(code_lines) == 3
+      assert Enum.all?(code_lines, &(&1.code_language == "elixir"))
+      assert length(plain_lines) == 2
+    end
+
+    test "detects arrow-numbered lines as code" do
+      messages = [
+        %{
+          type: :assistant,
+          content: %{
+            "blocks" => [
+              %{"type" => "text", "text" => "File content:\n     1→import foo\n     2→import bar"}
+            ]
+          },
+          uuid: "msg-1"
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      code_lines = Enum.filter(result, &(&1.render_mode == :code))
+
+      assert length(code_lines) == 2
+      assert Enum.all?(code_lines, &(&1.code_language == "plaintext"))
+    end
+
+    test "unclosed fence renders as code until end" do
+      messages = [
+        %{
+          type: :assistant,
+          content: %{
+            "blocks" => [
+              %{"type" => "text", "text" => "```python\nprint('hello')\nmore code"}
+            ]
+          },
+          uuid: "msg-1"
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      code_lines = Enum.filter(result, &(&1.render_mode == :code))
+
+      assert length(code_lines) == 3
+      assert Enum.all?(code_lines, &(&1.code_language == "python"))
+    end
+
+    test "bare fence opens plaintext code block" do
+      messages = [
+        %{
+          type: :assistant,
+          content: %{
+            "blocks" => [
+              %{"type" => "text", "text" => "```\nsome code\n```"}
+            ]
+          },
+          uuid: "msg-1"
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      code_lines = Enum.filter(result, &(&1.render_mode == :code))
+
+      assert length(code_lines) == 3
+      assert Enum.all?(code_lines, &(&1.code_language == "plaintext"))
+    end
+  end
+
+  describe "subagent detection" do
+    test "detects subagent_ref from message agent_id" do
+      messages = [
+        %{
+          type: :assistant,
+          content: %{"blocks" => [%{"type" => "text", "text" => "Some text"}]},
+          uuid: "msg-1",
+          agent_id: "afb92ff"
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      assert Enum.all?(result, &(&1.subagent_ref == "afb92ff"))
+    end
+
+    test "detects subagent_ref from text pattern" do
+      messages = [
+        %{
+          type: :assistant,
+          content: %{
+            "blocks" => [
+              %{"type" => "text", "text" => "Launching agent-abc123 to handle this"}
+            ]
+          },
+          uuid: "msg-1"
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      assert Enum.any?(result, &(&1.subagent_ref == "agent-abc123"))
+    end
+
+    test "subagent_ref is nil when no agent reference" do
+      messages = [
+        %{
+          type: :assistant,
+          content: %{"blocks" => [%{"type" => "text", "text" => "Just plain text"}]},
+          uuid: "msg-1"
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      assert Enum.all?(result, &is_nil(&1.subagent_ref))
+    end
+  end
+
+  describe "to_relative_path/2" do
+    test "relativizes absolute path with matching prefix" do
+      assert TranscriptRenderer.to_relative_path(
+               "/home/user/project/lib/foo.ex",
+               "/home/user/project"
+             ) == "lib/foo.ex"
+    end
+
+    test "preserves path with no matching prefix" do
+      assert TranscriptRenderer.to_relative_path(
+               "/other/path/foo.ex",
+               "/home/user/project"
+             ) == "/other/path/foo.ex"
+    end
+
+    test "preserves relative path" do
+      assert TranscriptRenderer.to_relative_path("lib/foo.ex", "/home/user/project") ==
+               "lib/foo.ex"
+    end
+
+    test "handles nil session_cwd" do
+      assert TranscriptRenderer.to_relative_path("/home/user/project/lib/foo.ex", nil) ==
+               "/home/user/project/lib/foo.ex"
+    end
+
+    test "non-path strings with / are not mangled" do
+      assert TranscriptRenderer.to_relative_path("config/key", "/home/user") == "config/key"
+    end
+  end
+
+  describe "render/2 with session_cwd" do
+    test "relativizes file paths in tool_use preview" do
+      messages = [
+        %{
+          type: :assistant,
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Read",
+                "id" => "toolu_1",
+                "input" => %{"file_path" => "/home/user/project/lib/foo.ex"}
+              }
+            ]
+          },
+          uuid: "msg-1"
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages, session_cwd: "/home/user/project")
+      assert Enum.any?(result, &(&1.line =~ "lib/foo.ex"))
+      refute Enum.any?(result, &(&1.line =~ "/home/user/project"))
+    end
+
+    test "relativizes file paths in tool_result content" do
+      messages = [
+        %{
+          type: :user,
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_1",
+                "content" => "/home/user/project/lib/foo.ex:10: some warning"
+              }
+            ]
+          },
+          uuid: "msg-1"
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages, session_cwd: "/home/user/project")
+      assert Enum.any?(result, &(&1.line =~ "lib/foo.ex"))
+      refute Enum.any?(result, &(&1.line =~ "/home/user/project"))
+    end
+
+    test "without session_cwd preserves absolute paths" do
+      messages = [
+        %{
+          type: :user,
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_1",
+                "content" => "/home/user/project/lib/foo.ex"
+              }
+            ]
+          },
+          uuid: "msg-1"
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      assert Enum.any?(result, &(&1.line =~ "/home/user/project/lib/foo.ex"))
+    end
+  end
+
   defp load_fixture(name) do
     path = Path.join(@fixtures_dir, name)
     {:ok, %{messages: messages}} = JsonlParser.parse_session_file(path)
