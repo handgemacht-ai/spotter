@@ -86,5 +86,7 @@ defmodule Spotter.Transcripts.Message do
     belongs_to :session, Spotter.Transcripts.Session do
       allow_nil? false
     end
+
+    has_many :annotation_refs, Spotter.Transcripts.AnnotationMessageRef
   end
 end

@@ -9,7 +9,16 @@ defmodule SpotterWeb.SessionLive do
     TranscriptSync
   }
 
-  alias Spotter.Transcripts.{Annotation, Commit, Message, Session, SessionCommitLink, ToolCall}
+  alias Spotter.Transcripts.{
+    Annotation,
+    AnnotationMessageRef,
+    Commit,
+    Message,
+    Session,
+    SessionCommitLink,
+    ToolCall
+  }
+
   require Ash.Query
 
   @review_heartbeat_interval 10_000
@@ -49,6 +58,8 @@ defmodule SpotterWeb.SessionLive do
         rows: rows,
         annotations: annotations,
         selected_text: nil,
+        selection_source: nil,
+        selection_message_ids: [],
         selection_start_row: nil,
         selection_start_col: nil,
         selection_end_row: nil,
@@ -126,9 +137,13 @@ defmodule SpotterWeb.SessionLive do
 
   @impl true
   def handle_event("text_selected", params, socket) do
+    current_msg_id = socket.assigns.current_message_id
+
     {:noreply,
      assign(socket,
        selected_text: params["text"],
+       selection_source: :terminal,
+       selection_message_ids: if(current_msg_id, do: [current_msg_id], else: []),
        selection_start_row: params["start_row"],
        selection_start_col: params["start_col"],
        selection_end_row: params["end_row"],
@@ -136,10 +151,25 @@ defmodule SpotterWeb.SessionLive do
      )}
   end
 
+  def handle_event("transcript_text_selected", params, socket) do
+    {:noreply,
+     assign(socket,
+       selected_text: params["text"],
+       selection_source: :transcript,
+       selection_message_ids: params["message_ids"] || [],
+       selection_start_row: nil,
+       selection_start_col: nil,
+       selection_end_row: nil,
+       selection_end_col: nil
+     )}
+  end
+
   def handle_event("clear_selection", _params, socket) do
     {:noreply,
      assign(socket,
        selected_text: nil,
+       selection_source: nil,
+       selection_message_ids: [],
        selection_start_row: nil,
        selection_start_col: nil,
        selection_end_row: nil,
@@ -148,8 +178,11 @@ defmodule SpotterWeb.SessionLive do
   end
 
   def handle_event("save_annotation", %{"comment" => comment}, socket) do
+    source = socket.assigns.selection_source || :terminal
+
     params = %{
       session_id: socket.assigns.session_record.id,
+      source: source,
       selected_text: socket.assigns.selected_text,
       start_row: socket.assigns.selection_start_row,
       start_col: socket.assigns.selection_start_col,
@@ -159,12 +192,16 @@ defmodule SpotterWeb.SessionLive do
     }
 
     case Ash.create(Annotation, params) do
-      {:ok, _annotation} ->
+      {:ok, annotation} ->
+        create_message_refs(annotation, socket)
+
         {:noreply,
          socket
          |> assign(
            annotations: load_annotations(socket.assigns.session_record),
-           selected_text: nil
+           selected_text: nil,
+           selection_source: nil,
+           selection_message_ids: []
          )}
 
       {:error, _} ->
@@ -185,8 +222,18 @@ defmodule SpotterWeb.SessionLive do
   end
 
   def handle_event("highlight_annotation", %{"id" => id}, socket) do
-    case Ash.get(Annotation, id) do
-      {:ok, ann} ->
+    case Ash.get(Annotation, id, load: [message_refs: :message]) do
+      {:ok, %{source: :transcript, message_refs: refs}} when refs != [] ->
+        message_ids = refs |> Enum.sort_by(& &1.ordinal) |> Enum.map(& &1.message.id)
+
+        socket =
+          socket
+          |> push_event("scroll_to_message", %{id: List.first(message_ids)})
+          |> push_event("highlight_transcript_annotation", %{message_ids: message_ids})
+
+        {:noreply, socket}
+
+      {:ok, ann} when not is_nil(ann.start_row) ->
         {:noreply,
          push_event(socket, "highlight_annotation", %{
            start_row: ann.start_row,
@@ -270,6 +317,36 @@ defmodule SpotterWeb.SessionLive do
     |> push_sync_events()
   end
 
+  defp create_message_refs(annotation, socket) do
+    message_ids =
+      socket.assigns.selection_message_ids
+      |> Enum.uniq()
+      |> validate_session_message_ids(socket.assigns.session_record)
+
+    message_ids
+    |> Enum.with_index()
+    |> Enum.each(fn {msg_id, ordinal} ->
+      Ash.create!(AnnotationMessageRef, %{
+        annotation_id: annotation.id,
+        message_id: msg_id,
+        ordinal: ordinal
+      })
+    end)
+  end
+
+  defp validate_session_message_ids([], _session), do: []
+
+  defp validate_session_message_ids(ids, session) do
+    valid_ids =
+      Message
+      |> Ash.Query.filter(session_id == ^session.id and id in ^ids)
+      |> Ash.Query.select([:id])
+      |> Ash.read!()
+      |> MapSet.new(& &1.id)
+
+    Enum.filter(ids, &MapSet.member?(valid_ids, &1))
+  end
+
   defp find_pane_with_review_info(session_id) do
     case SessionRegistry.get_pane_id(session_id) do
       nil -> find_review_pane(session_id)
@@ -344,6 +421,7 @@ defmodule SpotterWeb.SessionLive do
     |> Ash.Query.filter(session_id == ^id)
     |> Ash.Query.sort(inserted_at: :desc)
     |> Ash.read!()
+    |> Ash.load!(message_refs: :message)
   end
 
   defp load_session_messages(session) do
@@ -353,6 +431,7 @@ defmodule SpotterWeb.SessionLive do
     |> Ash.read!()
     |> Enum.map(fn msg ->
       %{
+        id: msg.id,
         uuid: msg.uuid,
         type: msg.type,
         role: msg.role,
@@ -375,6 +454,19 @@ defmodule SpotterWeb.SessionLive do
       if String.contains?(line, trimmed_line), do: msg_id
     end)
   end
+
+  defp selection_label(:transcript, [_ | _] = message_ids) do
+    "Selected transcript text (#{length(message_ids)} messages)"
+  end
+
+  defp selection_label(:transcript, _), do: "Selected transcript text"
+  defp selection_label(_, _), do: "Selected terminal text"
+
+  defp source_badge(:transcript), do: "Transcript"
+  defp source_badge(_), do: "Terminal"
+
+  defp source_badge_color(:transcript), do: "background: #1a4a6b;"
+  defp source_badge_color(_), do: "background: #4a3a1a;"
 
   @impl true
   def render(assigns) do
@@ -437,7 +529,7 @@ defmodule SpotterWeb.SessionLive do
         <% end %>
 
         <%= if @rendered_lines != [] do %>
-          <div id="transcript-messages" style="font-family: 'JetBrains Mono', monospace; font-size: 0.8em;">
+          <div id="transcript-messages" phx-hook="TranscriptSelection" style="font-family: 'JetBrains Mono', monospace; font-size: 0.8em;">
             <%= for line <- @rendered_lines do %>
               <div
                 id={"msg-#{line.line_number}"}
@@ -500,7 +592,9 @@ defmodule SpotterWeb.SessionLive do
 
         <%= if @selected_text do %>
           <div style="background: #1a1a2e; border-radius: 6px; padding: 0.75rem; margin-bottom: 1rem;">
-            <div style="font-size: 0.8em; color: #888; margin-bottom: 0.5rem;">Selected text:</div>
+            <div style="font-size: 0.8em; color: #888; margin-bottom: 0.5rem;">
+              {selection_label(@selection_source, @selection_message_ids)}
+            </div>
             <pre style="margin: 0 0 0.75rem 0; color: #e0e0e0; white-space: pre-wrap; font-size: 0.85em; max-height: 100px; overflow-y: auto;"><%= @selected_text %></pre>
             <form phx-submit="save_annotation">
               <textarea
@@ -522,7 +616,7 @@ defmodule SpotterWeb.SessionLive do
         <% end %>
 
         <%= if @annotations == [] do %>
-          <p style="color: #666; font-style: italic;">Select text in the terminal to add annotations.</p>
+          <p style="color: #666; font-style: italic;">Select text in terminal or transcript to add annotations.</p>
         <% end %>
 
         <%= for ann <- @annotations do %>
@@ -531,6 +625,14 @@ defmodule SpotterWeb.SessionLive do
             phx-click="highlight_annotation"
             phx-value-id={ann.id}
           >
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;">
+              <span style={"color: #e0e0e0; font-size: 0.7em; padding: 1px 6px; border-radius: 3px; #{source_badge_color(ann.source)}"}>
+                {source_badge(ann.source)}
+              </span>
+              <span :if={ann.source == :transcript && ann.message_refs != []} style="color: #666; font-size: 0.7em;">
+                {length(ann.message_refs)} messages
+              </span>
+            </div>
             <pre style="margin: 0 0 0.5rem 0; color: #a0a0a0; white-space: pre-wrap; font-size: 0.8em; max-height: 60px; overflow-y: auto;"><%= ann.selected_text %></pre>
             <p style="margin: 0; color: #e0e0e0; font-size: 0.9em;"><%= ann.comment %></p>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">

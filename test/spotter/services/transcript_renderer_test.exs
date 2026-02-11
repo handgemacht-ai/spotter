@@ -186,6 +186,25 @@ defmodule Spotter.Services.TranscriptRendererTest do
       message_ids = MapSet.new(["msg-abc", "msg-def"])
       assert Enum.all?(result, &MapSet.member?(message_ids, &1.message_id))
     end
+
+    test "uses id when present, falls back to uuid" do
+      messages = [
+        %{
+          type: :assistant,
+          content: %{"blocks" => [%{"type" => "text", "text" => "db msg"}]},
+          id: "db-id-1",
+          uuid: "legacy-uuid-1"
+        },
+        %{type: :user, content: %{"text" => "fixture msg"}, uuid: "fixture-uuid-2"}
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      db_line = Enum.find(result, &(&1.line =~ "db msg"))
+      fixture_line = Enum.find(result, &(&1.line =~ "fixture msg"))
+
+      assert db_line.message_id == "db-id-1"
+      assert fixture_line.message_id == "fixture-uuid-2"
+    end
   end
 
   describe "fixture integration" do

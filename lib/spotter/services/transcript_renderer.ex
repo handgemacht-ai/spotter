@@ -19,7 +19,9 @@ defmodule Spotter.Services.TranscriptRenderer do
     |> Enum.flat_map(fn msg ->
       msg
       |> render_message()
-      |> Enum.map(fn line -> %{line: line, message_id: msg[:uuid], type: msg[:type]} end)
+      |> Enum.map(fn line ->
+        %{line: line, message_id: msg[:id] || msg[:uuid], type: msg[:type]}
+      end)
     end)
     |> Enum.with_index(1)
     |> Enum.map(fn {entry, idx} -> Map.put(entry, :line_number, idx) end)

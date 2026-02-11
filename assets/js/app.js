@@ -213,6 +213,86 @@ Hooks.Terminal = {
   },
 }
 
+Hooks.TranscriptSelection = {
+  mounted() {
+    const pushSelection = () => {
+      const selection = window.getSelection()
+      if (!selection || selection.isCollapsed) {
+        this.pushEvent("clear_selection", {})
+        return
+      }
+
+      const text = selection.toString()
+      if (!text || !text.trim()) {
+        this.pushEvent("clear_selection", {})
+        return
+      }
+
+      const range = selection.getRangeAt(0)
+      const container = this.el
+      const messageEls = container.querySelectorAll("[data-message-id]")
+      const messageIds = []
+
+      messageEls.forEach((el) => {
+        if (range.intersectsNode(el)) {
+          const id = el.getAttribute("data-message-id")
+          if (id && !messageIds.includes(id)) {
+            messageIds.push(id)
+          }
+        }
+      })
+
+      if (messageIds.length === 0) {
+        this.pushEvent("clear_selection", {})
+        return
+      }
+
+      this.pushEvent("transcript_text_selected", {
+        source: "transcript",
+        text: text,
+        message_ids: messageIds,
+        anchor_message_id: messageIds[0] || null,
+        focus_message_id: messageIds[messageIds.length - 1] || null,
+      })
+    }
+
+    this._onMouseUp = () => pushSelection()
+    this._onKeyUp = (e) => {
+      if (e.shiftKey) pushSelection()
+    }
+
+    this.el.addEventListener("mouseup", this._onMouseUp)
+    this.el.addEventListener("keyup", this._onKeyUp)
+
+    this.handleEvent("highlight_transcript_annotation", ({ message_ids }) => {
+      const els = message_ids
+        .map((id) => this.el.querySelector(`[data-message-id="${id}"]`))
+        .filter(Boolean)
+
+      els.forEach((el) => {
+        el.style.background = "#2a3a5c"
+        el.style.borderLeft = "2px solid #f0c674"
+      })
+
+      if (els.length > 0) {
+        els[0].scrollIntoView({ behavior: "smooth", block: "center" })
+      }
+
+      setTimeout(() => {
+        els.forEach((el) => {
+          el.style.background = ""
+          el.style.borderLeft = "2px solid transparent"
+        })
+      }, 2000)
+    })
+  },
+
+  destroyed() {
+    this.el.removeEventListener("mouseup", this._onMouseUp)
+    this.el.removeEventListener("keyup", this._onKeyUp)
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']")?.getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   hooks: Hooks,

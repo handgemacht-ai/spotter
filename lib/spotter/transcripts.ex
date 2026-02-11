@@ -55,6 +55,7 @@ defmodule Spotter.Transcripts do
     resource Spotter.Transcripts.Message
     resource Spotter.Transcripts.Subagent
     resource Spotter.Transcripts.Annotation
+    resource Spotter.Transcripts.AnnotationMessageRef
     resource Spotter.Transcripts.FileSnapshot
     resource Spotter.Transcripts.ToolCall
     resource Spotter.Transcripts.Commit

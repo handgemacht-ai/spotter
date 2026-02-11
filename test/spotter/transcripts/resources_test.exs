@@ -3,7 +3,17 @@ defmodule Spotter.Transcripts.ResourcesTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Spotter.Repo
-  alias Spotter.Transcripts.{Commit, Message, Project, Session, SessionCommitLink, Subagent}
+
+  alias Spotter.Transcripts.{
+    Annotation,
+    AnnotationMessageRef,
+    Commit,
+    Message,
+    Project,
+    Session,
+    SessionCommitLink,
+    Subagent
+  }
 
   setup do
     Sandbox.checkout(Repo)
@@ -177,6 +187,151 @@ defmodule Spotter.Transcripts.ResourcesTest do
         })
 
       assert link2.link_type == :patch_match
+    end
+  end
+
+  describe "Annotation" do
+    setup do
+      project = Ash.create!(Project, %{name: "test-ann", pattern: "^test"})
+
+      session =
+        Ash.create!(Session, %{
+          session_id: Ash.UUID.generate(),
+          transcript_dir: "test-dir",
+          project_id: project.id
+        })
+
+      %{session: session}
+    end
+
+    test "creates terminal annotation with coordinates", %{session: session} do
+      ann =
+        Ash.create!(Annotation, %{
+          session_id: session.id,
+          source: :terminal,
+          selected_text: "hello world",
+          start_row: 1,
+          start_col: 0,
+          end_row: 1,
+          end_col: 11,
+          comment: "interesting"
+        })
+
+      assert ann.source == :terminal
+      assert ann.start_row == 1
+    end
+
+    test "creates transcript annotation with nil coordinates", %{session: session} do
+      ann =
+        Ash.create!(Annotation, %{
+          session_id: session.id,
+          source: :transcript,
+          selected_text: "some transcript text",
+          comment: "noted"
+        })
+
+      assert ann.source == :transcript
+      assert ann.start_row == nil
+      assert ann.end_col == nil
+    end
+
+    test "defaults source to terminal", %{session: session} do
+      ann =
+        Ash.create!(Annotation, %{
+          session_id: session.id,
+          selected_text: "text",
+          start_row: 0,
+          start_col: 0,
+          end_row: 0,
+          end_col: 4,
+          comment: "default source"
+        })
+
+      assert ann.source == :terminal
+    end
+  end
+
+  describe "AnnotationMessageRef" do
+    setup do
+      project = Ash.create!(Project, %{name: "test-ref", pattern: "^test"})
+
+      session =
+        Ash.create!(Session, %{
+          session_id: Ash.UUID.generate(),
+          transcript_dir: "test-dir",
+          project_id: project.id
+        })
+
+      msg1 =
+        Ash.create!(Message, %{
+          uuid: "msg-1",
+          type: :user,
+          role: :user,
+          timestamp: DateTime.utc_now(),
+          session_id: session.id,
+          content: %{"text" => "hello"}
+        })
+
+      msg2 =
+        Ash.create!(Message, %{
+          uuid: "msg-2",
+          type: :assistant,
+          role: :assistant,
+          timestamp: DateTime.utc_now(),
+          session_id: session.id,
+          content: %{"text" => "world"}
+        })
+
+      ann =
+        Ash.create!(Annotation, %{
+          session_id: session.id,
+          source: :transcript,
+          selected_text: "hello world",
+          comment: "test refs"
+        })
+
+      %{session: session, annotation: ann, msg1: msg1, msg2: msg2}
+    end
+
+    test "creates refs with ordinal ordering", %{annotation: ann, msg1: msg1, msg2: msg2} do
+      ref1 =
+        Ash.create!(AnnotationMessageRef, %{
+          annotation_id: ann.id,
+          message_id: msg1.id,
+          ordinal: 0
+        })
+
+      ref2 =
+        Ash.create!(AnnotationMessageRef, %{
+          annotation_id: ann.id,
+          message_id: msg2.id,
+          ordinal: 1
+        })
+
+      assert ref1.ordinal == 0
+      assert ref2.ordinal == 1
+
+      loaded = Ash.load!(ann, message_refs: :message)
+      refs = Enum.sort_by(loaded.message_refs, & &1.ordinal)
+      assert length(refs) == 2
+      assert Enum.at(refs, 0).message.uuid == "msg-1"
+      assert Enum.at(refs, 1).message.uuid == "msg-2"
+    end
+
+    test "enforces unique annotation+message", %{annotation: ann, msg1: msg1} do
+      Ash.create!(AnnotationMessageRef, %{
+        annotation_id: ann.id,
+        message_id: msg1.id,
+        ordinal: 0
+      })
+
+      assert_raise Ash.Error.Invalid, fn ->
+        Ash.create!(AnnotationMessageRef, %{
+          annotation_id: ann.id,
+          message_id: msg1.id,
+          ordinal: 1
+        })
+      end
     end
   end
 end
