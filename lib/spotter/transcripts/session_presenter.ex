@@ -11,19 +11,19 @@ defmodule Spotter.Transcripts.SessionPresenter do
   Precedence: custom_title > summary > slug > first_prompt (truncated) > short session_id.
   """
   def primary_label(session) do
-    non_empty(session[:custom_title]) ||
-      non_empty(session[:summary]) ||
-      non_empty(session[:slug]) ||
-      truncate_prompt(session[:first_prompt]) ||
-      short_id(session[:session_id])
+    non_empty(session.custom_title) ||
+      non_empty(session.summary) ||
+      non_empty(session.slug) ||
+      truncate_prompt(session.first_prompt) ||
+      short_id(session.session_id)
   end
 
   @doc """
   Returns a secondary label line: "slug:<slug> · id:<short-id>".
   """
   def secondary_label(session) do
-    slug_part = non_empty(session[:slug]) || "\u2014"
-    id_part = short_id(session[:session_id])
+    slug_part = non_empty(session.slug) || "\u2014"
+    id_part = short_id(session.session_id)
     "slug:#{slug_part} \u00b7 id:#{id_part}"
   end
 
