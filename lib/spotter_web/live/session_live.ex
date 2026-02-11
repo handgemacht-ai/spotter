@@ -463,7 +463,7 @@ defmodule SpotterWeb.SessionLive do
         end)
         |> Enum.reject(&is_nil(&1.commit))
         |> Enum.sort_by(
-          fn %{commit: c} -> {c.committed_at || c.inserted_at, c.inserted_at} end,
+          fn %{commit: c} -> c.committed_at || c.inserted_at end,
           {:desc, DateTime}
         )
 
