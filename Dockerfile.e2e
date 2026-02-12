@@ -1,4 +1,4 @@
-FROM hexpm/elixir:1.19.2-erlang-27.3.4-debian-bookworm-20250203
+FROM hexpm/elixir:1.19.2-erlang-27.3.4-debian-bookworm-20260202
 
 ENV MIX_ENV=dev \
     LANG=C.UTF-8 \

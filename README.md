@@ -94,6 +94,12 @@ The snapshot script selects longer sessions (line-count based), forces subagent 
 ANTHROPIC_API_KEY=... scripts/e2e/run.sh
 ```
 
+Default host port is `1101`. If it is already in use, override it:
+
+```bash
+SPOTTER_E2E_HOST_PORT=1102 ANTHROPIC_API_KEY=... scripts/e2e/run.sh
+```
+
 This command:
 
 1. builds app + runner containers
