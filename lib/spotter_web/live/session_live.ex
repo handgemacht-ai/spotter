@@ -34,6 +34,8 @@ defmodule SpotterWeb.SessionLive do
 
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Spotter.PubSub, "pane_sessions")
+      Phoenix.PubSub.subscribe(Spotter.PubSub, "session_activity")
+      Phoenix.PubSub.subscribe(Spotter.PubSub, "session_transcripts:#{session_id}")
 
       if is_nil(pane_id) do
         Process.send_after(self(), :check_pane, 1_000)
@@ -56,6 +58,7 @@ defmodule SpotterWeb.SessionLive do
       assign(socket,
         pane_id: pane_id,
         session_id: session_id,
+        session_status: nil,
         session_record: session_record,
         review_session_name: review_session_name,
         cols: cols,
@@ -128,6 +131,22 @@ defmodule SpotterWeb.SessionLive do
         |> recompute_and_push_sync()
 
       {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:session_activity, %{session_id: sid, status: status}}, socket) do
+    if sid == socket.assigns.session_id do
+      {:noreply, assign(socket, session_status: status)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:transcript_updated, session_id, _count}, socket) do
+    if session_id == socket.assigns.session_id do
+      {:noreply, reload_transcript(socket)}
     else
       {:noreply, socket}
     end
@@ -398,6 +417,28 @@ defmodule SpotterWeb.SessionLive do
     end
   end
 
+  defp reload_transcript(socket) do
+    session_id = socket.assigns.session_id
+    {session_record, messages, rendered_lines} = load_transcript(session_id)
+    errors = load_errors(session_record)
+    rework_events = load_rework_events(session_record)
+    commit_links = load_commit_links(session_id)
+    {breakpoint_map, anchors} = compute_sync_data(socket.assigns.pane_id, rendered_lines)
+
+    socket
+    |> assign(
+      session_record: session_record,
+      messages: messages,
+      rendered_lines: rendered_lines,
+      errors: errors,
+      rework_events: rework_events,
+      commit_links: commit_links,
+      breakpoint_map: breakpoint_map,
+      anchors: anchors
+    )
+    |> push_sync_events()
+  end
+
   defp load_transcript(session_id) do
     case Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one() do
       {:ok, %Session{} = session} ->
@@ -502,6 +543,9 @@ defmodule SpotterWeb.SessionLive do
         <span class="breadcrumb-current">Session {String.slice(@session_id, 0..7)}</span>
         <span :if={@pane_id} class="breadcrumb-meta">
           Pane: {@pane_id}
+        </span>
+        <span :if={@session_status} class={"badge session-status-#{@session_status}"}>
+          {@session_status}
         </span>
       </div>
       <div class="session-layout">

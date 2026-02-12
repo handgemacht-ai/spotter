@@ -100,11 +100,15 @@ defmodule SpotterWeb.PaneListLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: IngestProgress.subscribe()
+    if connected?(socket) do
+      IngestProgress.subscribe()
+      Phoenix.PubSub.subscribe(Spotter.PubSub, "session_activity")
+    end
 
     {:ok,
      socket
      |> assign(panes: [], claude_panes: [], loading: true)
+     |> assign(active_status_map: %{})
      |> IngestProgress.init_ingest()
      |> assign(hidden_expanded: %{})
      |> assign(expanded_subagents: %{})
@@ -163,6 +167,11 @@ defmodule SpotterWeb.PaneListLive do
   end
 
   @impl true
+  def handle_info({:session_activity, %{session_id: session_id, status: status}}, socket) do
+    active_status_map = Map.put(socket.assigns.active_status_map, session_id, status)
+    {:noreply, assign(socket, active_status_map: active_status_map)}
+  end
+
   def handle_info(msg, socket)
       when elem(msg, 0) in [
              :ingest_enqueued,
@@ -416,6 +425,7 @@ defmodule SpotterWeb.PaneListLive do
                   <thead>
                     <tr>
                       <th>Session</th>
+                      <th>Status</th>
                       <th>Branch</th>
                       <th>Messages</th>
                       <th>Tools</th>
@@ -431,6 +441,9 @@ defmodule SpotterWeb.PaneListLive do
                         <td>
                           <div>{SessionPresenter.primary_label(session)}</div>
                           <div class="text-muted text-xs">{SessionPresenter.secondary_label(session)}</div>
+                        </td>
+                        <td>
+                          <.session_status_badge status={Map.get(@active_status_map, session.session_id)} />
                         </td>
                         <td>{session.git_branch || "—"}</td>
                         <td>
@@ -487,6 +500,7 @@ defmodule SpotterWeb.PaneListLive do
                         <tr :for={sa <- subagents} class="subagent-row">
                           <td>{sa.slug || String.slice(sa.agent_id, 0, 7)}</td>
                           <td></td>
+                          <td></td>
                           <td>{sa.message_count || 0}</td>
                           <td></td>
                           <td></td>
@@ -535,6 +549,7 @@ defmodule SpotterWeb.PaneListLive do
                       <thead>
                         <tr>
                           <th>Session</th>
+                          <th>Status</th>
                           <th>Branch</th>
                           <th>Messages</th>
                           <th>Tools</th>
@@ -550,6 +565,9 @@ defmodule SpotterWeb.PaneListLive do
                             <td>
                               <div>{SessionPresenter.primary_label(session)}</div>
                               <div class="text-muted text-xs">{SessionPresenter.secondary_label(session)}</div>
+                            </td>
+                            <td>
+                              <.session_status_badge status={Map.get(@active_status_map, session.session_id)} />
                             </td>
                             <td>{session.git_branch || "—"}</td>
                             <td>
@@ -594,6 +612,7 @@ defmodule SpotterWeb.PaneListLive do
                           <%= if Map.get(@expanded_subagents, session.id, false) do %>
                             <tr :for={sa <- subagents} class="subagent-row">
                               <td>{sa.slug || String.slice(sa.agent_id, 0, 7)}</td>
+                              <td></td>
                               <td></td>
                               <td>{sa.message_count || 0}</td>
                               <td></td>
@@ -686,6 +705,29 @@ defmodule SpotterWeb.PaneListLive do
         <span class="sync-syncing">queued</span>
       <% _ -> %>
     <% end %>
+    """
+  end
+
+  defp session_status_badge(%{status: :active} = assigns) do
+    ~H"""
+    <span class="badge session-status-active">active</span>
+    """
+  end
+
+  defp session_status_badge(%{status: :inactive} = assigns) do
+    ~H"""
+    <span class="badge session-status-inactive">inactive</span>
+    """
+  end
+
+  defp session_status_badge(%{status: :ended} = assigns) do
+    ~H"""
+    <span class="badge session-status-ended">ended</span>
+    """
+  end
+
+  defp session_status_badge(assigns) do
+    ~H"""
     """
   end
 

@@ -380,6 +380,21 @@ button:hover {
   color: var(--accent-cyan);
 }
 
+.session-status-active {
+  background: rgba(74, 200, 154, 0.15);
+  color: var(--accent-green);
+}
+
+.session-status-inactive {
+  background: rgba(91, 156, 245, 0.15);
+  color: var(--accent-blue);
+}
+
+.session-status-ended {
+  background: rgba(160, 160, 170, 0.15);
+  color: var(--text-secondary);
+}
+
 /* --- Tables --- */
 table {
   width: 100%;

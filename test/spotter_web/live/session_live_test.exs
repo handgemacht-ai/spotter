@@ -326,6 +326,59 @@ defmodule SpotterWeb.SessionLiveTest do
     end
   end
 
+  describe "PubSub live updates" do
+    test "session_activity updates status badge", %{session_id: session_id} do
+      {:ok, view, html} = live(build_conn(), "/sessions/#{session_id}")
+
+      refute html =~ "session-status-active"
+
+      Phoenix.PubSub.broadcast!(
+        Spotter.PubSub,
+        "session_activity",
+        {:session_activity, %{session_id: session_id, status: :active}}
+      )
+
+      html = render(view)
+      assert html =~ "session-status-active"
+      assert html =~ "active"
+    end
+
+    test "session_activity ignores other sessions", %{session_id: session_id} do
+      {:ok, view, _html} = live(build_conn(), "/sessions/#{session_id}")
+
+      Phoenix.PubSub.broadcast!(
+        Spotter.PubSub,
+        "session_activity",
+        {:session_activity, %{session_id: "other-session", status: :active}}
+      )
+
+      html = render(view)
+      refute html =~ "session-status-active"
+    end
+
+    test "transcript_updated reloads messages", %{
+      session: session,
+      session_id: session_id
+    } do
+      {:ok, view, html} = live(build_conn(), "/sessions/#{session_id}")
+      assert html =~ "transcript-empty"
+
+      # Create a message after mount
+      create_message(session, %{
+        content: %{"blocks" => [%{"type" => "text", "text" => "live update message"}]}
+      })
+
+      Phoenix.PubSub.broadcast!(
+        Spotter.PubSub,
+        "session_transcripts:#{session_id}",
+        {:transcript_updated, session_id, 1}
+      )
+
+      html = render(view)
+      assert html =~ "live update message"
+    end
+  end
+
   describe "accessibility" do
     test "transcript rows have readable text content, not just color signaling", %{
       session: session,
