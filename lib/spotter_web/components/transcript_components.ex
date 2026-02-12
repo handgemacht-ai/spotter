@@ -90,6 +90,8 @@ defmodule SpotterWeb.TranscriptComponents do
       data-line-number={@line.line_number}
       class={row_classes(@line, @current_message_id, @clicked_subagent)}
       data-render-mode={to_string(@line[:render_mode] || "plain")}
+      data-tool-name={@line[:tool_name]}
+      data-command-status={if @line[:command_status], do: to_string(@line[:command_status])}
     >
       <div class="row-main">
         <%= if @show_debug do %>
@@ -202,14 +204,7 @@ defmodule SpotterWeb.TranscriptComponents do
 
   @doc false
   def row_classes(line, current_message_id, clicked_subagent) do
-    kind =
-      case line[:kind] do
-        :tool_use -> ["is-tool-use"]
-        :tool_result -> ["is-tool-result"]
-        :thinking -> ["is-thinking"]
-        _ -> []
-      end
-
+    kind = kind_classes(line)
     type = if line.type == :user, do: ["is-user"], else: []
     code = if line[:render_mode] == :code, do: ["is-code"], else: []
     active = if current_message_id == line.message_id, do: ["is-active"], else: []
@@ -218,6 +213,25 @@ defmodule SpotterWeb.TranscriptComponents do
     classes = classes ++ subagent_classes(line[:subagent_ref], clicked_subagent)
     Enum.join(classes, " ")
   end
+
+  defp kind_classes(line) do
+    case line[:kind] do
+      :tool_use -> ["is-tool-use"] ++ bash_status_classes(line)
+      :tool_result -> ["is-tool-result"]
+      :thinking -> ["is-thinking"]
+      :ask_user_question -> ["is-ask-user-question"]
+      :ask_user_answer -> ["is-ask-user-answer"]
+      :plan_content -> ["is-plan-content"]
+      :plan_decision -> ["is-plan-decision"]
+      _ -> []
+    end
+  end
+
+  defp bash_status_classes(%{tool_name: "Bash", command_status: :success}),
+    do: ["is-bash-success"]
+
+  defp bash_status_classes(%{tool_name: "Bash", command_status: :error}), do: ["is-bash-error"]
+  defp bash_status_classes(_line), do: []
 
   defp subagent_classes(nil, _clicked), do: []
 

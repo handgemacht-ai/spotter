@@ -1050,6 +1050,69 @@ input::placeholder, textarea::placeholder {
   color: var(--text-secondary);
 }
 
+/* Kind: tool_use – Bash success */
+.transcript-row.is-tool-use.is-bash-success {
+  background: rgba(74, 200, 154, 0.14);
+  border-left-color: var(--accent-green);
+}
+
+.transcript-row.is-tool-use.is-bash-success .row-text {
+  color: var(--accent-green);
+}
+
+/* Kind: tool_use – Bash error */
+.transcript-row.is-tool-use.is-bash-error {
+  background: rgba(232, 84, 84, 0.14);
+  border-left-color: var(--accent-red);
+}
+
+.transcript-row.is-tool-use.is-bash-error .row-text {
+  color: var(--accent-red);
+}
+
+/* Kind: ask_user_question */
+.transcript-row.is-ask-user-question {
+  background: rgba(91, 156, 245, 0.10);
+  border-left-color: var(--accent-blue);
+}
+
+.transcript-row.is-ask-user-question .row-text {
+  color: var(--accent-blue);
+}
+
+/* Kind: ask_user_answer */
+.transcript-row.is-ask-user-answer {
+  background: rgba(91, 156, 245, 0.06);
+  border-left-color: var(--accent-blue);
+  padding-left: 14px;
+}
+
+.transcript-row.is-ask-user-answer .row-text {
+  color: var(--text-primary);
+}
+
+/* Kind: plan_content */
+.transcript-row.is-plan-content {
+  background: rgba(167, 139, 250, 0.06);
+  border-left-color: var(--accent-purple);
+  padding-left: 14px;
+}
+
+.transcript-row.is-plan-content .row-text {
+  color: var(--text-secondary);
+}
+
+/* Kind: plan_decision */
+.transcript-row.is-plan-decision {
+  background: rgba(167, 139, 250, 0.12);
+  border-left-color: var(--accent-purple);
+  font-weight: 500;
+}
+
+.transcript-row.is-plan-decision .row-text {
+  color: var(--accent-purple);
+}
+
 /* Kind: tool_result (threaded under tool_use) */
 .transcript-row.is-tool-result {
   background: var(--surface-2);

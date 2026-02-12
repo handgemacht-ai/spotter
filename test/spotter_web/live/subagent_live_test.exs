@@ -256,4 +256,43 @@ defmodule SpotterWeb.SubagentLiveTest do
       refute html =~ "/home/user/project/lib/foo.ex"
     end
   end
+
+  describe "row_classes/3 parity with session view" do
+    alias SpotterWeb.TranscriptComponents
+
+    test "Bash success/error classes are available in shared component" do
+      success = %{
+        kind: :tool_use,
+        type: :assistant,
+        render_mode: :plain,
+        message_id: "m1",
+        tool_name: "Bash",
+        command_status: :success
+      }
+
+      error = %{
+        kind: :tool_use,
+        type: :assistant,
+        render_mode: :plain,
+        message_id: "m1",
+        tool_name: "Bash",
+        command_status: :error
+      }
+
+      assert TranscriptComponents.row_classes(success, nil, nil) =~ "is-bash-success"
+      assert TranscriptComponents.row_classes(error, nil, nil) =~ "is-bash-error"
+    end
+
+    test "interactive kind classes are available in shared component" do
+      ask_q = %{kind: :ask_user_question, type: :assistant, render_mode: :plain, message_id: "m1"}
+      ask_a = %{kind: :ask_user_answer, type: :user, render_mode: :plain, message_id: "m1"}
+      plan_c = %{kind: :plan_content, type: :user, render_mode: :plain, message_id: "m1"}
+      plan_d = %{kind: :plan_decision, type: :user, render_mode: :plain, message_id: "m1"}
+
+      assert TranscriptComponents.row_classes(ask_q, nil, nil) =~ "is-ask-user-question"
+      assert TranscriptComponents.row_classes(ask_a, nil, nil) =~ "is-ask-user-answer"
+      assert TranscriptComponents.row_classes(plan_c, nil, nil) =~ "is-plan-content"
+      assert TranscriptComponents.row_classes(plan_d, nil, nil) =~ "is-plan-decision"
+    end
+  end
 end

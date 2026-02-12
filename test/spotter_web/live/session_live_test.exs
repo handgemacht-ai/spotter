@@ -475,4 +475,101 @@ defmodule SpotterWeb.SessionLiveTest do
       assert html =~ "Thinking text"
     end
   end
+
+  describe "row_classes/3 for new transcript kinds" do
+    alias SpotterWeb.TranscriptComponents
+
+    test "Bash success tool_use includes is-bash-success" do
+      line = %{
+        kind: :tool_use,
+        type: :assistant,
+        render_mode: :plain,
+        message_id: "m1",
+        tool_name: "Bash",
+        command_status: :success
+      }
+
+      classes = TranscriptComponents.row_classes(line, nil, nil)
+
+      assert classes =~ "is-tool-use"
+      assert classes =~ "is-bash-success"
+      refute classes =~ "is-bash-error"
+    end
+
+    test "Bash error tool_use includes is-bash-error" do
+      line = %{
+        kind: :tool_use,
+        type: :assistant,
+        render_mode: :plain,
+        message_id: "m1",
+        tool_name: "Bash",
+        command_status: :error
+      }
+
+      classes = TranscriptComponents.row_classes(line, nil, nil)
+
+      assert classes =~ "is-tool-use"
+      assert classes =~ "is-bash-error"
+    end
+
+    test "Bash pending tool_use has no status class" do
+      line = %{
+        kind: :tool_use,
+        type: :assistant,
+        render_mode: :plain,
+        message_id: "m1",
+        tool_name: "Bash",
+        command_status: :pending
+      }
+
+      classes = TranscriptComponents.row_classes(line, nil, nil)
+
+      assert classes =~ "is-tool-use"
+      refute classes =~ "is-bash-success"
+      refute classes =~ "is-bash-error"
+    end
+
+    test "non-Bash tool_use has no bash status class" do
+      line = %{
+        kind: :tool_use,
+        type: :assistant,
+        render_mode: :plain,
+        message_id: "m1",
+        tool_name: "Read"
+      }
+
+      classes = TranscriptComponents.row_classes(line, nil, nil)
+
+      assert classes =~ "is-tool-use"
+      refute classes =~ "is-bash"
+    end
+
+    test "ask_user_question kind maps to is-ask-user-question" do
+      line = %{kind: :ask_user_question, type: :assistant, render_mode: :plain, message_id: "m1"}
+      classes = TranscriptComponents.row_classes(line, nil, nil)
+
+      assert classes =~ "is-ask-user-question"
+    end
+
+    test "ask_user_answer kind maps to is-ask-user-answer" do
+      line = %{kind: :ask_user_answer, type: :user, render_mode: :plain, message_id: "m1"}
+      classes = TranscriptComponents.row_classes(line, nil, nil)
+
+      assert classes =~ "is-ask-user-answer"
+    end
+
+    test "plan_content kind maps to is-plan-content" do
+      line = %{kind: :plan_content, type: :user, render_mode: :plain, message_id: "m1"}
+      classes = TranscriptComponents.row_classes(line, nil, nil)
+
+      assert classes =~ "is-plan-content"
+    end
+
+    test "plan_decision kind maps to is-plan-decision" do
+      line = %{kind: :plan_decision, type: :user, render_mode: :plain, message_id: "m1"}
+      classes = TranscriptComponents.row_classes(line, nil, nil)
+
+      assert classes =~ "is-plan-decision"
+    end
+  end
 end

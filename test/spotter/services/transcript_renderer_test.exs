@@ -1289,6 +1289,1039 @@ defmodule Spotter.Services.TranscriptRendererTest do
     end
   end
 
+  describe "Bash command_status enrichment" do
+    test "Bash tool_use line has command_status :success when result is not error" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Bash",
+                "id" => "toolu_bash_ok",
+                "input" => %{"command" => "echo hello"}
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_bash_ok",
+                "content" => "hello",
+                "is_error" => false
+              }
+            ]
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      bash_line = Enum.find(result, &(&1.kind == :tool_use))
+
+      assert bash_line.command_status == :success
+      assert bash_line.tool_name == "Bash"
+    end
+
+    test "Bash tool_use line has command_status :error when result is_error" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Bash",
+                "id" => "toolu_bash_err",
+                "input" => %{"command" => "false"}
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_bash_err",
+                "content" => "command failed",
+                "is_error" => true
+              }
+            ]
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      bash_line = Enum.find(result, &(&1.kind == :tool_use))
+
+      assert bash_line.command_status == :error
+    end
+
+    test "Bash tool_use line has command_status :pending when no result yet" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Bash",
+                "id" => "toolu_bash_pending",
+                "input" => %{"command" => "sleep 999"}
+              }
+            ]
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      bash_line = Enum.find(result, &(&1.kind == :tool_use))
+
+      assert bash_line.command_status == :pending
+    end
+
+    test "non-Bash tool_use does not have command_status" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Read",
+                "id" => "toolu_read",
+                "input" => %{"file_path" => "/tmp/foo.ex"}
+              }
+            ]
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      read_line = Enum.find(result, &(&1.kind == :tool_use))
+
+      refute Map.has_key?(read_line, :command_status)
+      assert read_line.tool_name == "Read"
+    end
+  end
+
+  describe "AskUserQuestion rendering" do
+    test "renders question lines from AskUserQuestion tool_use" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "AskUserQuestion",
+                "id" => "toolu_ask",
+                "input" => %{
+                  "questions" => [
+                    %{
+                      "question" => "Which database?",
+                      "header" => "Database",
+                      "options" => [%{"label" => "PostgreSQL"}, %{"label" => "SQLite"}],
+                      "multiSelect" => false
+                    },
+                    %{
+                      "question" => "Enable caching?",
+                      "header" => "Cache",
+                      "options" => [%{"label" => "Yes"}, %{"label" => "No"}],
+                      "multiSelect" => false
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      question_lines = Enum.filter(result, &(&1.kind == :ask_user_question))
+
+      assert length(question_lines) == 2
+      assert Enum.any?(question_lines, &(&1.line == "? Database - Which database?"))
+      assert Enum.any?(question_lines, &(&1.line == "? Cache - Enable caching?"))
+      assert Enum.all?(question_lines, &(&1.tool_use_id == "toolu_ask"))
+    end
+
+    test "renders question without header" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "AskUserQuestion",
+                "id" => "toolu_ask2",
+                "input" => %{
+                  "questions" => [
+                    %{"question" => "What color?", "options" => [], "multiSelect" => false}
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      question_lines = Enum.filter(result, &(&1.kind == :ask_user_question))
+
+      assert [q] = question_lines
+      assert q.line == "? What color?"
+    end
+
+    test "renders answer lines from AskUserQuestion tool_result" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "AskUserQuestion",
+                "id" => "toolu_ask3",
+                "input" => %{
+                  "questions" => [
+                    %{
+                      "question" => "Which rig?",
+                      "header" => "Rig",
+                      "options" => [],
+                      "multiSelect" => false
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_ask3",
+                "content" => "User answered"
+              }
+            ]
+          },
+          raw_payload: %{
+            "toolUseResult" => %{
+              "answers" => %{"Which rig?" => "spotter"}
+            }
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      answer_lines = Enum.filter(result, &(&1.kind == :ask_user_answer))
+
+      assert [answer] = answer_lines
+      assert answer.line == "↳ Which rig? = spotter"
+      assert answer.tool_use_id == "toolu_ask3"
+    end
+
+    test "empty answers map renders nothing" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "AskUserQuestion",
+                "id" => "toolu_ask4",
+                "input" => %{"questions" => []}
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_ask4",
+                "content" => "User answered"
+              }
+            ]
+          },
+          raw_payload: %{
+            "toolUseResult" => %{"answers" => %{}}
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      answer_lines = Enum.filter(result, &(&1.kind == :ask_user_answer))
+
+      assert answer_lines == []
+    end
+
+    test "AskUserQuestion with no content block renders answers from toolUseResult" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "AskUserQuestion",
+                "id" => "toolu_ask5",
+                "input" => %{
+                  "questions" => [
+                    %{
+                      "question" => "Pick one",
+                      "header" => "Choice",
+                      "options" => [],
+                      "multiSelect" => false
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{"type" => "tool_result", "tool_use_id" => "toolu_ask5"}
+            ]
+          },
+          raw_payload: %{
+            "toolUseResult" => %{"answers" => %{"Pick one" => "Option A"}}
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      answer_lines = Enum.filter(result, &(&1.kind == :ask_user_answer))
+
+      assert [answer] = answer_lines
+      assert answer.line == "↳ Pick one = Option A"
+    end
+  end
+
+  describe "plan rendering" do
+    test "Write to plan.md renders plan content lines" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Write",
+                "id" => "toolu_write_plan",
+                "input" => %{
+                  "file_path" => "/home/user/project/plan.md",
+                  "content" => "plan text"
+                }
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_write_plan",
+                "content" => "File created successfully at: /home/user/project/plan.md"
+              }
+            ]
+          },
+          raw_payload: %{
+            "toolUseResult" => %{
+              "content" => "# Plan\n\n## Step 1\nDo the thing"
+            }
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      plan_lines = Enum.filter(result, &(&1.kind == :plan_content))
+
+      assert length(plan_lines) == 4
+      assert Enum.map(plan_lines, & &1.line) == ["# Plan", "", "## Step 1", "Do the thing"]
+      assert Enum.all?(plan_lines, &(&1.tool_use_id == "toolu_write_plan"))
+    end
+
+    test "Write to non-plan.md file renders as generic tool result" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Write",
+                "id" => "toolu_write_other",
+                "input" => %{"file_path" => "/tmp/readme.md", "content" => "readme"}
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_write_other",
+                "content" => "File created"
+              }
+            ]
+          },
+          raw_payload: %{}
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      plan_lines = Enum.filter(result, &(&1.kind == :plan_content))
+      tool_result_lines = Enum.filter(result, &(&1.kind == :tool_result))
+
+      assert plan_lines == []
+      assert tool_result_lines != []
+    end
+
+    test "empty plan content falls back to generic tool result" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Write",
+                "id" => "toolu_write_empty",
+                "input" => %{"file_path" => "/tmp/plan.md", "content" => ""}
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_write_empty",
+                "content" => "File created"
+              }
+            ]
+          },
+          raw_payload: %{"toolUseResult" => %{"content" => ""}}
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      plan_lines = Enum.filter(result, &(&1.kind == :plan_content))
+      tool_result_lines = Enum.filter(result, &(&1.kind == :tool_result))
+
+      assert plan_lines == []
+      assert tool_result_lines != []
+    end
+
+    test "ExitPlanMode approved renders accepted decision" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "ExitPlanMode",
+                "id" => "toolu_exit_plan",
+                "input" => %{}
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_exit_plan",
+                "content" => "User has approved exiting plan mode. You can now proceed."
+              }
+            ]
+          },
+          raw_payload: %{}
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      decision_lines = Enum.filter(result, &(&1.kind == :plan_decision))
+
+      assert [decision] = decision_lines
+      assert decision.line == "Plan decision: accepted"
+      assert decision.tool_use_id == "toolu_exit_plan"
+    end
+
+    test "ExitPlanMode rejected renders rejected decision" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "ExitPlanMode",
+                "id" => "toolu_exit_rej",
+                "input" => %{}
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_exit_rej",
+                "content" => "User has rejected exiting plan mode."
+              }
+            ]
+          },
+          raw_payload: %{}
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      decision_lines = Enum.filter(result, &(&1.kind == :plan_decision))
+
+      assert [decision] = decision_lines
+      assert decision.line == "Plan decision: rejected"
+    end
+
+    test "ExitPlanMode unknown text renders unknown decision" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "ExitPlanMode",
+                "id" => "toolu_exit_unk",
+                "input" => %{}
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_exit_unk",
+                "content" => "Something unexpected happened."
+              }
+            ]
+          },
+          raw_payload: %{}
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      decision_lines = Enum.filter(result, &(&1.kind == :plan_decision))
+
+      assert [decision] = decision_lines
+      assert decision.line == "Plan decision: unknown"
+    end
+
+    test "ExitPlanMode without result yet emits no decision line" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "ExitPlanMode",
+                "id" => "toolu_exit_pend",
+                "input" => %{}
+              }
+            ]
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      decision_lines = Enum.filter(result, &(&1.kind == :plan_decision))
+
+      assert decision_lines == []
+    end
+  end
+
+  describe "subagent fixture integration with enriched tool rendering" do
+    test "AskUserQuestion and ExitPlanMode in subagent fixture render correctly" do
+      messages = load_fixture("subagent.jsonl")
+      result = TranscriptRenderer.render(messages)
+
+      # Should have AskUserQuestion lines
+      ask_user_lines = Enum.filter(result, &(&1.kind == :ask_user_question))
+      assert ask_user_lines != [], "Expected AskUserQuestion lines in subagent fixture"
+
+      # Should have answer lines
+      answer_lines = Enum.filter(result, &(&1.kind == :ask_user_answer))
+      assert answer_lines != [], "Expected AskUser answer lines in subagent fixture"
+
+      # Should have plan decision
+      decision_lines = Enum.filter(result, &(&1.kind == :plan_decision))
+      assert decision_lines != [], "Expected plan decision lines in subagent fixture"
+
+      # The fixture has "approved exiting plan mode"
+      assert Enum.any?(decision_lines, &(&1.line == "Plan decision: accepted"))
+    end
+
+    test "subagent fixture has plan content from Write(plan.md)" do
+      messages = load_fixture("subagent.jsonl")
+      result = TranscriptRenderer.render(messages)
+
+      plan_lines = Enum.filter(result, &(&1.kind == :plan_content))
+      assert plan_lines != [], "Expected plan content lines in subagent fixture"
+      assert Enum.any?(plan_lines, &(&1.line =~ "Plan"))
+    end
+  end
+
+  describe "Edit/Write structuredPatch diff rendering" do
+    test "Edit with structuredPatch emits diff rows" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Edit",
+                "id" => "toolu_edit_diff",
+                "input" => %{
+                  "file_path" => "/home/user/project/lib/app.ex",
+                  "old_string" => "old",
+                  "new_string" => "new"
+                }
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_edit_diff",
+                "content" => "The file has been updated successfully."
+              }
+            ]
+          },
+          raw_payload: %{
+            "toolUseResult" => %{
+              "structuredPatch" => [
+                %{
+                  "oldStart" => 10,
+                  "oldLines" => 3,
+                  "newStart" => 10,
+                  "newLines" => 3,
+                  "lines" => [" context", "-old line", "+new line"]
+                }
+              ]
+            }
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages, session_cwd: "/home/user/project")
+      diff_lines = Enum.filter(result, &(&1.code_language == "diff"))
+
+      # File headers + hunk header + 3 content lines = 6
+      assert length(diff_lines) == 6
+      assert Enum.any?(diff_lines, &(&1.line == "--- a/lib/app.ex"))
+      assert Enum.any?(diff_lines, &(&1.line == "+++ b/lib/app.ex"))
+      assert Enum.any?(diff_lines, &(&1.line == "@@ -10,3 +10,3 @@"))
+      assert Enum.any?(diff_lines, &(&1.line == "-old line"))
+      assert Enum.any?(diff_lines, &(&1.line == "+new line"))
+      assert Enum.all?(diff_lines, &(&1.render_mode == :code))
+      assert Enum.all?(diff_lines, &(&1.tool_use_id == "toolu_edit_diff"))
+    end
+
+    test "Write with structuredPatch emits diff rows" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Write",
+                "id" => "toolu_write_diff",
+                "input" => %{
+                  "file_path" => "/tmp/config.json",
+                  "content" => "{}"
+                }
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_write_diff",
+                "content" => "File created successfully."
+              }
+            ]
+          },
+          raw_payload: %{
+            "toolUseResult" => %{
+              "structuredPatch" => [
+                %{
+                  "oldStart" => 0,
+                  "oldLines" => 0,
+                  "newStart" => 1,
+                  "newLines" => 1,
+                  "lines" => ["+{}"]
+                }
+              ]
+            }
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      diff_lines = Enum.filter(result, &(&1.code_language == "diff"))
+
+      assert diff_lines != []
+      assert Enum.any?(diff_lines, &(&1.line =~ "@@"))
+      assert Enum.any?(diff_lines, &(&1.line == "+{}"))
+    end
+
+    test "error Edit does not emit diff rows" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Edit",
+                "id" => "toolu_edit_err",
+                "input" => %{
+                  "file_path" => "/tmp/foo.ex",
+                  "old_string" => "x",
+                  "new_string" => "y"
+                }
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_edit_err",
+                "content" => "Edit failed: string not found",
+                "is_error" => true
+              }
+            ]
+          },
+          raw_payload: %{
+            "toolUseResult" => %{
+              "structuredPatch" => [
+                %{
+                  "oldStart" => 1,
+                  "oldLines" => 1,
+                  "newStart" => 1,
+                  "newLines" => 1,
+                  "lines" => ["-x", "+y"]
+                }
+              ]
+            }
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      diff_lines = Enum.filter(result, &(&1.code_language == "diff"))
+
+      assert diff_lines == []
+    end
+
+    test "Edit without structuredPatch renders as generic tool result" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Edit",
+                "id" => "toolu_edit_no_diff",
+                "input" => %{
+                  "file_path" => "/tmp/foo.ex",
+                  "old_string" => "x",
+                  "new_string" => "y"
+                }
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_edit_no_diff",
+                "content" => "The file has been updated."
+              }
+            ]
+          },
+          raw_payload: %{}
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      diff_lines = Enum.filter(result, &(&1.code_language == "diff"))
+      tool_result_lines = Enum.filter(result, &(&1.kind == :tool_result))
+
+      assert diff_lines == []
+      assert tool_result_lines != []
+      assert Enum.any?(tool_result_lines, &(&1.line =~ "updated"))
+    end
+
+    test "multiple hunks are all rendered" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Edit",
+                "id" => "toolu_multi_hunk",
+                "input" => %{
+                  "file_path" => "/tmp/foo.ex",
+                  "old_string" => "x",
+                  "new_string" => "y"
+                }
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_multi_hunk",
+                "content" => "Updated."
+              }
+            ]
+          },
+          raw_payload: %{
+            "toolUseResult" => %{
+              "structuredPatch" => [
+                %{
+                  "oldStart" => 1,
+                  "oldLines" => 1,
+                  "newStart" => 1,
+                  "newLines" => 1,
+                  "lines" => ["-a", "+b"]
+                },
+                %{
+                  "oldStart" => 20,
+                  "oldLines" => 1,
+                  "newStart" => 20,
+                  "newLines" => 1,
+                  "lines" => ["-c", "+d"]
+                }
+              ]
+            }
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      diff_lines = Enum.filter(result, &(&1.code_language == "diff"))
+      hunk_headers = Enum.filter(diff_lines, &(&1.line =~ "@@"))
+
+      # 2 file headers + 2 hunk headers + 4 content lines = 8
+      assert length(diff_lines) == 8
+      assert length(hunk_headers) == 2
+    end
+
+    test "hunk with no lines still renders header" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Edit",
+                "id" => "toolu_empty_hunk",
+                "input" => %{
+                  "file_path" => "/tmp/foo.ex",
+                  "old_string" => "x",
+                  "new_string" => "y"
+                }
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_empty_hunk",
+                "content" => "Updated."
+              }
+            ]
+          },
+          raw_payload: %{
+            "toolUseResult" => %{
+              "structuredPatch" => [
+                %{
+                  "oldStart" => 5,
+                  "oldLines" => 0,
+                  "newStart" => 5,
+                  "newLines" => 0,
+                  "lines" => []
+                }
+              ]
+            }
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      diff_lines = Enum.filter(result, &(&1.code_language == "diff"))
+
+      # 2 file headers + 1 hunk header = 3
+      assert length(diff_lines) == 3
+      assert Enum.any?(diff_lines, &(&1.line == "@@ -5,0 +5,0 @@"))
+    end
+
+    test "diff rows without file path omit file headers" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Edit",
+                "id" => "toolu_no_path",
+                "input" => %{"old_string" => "x", "new_string" => "y"}
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_no_path",
+                "content" => "Updated."
+              }
+            ]
+          },
+          raw_payload: %{
+            "toolUseResult" => %{
+              "structuredPatch" => [
+                %{
+                  "oldStart" => 1,
+                  "oldLines" => 1,
+                  "newStart" => 1,
+                  "newLines" => 1,
+                  "lines" => ["-x", "+y"]
+                }
+              ]
+            }
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      diff_lines = Enum.filter(result, &(&1.code_language == "diff"))
+
+      # No file headers, just hunk header + 2 content lines = 3
+      assert length(diff_lines) == 3
+      refute Enum.any?(diff_lines, &(&1.line =~ "---"))
+    end
+  end
+
   defp load_fixture(name) do
     path = Path.join(@fixtures_dir, name)
     {:ok, %{messages: messages}} = JsonlParser.parse_session_file(path)

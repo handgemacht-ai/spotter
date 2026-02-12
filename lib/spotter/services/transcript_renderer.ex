@@ -55,13 +55,14 @@ defmodule Spotter.Services.TranscriptRenderer do
   def render(messages, opts \\ []) do
     session_cwd = opts[:session_cwd]
     tool_use_index = build_tool_use_index(messages)
+    tool_outcome_index = build_tool_outcome_index(messages)
 
     messages
     |> Enum.flat_map(fn msg ->
       usage = extract_usage(msg)
 
       msg
-      |> render_message_enriched(session_cwd, tool_use_index)
+      |> render_message_enriched(session_cwd, tool_use_index, tool_outcome_index)
       |> Enum.with_index()
       |> Enum.map(fn {line_meta, line_idx} ->
         line_meta
@@ -166,6 +167,26 @@ defmodule Spotter.Services.TranscriptRenderer do
 
   defp extract_tool_uses(_msg), do: []
 
+  # ── Tool outcome index (success/error from tool_result blocks) ───
+
+  defp build_tool_outcome_index(messages) do
+    messages
+    |> Enum.flat_map(&extract_tool_outcomes/1)
+    |> Map.new()
+  end
+
+  defp extract_tool_outcomes(%{type: :user, content: %{"blocks" => blocks}})
+       when is_list(blocks) do
+    blocks
+    |> Enum.filter(&(&1["type"] == "tool_result" && &1["tool_use_id"]))
+    |> Enum.map(fn block ->
+      status = if block["is_error"] == true, do: :error, else: :success
+      {block["tool_use_id"], status}
+    end)
+  end
+
+  defp extract_tool_outcomes(_msg), do: []
+
   # ── Tool result group annotation ──────────────────────────────────
 
   defp annotate_tool_result_groups(lines) do
@@ -252,17 +273,24 @@ defmodule Spotter.Services.TranscriptRenderer do
 
   # ── Enriched rendering (used by render/2) ──────────────────────────
 
-  defp render_message_enriched(%{type: type}, _session_cwd, _tool_use_index)
+  defp render_message_enriched(%{type: type}, _session_cwd, _tool_use_index, _tool_outcome_index)
        when type in [:progress, :system, :file_history_snapshot] do
     []
   end
 
-  defp render_message_enriched(%{content: nil}, _session_cwd, _tool_use_index), do: []
+  defp render_message_enriched(
+         %{content: nil},
+         _session_cwd,
+         _tool_use_index,
+         _tool_outcome_index
+       ),
+       do: []
 
   defp render_message_enriched(
          %{type: :thinking, content: content},
          _session_cwd,
-         _tool_use_index
+         _tool_use_index,
+         _tool_outcome_index
        ) do
     content
     |> extract_thinking_text()
@@ -273,54 +301,115 @@ defmodule Spotter.Services.TranscriptRenderer do
   defp render_message_enriched(
          %{type: :assistant, content: content},
          session_cwd,
-         _tool_use_index
+         _tool_use_index,
+         tool_outcome_index
        ) do
-    render_assistant_content_enriched(content, session_cwd)
+    render_assistant_content_enriched(content, session_cwd, tool_outcome_index)
   end
 
-  defp render_message_enriched(%{type: :user} = msg, session_cwd, tool_use_index) do
+  defp render_message_enriched(
+         %{type: :user} = msg,
+         session_cwd,
+         tool_use_index,
+         _tool_outcome_index
+       ) do
     render_user_content_enriched(msg, session_cwd, tool_use_index)
   end
 
-  defp render_message_enriched(_msg, _session_cwd, _tool_use_index), do: []
+  defp render_message_enriched(_msg, _session_cwd, _tool_use_index, _tool_outcome_index), do: []
 
   # ── Enriched assistant rendering ───────────────────────────────────
 
-  defp render_assistant_content_enriched(%{"blocks" => blocks}, session_cwd)
+  defp render_assistant_content_enriched(%{"blocks" => blocks}, session_cwd, tool_outcome_index)
        when is_list(blocks) do
-    Enum.flat_map(blocks, &render_assistant_block_enriched(&1, session_cwd))
+    Enum.flat_map(blocks, &render_assistant_block_enriched(&1, session_cwd, tool_outcome_index))
   end
 
-  defp render_assistant_content_enriched(%{"text" => text}, _session_cwd) do
+  defp render_assistant_content_enriched(%{"text" => text}, _session_cwd, _tool_outcome_index) do
     classify_text_lines(String.split(text, "\n"), :text)
   end
 
-  defp render_assistant_content_enriched(_content, _session_cwd), do: []
+  defp render_assistant_content_enriched(_content, _session_cwd, _tool_outcome_index), do: []
 
-  defp render_assistant_block_enriched(%{"type" => "text", "text" => text}, _session_cwd) do
+  defp render_assistant_block_enriched(
+         %{"type" => "text", "text" => text},
+         _session_cwd,
+         _tool_outcome_index
+       ) do
     classify_text_lines(String.split(text, "\n"), :text)
   end
 
-  defp render_assistant_block_enriched(%{"type" => "thinking", "thinking" => text}, _session_cwd) do
+  defp render_assistant_block_enriched(
+         %{"type" => "thinking", "thinking" => text},
+         _session_cwd,
+         _tool_outcome_index
+       ) do
     text
     |> String.split("\n")
     |> Enum.map(&plain_line(&1, :thinking))
   end
 
   defp render_assistant_block_enriched(
-         %{"type" => "tool_use", "name" => name} = block,
-         session_cwd
+         %{"type" => "tool_use", "name" => "AskUserQuestion"} = block,
+         _session_cwd,
+         _tool_outcome_index
        ) do
-    preview = tool_use_preview_enriched(block, session_cwd)
     tool_id = block["id"]
-    thread_key = tool_id || "tool-use-#{name}"
+    thread_key = tool_id || "tool-use-AskUserQuestion"
+    questions = get_in(block, ["input", "questions"]) || []
+
+    base_line = %{
+      line: "● AskUserQuestion()",
+      kind: :tool_use,
+      tool_use_id: tool_id,
+      thread_key: thread_key,
+      tool_name: "AskUserQuestion",
+      code_language: nil,
+      render_mode: :plain,
+      source_line_number: nil
+    }
+
+    question_lines =
+      Enum.map(questions, fn q ->
+        header = q["header"]
+        question = q["question"] || ""
+
+        line_text =
+          if header && header != "" do
+            "? #{header} - #{question}"
+          else
+            "? #{question}"
+          end
+
+        %{
+          line: line_text,
+          kind: :ask_user_question,
+          tool_use_id: tool_id,
+          thread_key: thread_key,
+          code_language: nil,
+          render_mode: :plain,
+          source_line_number: nil
+        }
+      end)
+
+    [base_line | question_lines]
+  end
+
+  defp render_assistant_block_enriched(
+         %{"type" => "tool_use", "name" => "ExitPlanMode"} = block,
+         _session_cwd,
+         _tool_outcome_index
+       ) do
+    tool_id = block["id"]
+    thread_key = tool_id || "tool-use-ExitPlanMode"
 
     [
       %{
-        line: "● #{name}(#{preview})",
+        line: "● ExitPlanMode()",
         kind: :tool_use,
         tool_use_id: tool_id,
         thread_key: thread_key,
+        tool_name: "ExitPlanMode",
         code_language: nil,
         render_mode: :plain,
         source_line_number: nil
@@ -328,7 +417,45 @@ defmodule Spotter.Services.TranscriptRenderer do
     ]
   end
 
-  defp render_assistant_block_enriched(_block, _session_cwd), do: []
+  defp render_assistant_block_enriched(
+         %{"type" => "tool_use", "name" => name} = block,
+         session_cwd,
+         tool_outcome_index
+       ) do
+    preview = tool_use_preview_enriched(block, session_cwd)
+    tool_id = block["id"]
+    thread_key = tool_id || "tool-use-#{name}"
+
+    command_status =
+      if name == "Bash" do
+        case Map.get(tool_outcome_index, tool_id) do
+          :error -> :error
+          :success -> :success
+          nil -> :pending
+        end
+      else
+        nil
+      end
+
+    line_meta = %{
+      line: "● #{name}(#{preview})",
+      kind: :tool_use,
+      tool_use_id: tool_id,
+      thread_key: thread_key,
+      tool_name: name,
+      code_language: nil,
+      render_mode: :plain,
+      source_line_number: nil
+    }
+
+    if command_status do
+      [Map.put(line_meta, :command_status, command_status)]
+    else
+      [line_meta]
+    end
+  end
+
+  defp render_assistant_block_enriched(_block, _session_cwd, _tool_outcome_index), do: []
 
   # ── Enriched user rendering ────────────────────────────────────────
 
@@ -353,6 +480,257 @@ defmodule Spotter.Services.TranscriptRenderer do
 
   defp render_user_block_enriched(
          %{"type" => "tool_result", "content" => content} = block,
+         msg,
+         session_cwd,
+         tool_use_index
+       )
+       when is_binary(content) do
+    tool_use_id = block["tool_use_id"]
+    tool_name = tool_name_for_result(tool_use_id, tool_use_index)
+
+    case tool_name do
+      "AskUserQuestion" ->
+        render_ask_user_answer(block, msg)
+
+      "ExitPlanMode" ->
+        render_plan_decision(block, content)
+
+      "Write" ->
+        if plan_write?(tool_use_id, tool_use_index) do
+          render_plan_content(block, msg, tool_use_index)
+        else
+          render_with_diff_or_generic(block, msg, session_cwd, tool_use_index)
+        end
+
+      "Edit" ->
+        render_with_diff_or_generic(block, msg, session_cwd, tool_use_index)
+
+      _ ->
+        render_generic_tool_result(block, msg, session_cwd, tool_use_index)
+    end
+  end
+
+  defp render_user_block_enriched(
+         %{"type" => "tool_result", "content" => content} = block,
+         msg,
+         session_cwd,
+         tool_use_index
+       )
+       when is_list(content) do
+    render_generic_tool_result(block, msg, session_cwd, tool_use_index)
+  end
+
+  defp render_user_block_enriched(
+         %{"type" => "tool_result"} = block,
+         msg,
+         _session_cwd,
+         tool_use_index
+       ) do
+    tool_use_id = block["tool_use_id"]
+    tool_name = tool_name_for_result(tool_use_id, tool_use_index)
+
+    case tool_name do
+      "AskUserQuestion" ->
+        render_ask_user_answer(block, msg)
+
+      _ ->
+        thread_key = tool_use_id || "unmatched-result"
+        group_key = tool_use_id || "group-empty"
+
+        [
+          %{
+            line: "  ⎿  (empty)",
+            kind: :tool_result,
+            tool_use_id: tool_use_id,
+            thread_key: thread_key,
+            tool_result_group: group_key,
+            code_language: nil,
+            render_mode: :plain,
+            source_line_number: nil
+          }
+        ]
+    end
+  end
+
+  defp render_user_block_enriched(
+         %{"type" => "text", "text" => text},
+         _msg,
+         _session_cwd,
+         _tool_use_index
+       ) do
+    classify_text_lines(String.split(text, "\n"), :text)
+  end
+
+  defp render_user_block_enriched(_block, _msg, _session_cwd, _tool_use_index), do: []
+
+  # ── Tool name lookup for user result dispatch ────────────────────────
+
+  defp tool_name_for_result(nil, _tool_use_index), do: nil
+
+  defp tool_name_for_result(tool_use_id, tool_use_index) do
+    case Map.get(tool_use_index, tool_use_id) do
+      %{name: name} -> name
+      _ -> nil
+    end
+  end
+
+  defp plan_write?(tool_use_id, tool_use_index) do
+    case Map.get(tool_use_index, tool_use_id) do
+      %{name: "Write", input: %{"file_path" => path}} when is_binary(path) ->
+        Path.basename(path) == "plan.md"
+
+      _ ->
+        false
+    end
+  end
+
+  # ── Special tool result renderers ────────────────────────────────────
+
+  defp render_ask_user_answer(block, msg) do
+    tool_use_id = block["tool_use_id"]
+    thread_key = tool_use_id || "unmatched-result"
+    answers = get_in(msg, [:raw_payload, "toolUseResult", "answers"]) || %{}
+
+    if map_size(answers) == 0 do
+      []
+    else
+      Enum.map(answers, fn {question, answer} ->
+        %{
+          line: "↳ #{question} = #{answer}",
+          kind: :ask_user_answer,
+          tool_use_id: tool_use_id,
+          thread_key: thread_key,
+          code_language: nil,
+          render_mode: :plain,
+          source_line_number: nil
+        }
+      end)
+    end
+  end
+
+  defp render_plan_decision(block, content) do
+    tool_use_id = block["tool_use_id"]
+    thread_key = tool_use_id || "unmatched-result"
+
+    decision =
+      cond do
+        content =~ "approved exiting plan mode" -> "accepted"
+        content =~ "rejected exiting plan mode" or content =~ "did not approve" -> "rejected"
+        true -> "unknown"
+      end
+
+    [
+      %{
+        line: "Plan decision: #{decision}",
+        kind: :plan_decision,
+        tool_use_id: tool_use_id,
+        thread_key: thread_key,
+        code_language: nil,
+        render_mode: :plain,
+        source_line_number: nil
+      }
+    ]
+  end
+
+  defp render_plan_content(block, msg, tool_use_index) do
+    tool_use_id = block["tool_use_id"]
+    plan_content = get_in(msg, [:raw_payload, "toolUseResult", "content"]) || ""
+
+    if plan_content == "" do
+      render_generic_tool_result(block, msg, nil, tool_use_index)
+    else
+      thread_key = tool_use_id || "unmatched-result"
+
+      plan_content
+      |> String.split("\n")
+      |> Enum.map(fn line ->
+        %{
+          line: line,
+          kind: :plan_content,
+          tool_use_id: tool_use_id,
+          thread_key: thread_key,
+          code_language: nil,
+          render_mode: :plain,
+          source_line_number: nil
+        }
+      end)
+    end
+  end
+
+  defp render_with_diff_or_generic(block, msg, session_cwd, tool_use_index) do
+    is_error = block["is_error"] == true
+    patches = get_in(msg, [:raw_payload, "toolUseResult", "structuredPatch"]) || []
+
+    if not is_error and is_list(patches) and patches != [] do
+      tool_use_id = block["tool_use_id"]
+      file_path = resolve_diff_file_path(tool_use_id, tool_use_index, session_cwd)
+      success_lines = render_generic_tool_result(block, msg, session_cwd, tool_use_index)
+      diff_lines = render_diff_rows(patches, tool_use_id, file_path)
+      success_lines ++ diff_lines
+    else
+      render_generic_tool_result(block, msg, session_cwd, tool_use_index)
+    end
+  end
+
+  defp resolve_diff_file_path(nil, _tool_use_index, _session_cwd), do: nil
+
+  defp resolve_diff_file_path(tool_use_id, tool_use_index, session_cwd) do
+    case Map.get(tool_use_index, tool_use_id) do
+      %{input: %{"file_path" => path}} when is_binary(path) ->
+        to_relative_path(path, session_cwd)
+
+      _ ->
+        nil
+    end
+  end
+
+  defp render_diff_rows(patches, tool_use_id, file_path) do
+    thread_key = tool_use_id || "unmatched-result"
+    group_key = tool_use_id || "group-diff"
+
+    file_headers =
+      if file_path do
+        [
+          diff_line("--- a/#{file_path}", tool_use_id, thread_key, group_key),
+          diff_line("+++ b/#{file_path}", tool_use_id, thread_key, group_key)
+        ]
+      else
+        []
+      end
+
+    hunk_lines =
+      Enum.flat_map(patches, fn patch ->
+        old_start = patch["oldStart"] || 0
+        old_lines = patch["oldLines"] || 0
+        new_start = patch["newStart"] || 0
+        new_lines = patch["newLines"] || 0
+        header = "@@ -#{old_start},#{old_lines} +#{new_start},#{new_lines} @@"
+
+        content_lines =
+          (patch["lines"] || [])
+          |> Enum.map(&diff_line(&1, tool_use_id, thread_key, group_key))
+
+        [diff_line(header, tool_use_id, thread_key, group_key) | content_lines]
+      end)
+
+    file_headers ++ hunk_lines
+  end
+
+  defp diff_line(text, tool_use_id, thread_key, group_key) do
+    %{
+      line: text,
+      kind: :tool_result,
+      tool_use_id: tool_use_id,
+      thread_key: thread_key,
+      tool_result_group: group_key,
+      code_language: "diff",
+      render_mode: :code,
+      source_line_number: nil
+    }
+  end
+
+  defp render_generic_tool_result(
+         %{"content" => content} = block,
          msg,
          session_cwd,
          tool_use_index
@@ -388,8 +766,8 @@ defmodule Spotter.Services.TranscriptRenderer do
     end)
   end
 
-  defp render_user_block_enriched(
-         %{"type" => "tool_result", "content" => content} = block,
+  defp render_generic_tool_result(
+         %{"content" => content} = block,
          msg,
          session_cwd,
          tool_use_index
@@ -428,12 +806,7 @@ defmodule Spotter.Services.TranscriptRenderer do
     end)
   end
 
-  defp render_user_block_enriched(
-         %{"type" => "tool_result"} = block,
-         _msg,
-         _session_cwd,
-         _tool_use_index
-       ) do
+  defp render_generic_tool_result(block, _msg, _session_cwd, _tool_use_index) do
     tool_use_id = block["tool_use_id"]
     thread_key = tool_use_id || "unmatched-result"
     group_key = tool_use_id || "group-empty"
@@ -451,17 +824,6 @@ defmodule Spotter.Services.TranscriptRenderer do
       }
     ]
   end
-
-  defp render_user_block_enriched(
-         %{"type" => "text", "text" => text},
-         _msg,
-         _session_cwd,
-         _tool_use_index
-       ) do
-    classify_text_lines(String.split(text, "\n"), :text)
-  end
-
-  defp render_user_block_enriched(_block, _msg, _session_cwd, _tool_use_index), do: []
 
   # ── Result line classification ──────────────────────────────────────
 
