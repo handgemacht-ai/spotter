@@ -282,6 +282,34 @@ defmodule SpotterWeb.SessionLiveTest do
     end
   end
 
+  describe "transcript container contract" do
+    test "transcript panel has container with id, class, and data-testid", %{
+      session_id: session_id
+    } do
+      {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}")
+
+      assert html =~ ~s(id="transcript-panel")
+      assert html =~ ~s(class="session-transcript")
+      assert html =~ ~s(data-testid="transcript-container")
+    end
+
+    test "transcript header shows title and debug hint", %{session_id: session_id} do
+      {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}")
+
+      assert html =~ ~s(class="transcript-header")
+      assert html =~ "<h3>Transcript</h3>"
+      assert html =~ "Ctrl+Shift+D: debug"
+    end
+
+    test "debug hint toggles to DEBUG ON", %{session_id: session_id} do
+      {:ok, view, _html} = live(build_conn(), "/sessions/#{session_id}")
+
+      html = render_click(view, "toggle_debug")
+      assert html =~ "DEBUG ON"
+      assert html =~ "debug-active"
+    end
+  end
+
   describe "empty state" do
     test "renders empty state when no messages", %{session_id: session_id} do
       {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}")

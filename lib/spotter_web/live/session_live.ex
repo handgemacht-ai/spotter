@@ -442,7 +442,6 @@ defmodule SpotterWeb.SessionLive do
       socket
       |> assign(
         session_record: session_record,
-        messages: messages,
         errors: errors,
         rework_events: rework_events,
         commit_links: commit_links
@@ -594,48 +593,57 @@ defmodule SpotterWeb.SessionLive do
           </div>
         </div>
 
-        <%= if @errors != [] do %>
-          <div class="transcript-error-panel">
-            <div class="error-title">Errors ({length(@errors)})</div>
-            <div
-              :for={error <- @errors}
-              phx-click="jump_to_error"
-              phx-value-tool-use-id={error.tool_use_id}
-              class="transcript-error-item"
-            >
-              <span class="error-tool">{error.tool_name}</span>
-              <span :if={error.error_content} class="error-content">
-                {String.slice(error.error_content, 0, 100)}
-              </span>
-            </div>
+        <div id="transcript-panel" class="session-transcript" data-testid="transcript-container">
+          <div class="transcript-header">
+            <h3>Transcript</h3>
+            <span class={"transcript-header-hint#{if @transcript_view_show_debug, do: " debug-active", else: ""}"}>
+              <%= if @transcript_view_show_debug, do: "DEBUG ON", else: "Ctrl+Shift+D: debug" %>
+            </span>
           </div>
-        <% end %>
 
-        <%= if @rework_events != [] do %>
-          <div class="transcript-rework-panel">
-            <div class="rework-title">Rework ({length(@rework_events)})</div>
-            <div
-              :for={event <- @rework_events}
-              phx-click="jump_to_rework"
-              phx-value-tool-use-id={event.tool_use_id}
-              class="transcript-rework-item"
-            >
-              <span class="rework-file">{event.relative_path || event.file_path}</span>
-              <span class="rework-occurrence">#{event.occurrence_index}</span>
+          <%= if @errors != [] do %>
+            <div class="transcript-error-panel">
+              <div class="error-title">Errors ({length(@errors)})</div>
+              <div
+                :for={error <- @errors}
+                phx-click="jump_to_error"
+                phx-value-tool-use-id={error.tool_use_id}
+                class="transcript-error-item"
+              >
+                <span class="error-tool">{error.tool_name}</span>
+                <span :if={error.error_content} class="error-content">
+                  {String.slice(error.error_content, 0, 100)}
+                </span>
+              </div>
             </div>
-          </div>
-        <% end %>
+          <% end %>
 
-        <.transcript_panel
-          rendered_lines={@transcript_view_visible_lines}
-          all_rendered_lines={@transcript_view_rendered_lines}
-          expanded_tool_groups={@transcript_view_expanded_tool_groups}
-          current_message_id={@current_message_id}
-          clicked_subagent={@clicked_subagent}
-          show_debug={@transcript_view_show_debug}
-          anchors={@anchors}
-          empty_message="No transcript available for this session."
-        />
+          <%= if @rework_events != [] do %>
+            <div class="transcript-rework-panel">
+              <div class="rework-title">Rework ({length(@rework_events)})</div>
+              <div
+                :for={event <- @rework_events}
+                phx-click="jump_to_rework"
+                phx-value-tool-use-id={event.tool_use_id}
+                class="transcript-rework-item"
+              >
+                <span class="rework-file">{event.relative_path || event.file_path}</span>
+                <span class="rework-occurrence">#{event.occurrence_index}</span>
+              </div>
+            </div>
+          <% end %>
+
+          <.transcript_panel
+            rendered_lines={@transcript_view_visible_lines}
+            all_rendered_lines={@transcript_view_rendered_lines}
+            expanded_tool_groups={@transcript_view_expanded_tool_groups}
+            current_message_id={@current_message_id}
+            clicked_subagent={@clicked_subagent}
+            show_debug={@transcript_view_show_debug}
+            anchors={@anchors}
+            empty_message="No transcript available for this session."
+          />
+        </div>
         <div class="session-sidebar">
         <div class="sidebar-tabs">
           <button
