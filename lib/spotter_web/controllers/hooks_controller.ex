@@ -10,100 +10,184 @@ defmodule SpotterWeb.HooksController do
   alias Spotter.Transcripts.SessionCommitLink
   alias Spotter.Transcripts.Sessions
   alias Spotter.Transcripts.ToolCall
+  alias SpotterWeb.OtelTraceHelpers
 
   require Ash.Query
+  require SpotterWeb.OtelTraceHelpers
 
   @max_commit_hashes 50
   @hash_pattern ~r/\A[0-9a-fA-F]{40}\z/
 
   def commit_event(conn, %{"session_id" => session_id, "new_commit_hashes" => hashes} = params)
       when is_binary(session_id) and is_list(hashes) do
-    with :ok <- validate_hashes(hashes),
-         {:ok, session} <- find_session(session_id) do
-      evidence = build_evidence(params)
-      ingested = ingest_commits(hashes, session, params["git_branch"], evidence)
-      enqueue_enrichment(hashes, session)
-      enqueue_heatmap(session)
+    hook_event = get_req_header(conn, "x-spotter-hook-event") |> List.first() || "PostToolUse"
+    hook_script = get_req_header(conn, "x-spotter-hook-script") |> List.first() || "unknown"
 
-      conn |> put_status(:created) |> json(%{ok: true, ingested: ingested})
-    else
-      {:error, :too_many} ->
-        conn |> put_status(:bad_request) |> json(%{error: "too many commit hashes (max 50)"})
+    OtelTraceHelpers.with_span "spotter.hook.commit_event", %{
+      "spotter.session_id" => session_id,
+      "spotter.hash_count" => length(hashes),
+      "spotter.hook.event" => hook_event,
+      "spotter.hook.script" => hook_script
+    } do
+      with :ok <- validate_hashes(hashes),
+           {:ok, session} <- find_session(session_id) do
+        evidence = build_evidence(params)
+        ingested = ingest_commits(hashes, session, params["git_branch"], evidence)
+        enqueue_enrichment(hashes, session)
+        enqueue_heatmap(session)
 
-      {:error, :invalid_format} ->
-        conn |> put_status(:bad_request) |> json(%{error: "invalid commit hash format"})
+        conn
+        |> put_status(:created)
+        |> OtelTraceHelpers.put_trace_response_header()
+        |> json(%{ok: true, ingested: ingested})
+      else
+        {:error, :too_many} ->
+          OtelTraceHelpers.set_error("too_many_hashes", %{"http.status_code" => 400})
 
-      {:error, :session_not_found} ->
-        conn |> put_status(:not_found) |> json(%{error: "session not found"})
+          conn
+          |> put_status(:bad_request)
+          |> OtelTraceHelpers.put_trace_response_header()
+          |> json(%{error: "too many commit hashes (max 50)"})
+
+        {:error, :invalid_format} ->
+          OtelTraceHelpers.set_error("invalid_format", %{"http.status_code" => 400})
+
+          conn
+          |> put_status(:bad_request)
+          |> OtelTraceHelpers.put_trace_response_header()
+          |> json(%{error: "invalid commit hash format"})
+
+        {:error, :session_not_found} ->
+          OtelTraceHelpers.set_error("session_not_found", %{"http.status_code" => 404})
+
+          conn
+          |> put_status(:not_found)
+          |> OtelTraceHelpers.put_trace_response_header()
+          |> json(%{error: "session not found"})
+      end
     end
   end
 
   def commit_event(conn, _params) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{error: "session_id and new_commit_hashes required"})
+    OtelTraceHelpers.with_span "spotter.hook.commit_event", %{} do
+      OtelTraceHelpers.set_error("invalid_params", %{"http.status_code" => 400})
+
+      conn
+      |> put_status(:bad_request)
+      |> OtelTraceHelpers.put_trace_response_header()
+      |> json(%{error: "session_id and new_commit_hashes required"})
+    end
   end
 
   def file_snapshot(conn, %{"session_id" => session_id} = params)
       when is_binary(session_id) do
-    with {:ok, session} <- find_session(session_id),
-         {:ok, attrs} <- build_attrs(params, session),
-         {:ok, _snapshot} <- Ash.create(FileSnapshot, attrs) do
-      enqueue_heatmap(session)
+    hook_event = get_req_header(conn, "x-spotter-hook-event") |> List.first() || "PostToolUse"
+    hook_script = get_req_header(conn, "x-spotter-hook-script") |> List.first() || "unknown"
 
-      conn
-      |> put_status(:created)
-      |> json(%{ok: true})
-    else
-      {:error, :session_not_found} ->
-        conn |> put_status(:not_found) |> json(%{error: "session not found"})
+    OtelTraceHelpers.with_span "spotter.hook.file_snapshot", %{
+      "spotter.session_id" => session_id,
+      "spotter.tool_use_id" => params["tool_use_id"] || "unknown",
+      "spotter.hook.event" => hook_event,
+      "spotter.hook.script" => hook_script
+    } do
+      with {:ok, session} <- find_session(session_id),
+           {:ok, attrs} <- build_attrs(params, session),
+           {:ok, _snapshot} <- Ash.create(FileSnapshot, attrs) do
+        enqueue_heatmap(session)
 
-      {:error, :invalid_params, reason} ->
-        conn |> put_status(:bad_request) |> json(%{error: reason})
+        conn
+        |> put_status(:created)
+        |> OtelTraceHelpers.put_trace_response_header()
+        |> json(%{ok: true})
+      else
+        {:error, :session_not_found} ->
+          OtelTraceHelpers.set_error("session_not_found", %{"http.status_code" => 404})
 
-      {:error, changeset} ->
-        conn |> put_status(:unprocessable_entity) |> json(%{error: inspect(changeset)})
+          conn
+          |> put_status(:not_found)
+          |> OtelTraceHelpers.put_trace_response_header()
+          |> json(%{error: "session not found"})
+
+        {:error, :invalid_params, reason} ->
+          OtelTraceHelpers.set_error("invalid_params", %{
+            "http.status_code" => 400,
+            "error.details" => reason
+          })
+
+          conn
+          |> put_status(:bad_request)
+          |> OtelTraceHelpers.put_trace_response_header()
+          |> json(%{error: reason})
+
+        {:error, changeset} ->
+          OtelTraceHelpers.set_error("validation_error", %{"http.status_code" => 422})
+
+          conn
+          |> put_status(:unprocessable_entity)
+          |> OtelTraceHelpers.put_trace_response_header()
+          |> json(%{error: inspect(changeset)})
+      end
     end
   end
 
   def file_snapshot(conn, _params) do
-    conn |> put_status(:bad_request) |> json(%{error: "session_id is required"})
+    OtelTraceHelpers.with_span "spotter.hook.file_snapshot", %{} do
+      OtelTraceHelpers.set_error("invalid_params", %{"http.status_code" => 400})
+
+      conn
+      |> put_status(:bad_request)
+      |> OtelTraceHelpers.put_trace_response_header()
+      |> json(%{error: "session_id is required"})
+    end
   end
 
   def tool_call(conn, %{"session_id" => session_id} = params)
       when is_binary(session_id) do
-    case Sessions.find_or_create(session_id) do
-      {:ok, session} ->
-        error_content =
-          case params["error_content"] do
-            nil -> nil
-            content when is_binary(content) -> String.slice(content, 0, 1000)
-            _ -> nil
-          end
+    hook_event = get_req_header(conn, "x-spotter-hook-event") |> List.first() || "PostToolUse"
+    hook_script = get_req_header(conn, "x-spotter-hook-script") |> List.first() || "unknown"
 
-        attrs = %{
-          session_id: session.id,
-          tool_use_id: params["tool_use_id"],
-          tool_name: params["tool_name"],
-          is_error: params["is_error"] || false,
-          error_content: error_content
-        }
+    OtelTraceHelpers.with_span "spotter.hook.tool_call", %{
+      "spotter.session_id" => session_id,
+      "spotter.tool_use_id" => params["tool_use_id"] || "unknown",
+      "spotter.tool_name" => params["tool_name"] || "unknown",
+      "spotter.hook.event" => hook_event,
+      "spotter.hook.script" => hook_script
+    } do
+      with {:ok, session} <- Sessions.find_or_create(session_id),
+           {:ok, _tool_call} <- create_tool_call(session, params) do
+        conn
+        |> put_status(:created)
+        |> OtelTraceHelpers.put_trace_response_header()
+        |> json(%{ok: true})
+      else
+        {:error, :validation_error, changeset} ->
+          OtelTraceHelpers.set_error("validation_error", %{"http.status_code" => 422})
 
-        case Ash.create(ToolCall, attrs, action: :upsert) do
-          {:ok, _tool_call} ->
-            conn |> put_status(:created) |> json(%{ok: true})
+          conn
+          |> put_status(:unprocessable_entity)
+          |> OtelTraceHelpers.put_trace_response_header()
+          |> json(%{error: inspect(changeset)})
 
-          {:error, changeset} ->
-            conn |> put_status(:unprocessable_entity) |> json(%{error: inspect(changeset)})
-        end
+        {:error, reason} ->
+          OtelTraceHelpers.set_error("session_creation_error", %{"http.status_code" => 422})
 
-      {:error, reason} ->
-        conn |> put_status(:unprocessable_entity) |> json(%{error: inspect(reason)})
+          conn
+          |> put_status(:unprocessable_entity)
+          |> OtelTraceHelpers.put_trace_response_header()
+          |> json(%{error: inspect(reason)})
+      end
     end
   end
 
   def tool_call(conn, _params) do
-    conn |> put_status(:bad_request) |> json(%{error: "session_id is required"})
+    OtelTraceHelpers.with_span "spotter.hook.tool_call", %{} do
+      OtelTraceHelpers.set_error("invalid_params", %{"http.status_code" => 400})
+
+      conn
+      |> put_status(:bad_request)
+      |> OtelTraceHelpers.put_trace_response_header()
+      |> json(%{error: "session_id is required"})
+    end
   end
 
   defp enqueue_heatmap(session) do
@@ -203,4 +287,26 @@ defmodule SpotterWeb.HooksController do
   end
 
   defp parse_timestamp(_), do: {:ok, DateTime.utc_now()}
+
+  defp create_tool_call(session, params) do
+    error_content =
+      case params["error_content"] do
+        nil -> nil
+        content when is_binary(content) -> String.slice(content, 0, 1000)
+        _ -> nil
+      end
+
+    attrs = %{
+      session_id: session.id,
+      tool_use_id: params["tool_use_id"],
+      tool_name: params["tool_name"],
+      is_error: params["is_error"] || false,
+      error_content: error_content
+    }
+
+    case Ash.create(ToolCall, attrs, action: :upsert) do
+      {:ok, _tool_call} -> {:ok, nil}
+      {:error, changeset} -> {:error, :validation_error, changeset}
+    end
+  end
 end
