@@ -7,6 +7,7 @@ defmodule Spotter.Transcripts.ResourcesTest do
   alias Spotter.Transcripts.{
     Annotation,
     AnnotationMessageRef,
+    CoChangeGroup,
     Commit,
     FileHeatmap,
     Message,
@@ -372,6 +373,93 @@ defmodule Spotter.Transcripts.ResourcesTest do
 
       reworks = Ash.read!(SessionRework)
       assert length(reworks) == 2
+    end
+  end
+
+  describe "CoChangeGroup" do
+    setup do
+      project = Ash.create!(Project, %{name: "test-cochange", pattern: "^test"})
+      %{project: project}
+    end
+
+    test "creates a co-change group", %{project: project} do
+      group =
+        Ash.create!(CoChangeGroup, %{
+          project_id: project.id,
+          scope: :file,
+          group_key: "lib/a.ex|lib/b.ex",
+          members: ["lib/a.ex", "lib/b.ex"],
+          frequency_30d: 5,
+          last_seen_at: ~U[2026-02-10 12:00:00Z]
+        })
+
+      assert group.scope == :file
+      assert group.group_key == "lib/a.ex|lib/b.ex"
+      assert group.members == ["lib/a.ex", "lib/b.ex"]
+      assert group.frequency_30d == 5
+    end
+
+    test "upserts by project + scope + group_key identity", %{project: project} do
+      attrs = %{
+        project_id: project.id,
+        scope: :file,
+        group_key: "lib/a.ex|lib/b.ex",
+        members: ["lib/a.ex", "lib/b.ex"],
+        frequency_30d: 3
+      }
+
+      first = Ash.create!(CoChangeGroup, attrs)
+      second = Ash.create!(CoChangeGroup, %{attrs | frequency_30d: 7})
+
+      assert first.id == second.id
+      assert second.frequency_30d == 7
+    end
+
+    test "rejects invalid scope", %{project: project} do
+      assert_raise Ash.Error.Invalid, fn ->
+        Ash.create!(CoChangeGroup, %{
+          project_id: project.id,
+          scope: :invalid,
+          group_key: "lib/a.ex|lib/b.ex",
+          members: ["lib/a.ex", "lib/b.ex"],
+          frequency_30d: 1
+        })
+      end
+    end
+
+    test "allows directory scope", %{project: project} do
+      group =
+        Ash.create!(CoChangeGroup, %{
+          project_id: project.id,
+          scope: :directory,
+          group_key: "lib|test",
+          members: ["lib", "test"],
+          frequency_30d: 10
+        })
+
+      assert group.scope == :directory
+    end
+
+    test "same group_key with different scopes creates separate records", %{project: project} do
+      file_group =
+        Ash.create!(CoChangeGroup, %{
+          project_id: project.id,
+          scope: :file,
+          group_key: "lib/a.ex|lib/b.ex",
+          members: ["lib/a.ex", "lib/b.ex"],
+          frequency_30d: 3
+        })
+
+      dir_group =
+        Ash.create!(CoChangeGroup, %{
+          project_id: project.id,
+          scope: :directory,
+          group_key: "lib/a.ex|lib/b.ex",
+          members: ["lib/a.ex", "lib/b.ex"],
+          frequency_30d: 5
+        })
+
+      assert file_group.id != dir_group.id
     end
   end
 

@@ -8,6 +8,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   require Logger
 
   alias Spotter.Transcripts.Config
+  alias Spotter.Transcripts.Jobs.ComputeCoChange
   alias Spotter.Transcripts.Jobs.ComputeHeatmap
   alias Spotter.Transcripts.JsonlParser
   alias Spotter.Transcripts.SessionsIndex
@@ -132,6 +133,10 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   defp enqueue_heatmap(project) do
     %{project_id: project.id}
     |> ComputeHeatmap.new()
+    |> Oban.insert()
+
+    %{project_id: project.id}
+    |> ComputeCoChange.new()
     |> Oban.insert()
   end
 

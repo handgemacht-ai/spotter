@@ -4,6 +4,7 @@ defmodule SpotterWeb.HooksController do
 
   alias Spotter.Transcripts.Commit
   alias Spotter.Transcripts.FileSnapshot
+  alias Spotter.Transcripts.Jobs.ComputeCoChange
   alias Spotter.Transcripts.Jobs.ComputeHeatmap
   alias Spotter.Transcripts.Jobs.EnrichCommits
   alias Spotter.Transcripts.Session
@@ -193,6 +194,10 @@ defmodule SpotterWeb.HooksController do
   defp enqueue_heatmap(session) do
     %{project_id: session.project_id}
     |> ComputeHeatmap.new()
+    |> Oban.insert()
+
+    %{project_id: session.project_id}
+    |> ComputeCoChange.new()
     |> Oban.insert()
   end
 

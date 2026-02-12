@@ -395,6 +395,12 @@ defmodule SpotterWeb.PaneListLive do
                 </span>
               </h3>
               <.project_ingest_status project_name={project.name} ingest_projects={@ingest_projects} />
+              <a href={"/projects/#{project.id}/heatmap"} class="btn btn-ghost text-xs">
+                Heatmap
+              </a>
+              <a href={"/projects/#{project.id}/co-change"} class="btn btn-ghost text-xs">
+                Co-change
+              </a>
             </div>
 
             <%= if project.visible_sessions == [] and project.hidden_sessions == [] do %>
