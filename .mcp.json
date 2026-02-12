@@ -2,7 +2,7 @@
   "mcpServers": {
     "tidewave": {
       "type": "http",
-      "url": "http://100.105.15.12:1104/tidewave/mcp"
+      "url": "http://100.105.15.12:1110/tidewave/mcp"
     },
     "chrome-devtools": {
       "command": "npx",
