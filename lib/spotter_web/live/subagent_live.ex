@@ -158,6 +158,7 @@ defmodule SpotterWeb.SubagentLive do
         type: msg.type,
         role: msg.role,
         content: msg.content,
+        raw_payload: msg.raw_payload,
         timestamp: msg.timestamp
       }
     end)

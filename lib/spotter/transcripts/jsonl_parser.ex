@@ -247,6 +247,7 @@ defmodule Spotter.Transcripts.JsonlParser do
       type: parse_type(data["type"]),
       role: parse_role(get_in(data, ["message", "role"])),
       content: extract_content(data),
+      raw_payload: data,
       timestamp: parse_timestamp(data["timestamp"]),
       is_sidechain: data["isSidechain"] == true,
       agent_id: data["agentId"],
@@ -279,6 +280,7 @@ defmodule Spotter.Transcripts.JsonlParser do
   defp parse_type("thinking"), do: :thinking
   defp parse_type("system"), do: :system
   defp parse_type("file_history_snapshot"), do: :file_history_snapshot
+  defp parse_type("file-history-snapshot"), do: :file_history_snapshot
   defp parse_type(_), do: :system
 
   defp parse_role(nil), do: nil

@@ -23,6 +23,7 @@ defmodule Spotter.Transcripts.Subagent do
       accept [
         :agent_id,
         :slug,
+        :subagent_type,
         :started_at,
         :ended_at,
         :message_count,
@@ -35,6 +36,7 @@ defmodule Spotter.Transcripts.Subagent do
 
       accept [
         :slug,
+        :subagent_type,
         :started_at,
         :ended_at,
         :message_count
@@ -50,6 +52,7 @@ defmodule Spotter.Transcripts.Subagent do
     end
 
     attribute :slug, :string
+    attribute :subagent_type, :string
     attribute :started_at, :utc_datetime_usec
     attribute :ended_at, :utc_datetime_usec
     attribute :message_count, :integer

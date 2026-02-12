@@ -114,11 +114,13 @@ defmodule Spotter.Transcripts.ResourcesTest do
           role: :user,
           timestamp: DateTime.utc_now(),
           session_id: session.id,
-          content: %{"text" => "hello"}
+          content: %{"text" => "hello"},
+          raw_payload: %{"type" => "user", "message" => %{"content" => "hello"}}
         })
 
       assert message.type == :user
       assert message.content == %{"text" => "hello"}
+      assert message.raw_payload["type"] == "user"
     end
   end
 
@@ -136,10 +138,12 @@ defmodule Spotter.Transcripts.ResourcesTest do
       subagent =
         Ash.create!(Subagent, %{
           agent_id: "abc123",
-          session_id: session.id
+          session_id: session.id,
+          subagent_type: "general-purpose"
         })
 
       assert subagent.agent_id == "abc123"
+      assert subagent.subagent_type == "general-purpose"
     end
   end
 

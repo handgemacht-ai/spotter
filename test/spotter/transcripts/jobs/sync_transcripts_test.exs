@@ -4,7 +4,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscriptsTest do
   alias Ecto.Adapters.SQL.Sandbox
   alias Spotter.Repo
   alias Spotter.Transcripts.Jobs.SyncTranscripts
-  alias Spotter.Transcripts.{JsonlParser, Message, Project, Session, SessionRework}
+  alias Spotter.Transcripts.{JsonlParser, Message, Project, Session, SessionRework, Subagent}
 
   require Ash.Query
 
@@ -189,6 +189,109 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscriptsTest do
     test "returns :error for nonexistent file" do
       result = SyncTranscripts.sync_session_file("/nonexistent/path.jsonl")
       assert result.status == :error
+    end
+
+    test "persists raw_payload on ingested messages", %{tmp_dir: tmp_dir} do
+      session_id = Ash.UUID.generate()
+      dir = Path.join(tmp_dir, "raw-payload")
+      file = write_session_jsonl(dir, session_id)
+
+      result = SyncTranscripts.sync_session_file(file)
+      assert result.status == :ok
+
+      session = Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one!()
+
+      [first_message | _] =
+        Message
+        |> Ash.Query.filter(session_id == ^session.id)
+        |> Ash.Query.sort(timestamp: :asc)
+        |> Ash.read!()
+
+      assert is_map(first_message.raw_payload)
+      assert first_message.raw_payload["uuid"] == "#{session_id}-system"
+      assert first_message.raw_payload["sessionId"] == session_id
+    end
+
+    test "derives subagent_type from parent Task metadata and agent_progress", %{tmp_dir: tmp_dir} do
+      session_id = Ash.UUID.generate()
+      dir = Path.join(tmp_dir, "subagent-type")
+      file = Path.join(dir, "#{session_id}.jsonl")
+      File.mkdir_p!(dir)
+
+      lines = [
+        %{
+          "uuid" => "#{session_id}-system",
+          "type" => "system",
+          "sessionId" => session_id,
+          "cwd" => "/tmp/test",
+          "version" => "1.0.0",
+          "timestamp" => "2026-02-01T12:00:00Z"
+        },
+        %{
+          "uuid" => "#{session_id}-assistant",
+          "type" => "assistant",
+          "sessionId" => session_id,
+          "timestamp" => "2026-02-01T12:00:01Z",
+          "message" => %{
+            "role" => "assistant",
+            "content" => [
+              %{
+                "type" => "tool_use",
+                "id" => "task-tool-1",
+                "name" => "Task",
+                "input" => %{"subagent_type" => "research"}
+              }
+            ]
+          }
+        },
+        %{
+          "uuid" => "#{session_id}-progress",
+          "type" => "progress",
+          "sessionId" => session_id,
+          "timestamp" => "2026-02-01T12:00:02Z",
+          "data" => %{"type" => "agent_progress", "agentId" => "agent-xyz"},
+          "parentToolUseID" => "task-tool-1"
+        }
+      ]
+
+      File.write!(file, Enum.map_join(lines, "\n", &Jason.encode!/1))
+
+      subagent_dir = Path.join([dir, session_id, "subagents"])
+      File.mkdir_p!(subagent_dir)
+
+      subagent_lines = [
+        %{
+          "uuid" => "#{session_id}-sub-system",
+          "type" => "system",
+          "sessionId" => session_id,
+          "timestamp" => "2026-02-01T12:00:03Z"
+        },
+        %{
+          "uuid" => "#{session_id}-sub-assistant",
+          "type" => "assistant",
+          "sessionId" => session_id,
+          "timestamp" => "2026-02-01T12:00:04Z",
+          "message" => %{"role" => "assistant", "content" => "hello from subagent"}
+        }
+      ]
+
+      File.write!(
+        Path.join(subagent_dir, "agent-agent-xyz.jsonl"),
+        Enum.map_join(subagent_lines, "\n", &Jason.encode!/1)
+      )
+
+      result = SyncTranscripts.sync_session_file(file)
+      assert result.status == :ok
+
+      session = Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one!()
+      agent_id = "agent-xyz"
+
+      subagent =
+        Subagent
+        |> Ash.Query.filter(session_id == ^session.id and agent_id == ^agent_id)
+        |> Ash.read_one!()
+
+      assert subagent.subagent_type == "research"
     end
   end
 

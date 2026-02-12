@@ -144,6 +144,31 @@ defmodule SpotterWeb.SessionLiveTest do
       assert html =~ "is-user"
       assert html =~ "fix the bug"
     end
+
+    test "shows message token counts on the right side", %{
+      session: session,
+      session_id: session_id
+    } do
+      create_message(session, %{
+        content: %{"blocks" => [%{"type" => "text", "text" => "first\nsecond"}]},
+        raw_payload: %{
+          "message" => %{
+            "usage" => %{
+              "input_tokens" => 10,
+              "output_tokens" => 5,
+              "cache_creation_input_tokens" => 2,
+              "cache_read_input_tokens" => 3
+            }
+          }
+        }
+      })
+
+      {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}")
+
+      assert html =~ "row-token-count"
+      assert html =~ "20 tok"
+      assert length(Regex.scan(~r/20 tok/, html)) == 1
+    end
   end
 
   describe "subagent rendering" do

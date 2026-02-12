@@ -76,6 +76,33 @@ defmodule Spotter.Transcripts.JsonlParserTest do
       assistant_msg = Enum.at(result.messages, 2)
       assert %{"blocks" => [%{"type" => "text", "text" => "Response"}]} = assistant_msg.content
     end
+
+    test "retains raw_payload for each normalized message", %{session_file: file} do
+      {:ok, result} = JsonlParser.parse_session_file(file)
+
+      [first | _] = result.messages
+      assert is_map(first.raw_payload)
+      assert first.raw_payload["uuid"] == "msg-1"
+      assert first.raw_payload["sessionId"] == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    end
+
+    test "parses file-history-snapshot message type variant" do
+      file = Path.join(@fixtures_dir, "file_history_snapshot_alias.jsonl")
+
+      File.write!(
+        file,
+        Jason.encode!(%{
+          "uuid" => "msg-1",
+          "type" => "file-history-snapshot",
+          "sessionId" => "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+          "timestamp" => "2026-01-01T00:00:00.000Z"
+        })
+      )
+
+      {:ok, result} = JsonlParser.parse_session_file(file)
+      assert [message] = result.messages
+      assert message.type == :file_history_snapshot
+    end
   end
 
   describe "parse_subagent_file/1" do

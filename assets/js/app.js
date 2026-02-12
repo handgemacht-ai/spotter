@@ -10,6 +10,8 @@ import bash from "highlight.js/lib/languages/bash"
 import json from "highlight.js/lib/languages/json"
 import diff from "highlight.js/lib/languages/diff"
 import plaintext from "highlight.js/lib/languages/plaintext"
+import { marked } from "marked"
+import DOMPurify from "dompurify"
 
 hljs.registerLanguage("elixir", elixir)
 hljs.registerLanguage("bash", bash)
@@ -23,6 +25,22 @@ function highlightTranscriptCode(rootEl) {
     if (block.dataset.hljs === "done") continue
     hljs.highlightElement(block)
     block.dataset.hljs = "done"
+  }
+}
+
+function renderTranscriptMarkdown(rootEl) {
+  const rows = rootEl.querySelectorAll('[data-render-markdown="true"]')
+  for (const row of rows) {
+    if (row.dataset.mdSource === undefined) {
+      row.dataset.mdSource = row.textContent || ""
+    }
+
+    if (row.dataset.mdRendered === "done") continue
+
+    const markdownSource = row.dataset.mdSource
+    const rendered = marked.parseInline(markdownSource, { gfm: true, breaks: true })
+    row.innerHTML = DOMPurify.sanitize(rendered)
+    row.dataset.mdRendered = "done"
   }
 }
 
@@ -70,6 +88,7 @@ const Hooks = {}
 
 Hooks.TranscriptHighlighter = {
   mounted() {
+    renderTranscriptMarkdown(this.el)
     highlightTranscriptCode(this.el)
     this._highlightDebugJson()
 
@@ -159,6 +178,7 @@ Hooks.TranscriptHighlighter = {
   },
 
   updated() {
+    renderTranscriptMarkdown(this.el)
     highlightTranscriptCode(this.el)
     this._highlightDebugJson()
   },

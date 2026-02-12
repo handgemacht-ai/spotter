@@ -46,7 +46,6 @@ defmodule SpotterWeb.TranscriptComponents do
         phx-hook="TranscriptHighlighter"
         phx-update="replace"
         class={if @show_debug, do: "transcript-debug-grid", else: ""}
-        data-testid="transcript-container"
       >
         <%= for line <- @rendered_lines do %>
           <.transcript_row
@@ -91,31 +90,35 @@ defmodule SpotterWeb.TranscriptComponents do
       data-line-number={@line.line_number}
       class={row_classes(@line, @current_message_id, @clicked_subagent)}
       data-render-mode={to_string(@line[:render_mode] || "plain")}
-      data-testid="transcript-row"
-      data-line-number={@line.line_number}
     >
-      <%= if @show_debug do %>
-        <% anchor = Enum.find(@anchors, &(&1.tl == @line.line_number)) %>
-        <span
-          :if={anchor}
-          style={"display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;background:#{anchor_color(anchor.type)};"}
-          title={"#{anchor.type} → terminal line #{anchor.t}"}
-        />
-      <% end %>
-      <%= if @line[:subagent_ref] do %>
-        <span
-          class="subagent-badge"
-          phx-click="subagent_reference_clicked"
-          phx-value-ref={@line.subagent_ref}
-        >
-          agent
-        </span>
-      <% end %>
-      <%= if @line[:render_mode] == :code do %>
-        <pre class="row-text row-text-code"><code class={"language-#{@line[:code_language] || "plaintext"}"}><%= @line.line %></code></pre>
-      <% else %>
-        <span class="row-text"><%= @line.line %></span>
-      <% end %>
+      <div class="row-main">
+        <%= if @show_debug do %>
+          <% anchor = Enum.find(@anchors, &(&1.tl == @line.line_number)) %>
+          <span
+            :if={anchor}
+            style={"display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;background:#{anchor_color(anchor.type)};"}
+            title={"#{anchor.type} → terminal line #{anchor.t}"}
+          />
+        <% end %>
+        <%= if @line[:subagent_ref] do %>
+          <span
+            class="subagent-badge"
+            phx-click="subagent_reference_clicked"
+            phx-value-ref={@line.subagent_ref}
+          >
+            agent
+          </span>
+        <% end %>
+        <%= if @line[:render_mode] == :code do %>
+          <pre class="row-text row-text-code"><span :if={@line[:source_line_number]} class="source-line-number"><%= @line[:source_line_number] %></span><code class={"language-#{@line[:code_language] || "plaintext"}"}><%= @line.line %></code></pre>
+        <% else %>
+          <span
+            class="row-text"
+            data-render-markdown={if markdown_line?(@line), do: "true", else: "false"}
+          ><%= @line.line %></span>
+        <% end %>
+        <span :if={@line[:token_count_total]} class="row-token-count">{@line[:token_count_total]} tok</span>
+      </div>
     </div>
     """
   end
@@ -220,6 +223,10 @@ defmodule SpotterWeb.TranscriptComponents do
 
   defp subagent_classes(ref, clicked) do
     if clicked == ref, do: ["is-subagent", "is-clicked"], else: ["is-subagent"]
+  end
+
+  defp markdown_line?(line) do
+    line[:render_mode] == :plain and line[:kind] in [:text, :thinking]
   end
 
   defp anchor_color(:tool_use), do: "var(--accent-amber)"

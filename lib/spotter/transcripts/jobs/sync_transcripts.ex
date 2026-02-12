@@ -69,11 +69,12 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
 
         # Upsert session with full metadata + transcript_dir backfill
         session = upsert_existing_session!(session_record, transcript_dir, parsed, index_meta)
+        subagent_type_by_agent_id = build_subagent_type_index(parsed.messages)
 
         ingested = upsert_messages!(session, parsed.messages)
         create_tool_calls!(session, parsed.messages)
         create_session_reworks!(session, parsed)
-        sync_subagents(session, dir, parsed.session_id)
+        sync_subagents(session, dir, parsed.session_id, subagent_type_by_agent_id)
 
         %{session_id: parsed.session_id, ingested_messages: ingested, status: :ok}
 
@@ -286,10 +287,11 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
       {:ok, parsed} ->
         index_meta = Map.get(index, parsed.session_id, %{})
         session = upsert_session!(project, transcript_dir, parsed, index_meta)
+        subagent_type_by_agent_id = build_subagent_type_index(parsed.messages)
         create_messages!(session, parsed.messages)
         create_tool_calls!(session, parsed.messages)
         create_session_reworks!(session, parsed)
-        sync_subagents(session, dir, parsed.session_id)
+        sync_subagents(session, dir, parsed.session_id, subagent_type_by_agent_id)
 
       {:error, reason} ->
         Logger.warning("Failed to parse #{file}: #{inspect(reason)}")
@@ -375,6 +377,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
           type: msg[:type],
           role: msg[:role],
           content: msg[:content],
+          raw_payload: msg[:raw_payload],
           timestamp: msg[:timestamp],
           is_sidechain: msg[:is_sidechain] || false,
           agent_id: msg[:agent_id],
@@ -470,7 +473,8 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
     end)
   end
 
-  defp sync_subagents(session, dir, session_id) when is_binary(session_id) do
+  defp sync_subagents(session, dir, session_id, subagent_type_by_agent_id)
+       when is_binary(session_id) do
     subagents_dir = Path.join([dir, session_id, "subagents"])
 
     if File.dir?(subagents_dir) do
@@ -478,17 +482,18 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
       |> Path.join("*.jsonl")
       |> Path.wildcard()
       |> Enum.each(fn file ->
-        sync_subagent_file(session, file)
+        sync_subagent_file(session, file, subagent_type_by_agent_id)
       end)
     end
   end
 
-  defp sync_subagents(_session, _dir, _session_id), do: :ok
+  defp sync_subagents(_session, _dir, _session_id, _subagent_type_by_agent_id), do: :ok
 
-  defp sync_subagent_file(session, file) do
+  defp sync_subagent_file(session, file, subagent_type_by_agent_id) do
     case JsonlParser.parse_subagent_file(file) do
       {:ok, parsed} ->
-        subagent = upsert_subagent!(session, parsed)
+        subagent_type = Map.get(subagent_type_by_agent_id, parsed.agent_id)
+        subagent = upsert_subagent!(session, parsed, subagent_type)
         create_subagent_messages!(session, subagent, parsed.messages)
 
       {:error, reason} ->
@@ -518,6 +523,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
           type: msg[:type],
           role: msg[:role],
           content: msg[:content],
+          raw_payload: msg[:raw_payload],
           timestamp: msg[:timestamp],
           is_sidechain: msg[:is_sidechain] || false,
           agent_id: subagent.agent_id,
@@ -591,6 +597,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
           type: msg[:type],
           role: msg[:role],
           content: msg[:content],
+          raw_payload: msg[:raw_payload],
           timestamp: msg[:timestamp],
           is_sidechain: msg[:is_sidechain] || false,
           agent_id: msg[:agent_id],
@@ -608,9 +615,51 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
     length(msg_attrs)
   end
 
-  defp upsert_subagent!(session, parsed) do
+  defp build_subagent_type_index(messages) do
+    task_subagent_type_by_tool_use =
+      messages
+      |> Enum.flat_map(&extract_task_subagent_types/1)
+      |> Map.new()
+
+    messages
+    |> Enum.flat_map(&extract_agent_progress_refs/1)
+    |> Enum.reduce(%{}, fn {agent_id, parent_tool_use_id}, acc ->
+      case Map.get(task_subagent_type_by_tool_use, parent_tool_use_id) do
+        nil -> acc
+        subagent_type -> Map.put_new(acc, agent_id, subagent_type)
+      end
+    end)
+  end
+
+  defp extract_task_subagent_types(%{content: %{"blocks" => blocks}}) when is_list(blocks) do
+    blocks
+    |> Enum.filter(fn block ->
+      block["type"] == "tool_use" and block["name"] == "Task" and is_binary(block["id"]) and
+        is_binary(get_in(block, ["input", "subagent_type"]))
+    end)
+    |> Enum.map(fn block ->
+      {block["id"], get_in(block, ["input", "subagent_type"])}
+    end)
+  end
+
+  defp extract_task_subagent_types(_), do: []
+
+  defp extract_agent_progress_refs(%{type: :progress, raw_payload: %{} = payload}) do
+    with %{"type" => "agent_progress", "agentId" => agent_id} <- payload["data"],
+         parent_tool_use_id when is_binary(parent_tool_use_id) <-
+           payload["parentToolUseID"] || payload["parentToolUseId"] || payload["toolUseID"] do
+      [{agent_id, parent_tool_use_id}]
+    else
+      _ -> []
+    end
+  end
+
+  defp extract_agent_progress_refs(_), do: []
+
+  defp upsert_subagent!(session, parsed, subagent_type) do
     update_attrs = %{
       slug: parsed.slug,
+      subagent_type: subagent_type,
       started_at: parsed.started_at,
       ended_at: parsed.ended_at,
       message_count: length(parsed.messages)

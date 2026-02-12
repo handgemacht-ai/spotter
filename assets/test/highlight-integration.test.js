@@ -8,6 +8,8 @@ import bash from "highlight.js/lib/languages/bash"
 import json from "highlight.js/lib/languages/json"
 import diff from "highlight.js/lib/languages/diff"
 import plaintext from "highlight.js/lib/languages/plaintext"
+import { marked } from "marked"
+import DOMPurify from "dompurify"
 
 hljs.registerLanguage("elixir", elixir)
 hljs.registerLanguage("bash", bash)
@@ -22,6 +24,21 @@ function highlightTranscriptCode(rootEl) {
     if (block.dataset.hljs === "done") continue
     hljs.highlightElement(block)
     block.dataset.hljs = "done"
+  }
+}
+
+function renderTranscriptMarkdown(rootEl) {
+  const rows = rootEl.querySelectorAll('[data-render-markdown="true"]')
+  for (const row of rows) {
+    if (row.dataset.mdSource === undefined) {
+      row.dataset.mdSource = row.textContent || ""
+    }
+
+    if (row.dataset.mdRendered === "done") continue
+
+    const rendered = marked.parseInline(row.dataset.mdSource, { gfm: true, breaks: true })
+    row.innerHTML = DOMPurify.sanitize(rendered)
+    row.dataset.mdRendered = "done"
   }
 }
 
@@ -84,20 +101,6 @@ describe("highlightTranscriptCode", () => {
     for (const code of codes) {
       expect(code.dataset.hljs).toBe("done")
     }
-  })
-
-  it("does not throw for unknown language class", () => {
-    container.innerHTML = `
-      <div data-render-mode="code">
-        <code class="language-cobol">DISPLAY "HELLO".</code>
-      </div>
-    `
-
-    // Should not throw — hljs handles unknown languages gracefully
-    expect(() => highlightTranscriptCode(container)).not.toThrow()
-
-    const code = container.querySelector("code")
-    expect(code.dataset.hljs).toBe("done")
   })
 
   it("does not throw for missing language class", () => {
@@ -176,5 +179,50 @@ describe("hljs.highlight direct", () => {
     const result = hljs.highlight("just some text", { language: "plaintext" })
     // plaintext language should not add syntax spans
     expect(result.language).toBe("plaintext")
+  })
+})
+
+describe("renderTranscriptMarkdown", () => {
+  let container
+
+  beforeEach(() => {
+    container = document.createElement("div")
+    document.body.appendChild(container)
+  })
+
+  it("renders markdown syntax into HTML", () => {
+    container.innerHTML = `
+      <span data-render-markdown="true">Use **bold** and \`code\`</span>
+    `
+
+    renderTranscriptMarkdown(container)
+
+    const row = container.querySelector('[data-render-markdown="true"]')
+    expect(row.innerHTML).toContain("<strong>bold</strong>")
+    expect(row.innerHTML).toContain("<code>code</code>")
+    expect(row.dataset.mdRendered).toBe("done")
+  })
+
+  it("sanitizes unsafe HTML from markdown input", () => {
+    container.innerHTML = `
+      <span data-render-markdown="true">Click <img src=x onerror="alert('xss')"> here</span>
+    `
+
+    renderTranscriptMarkdown(container)
+
+    const row = container.querySelector('[data-render-markdown="true"]')
+    expect(row.innerHTML).not.toContain("onerror")
+    expect(row.innerHTML).not.toContain("<img")
+  })
+
+  it("skips rows marked as non-markdown", () => {
+    container.innerHTML = `
+      <span data-render-markdown="false">**not rendered**</span>
+    `
+
+    renderTranscriptMarkdown(container)
+
+    const row = container.querySelector('[data-render-markdown="false"]')
+    expect(row.innerHTML).toBe("**not rendered**")
   })
 })

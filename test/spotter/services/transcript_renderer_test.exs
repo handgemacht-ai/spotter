@@ -1151,6 +1151,144 @@ defmodule Spotter.Services.TranscriptRendererTest do
     end
   end
 
+  describe "source line number metadata" do
+    test "strips inline numbered prefixes and uses startLine from raw payload when available" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Read",
+                "id" => "toolu_read",
+                "input" => %{"file_path" => "/home/user/project/lib/foo.ex"}
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_read",
+                "content" => "    7→def foo do\n    8→end"
+              }
+            ]
+          },
+          raw_payload: %{
+            "toolUseResult" => %{
+              "type" => "text",
+              "file" => %{"startLine" => 42, "numLines" => 2}
+            }
+          }
+        }
+      ]
+
+      lines =
+        messages
+        |> TranscriptRenderer.render(session_cwd: "/home/user/project")
+        |> Enum.filter(&(&1.kind == :tool_result))
+
+      assert Enum.map(lines, & &1.line) == ["  ⎿  def foo do", "  ⎿  end"]
+      assert Enum.map(lines, & &1.source_line_number) == [42, 43]
+      assert Enum.all?(lines, &(&1.render_mode == :code))
+      assert Enum.all?(lines, &(&1.code_language == "elixir"))
+    end
+
+    test "falls back to parsed line numbers when startLine is missing" do
+      messages = [
+        %{
+          type: :user,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_read",
+                "content" => "    9→line one\n    10→line two"
+              }
+            ]
+          }
+        }
+      ]
+
+      lines =
+        messages
+        |> TranscriptRenderer.render()
+        |> Enum.filter(&(&1.kind == :tool_result))
+
+      assert Enum.map(lines, & &1.line) == ["  ⎿  line one", "  ⎿  line two"]
+      assert Enum.map(lines, & &1.source_line_number) == [9, 10]
+    end
+  end
+
+  describe "tool_use preview formatting" do
+    test "relativizes before truncation and uses deterministic input keys" do
+      long_relative_path =
+        "lib/" <> Enum.map_join(1..20, "/", fn idx -> "nested#{idx}" end) <> "/foo.ex"
+
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Read",
+                "id" => "toolu_preview",
+                "input" => %{
+                  "description" => "fallback value",
+                  "file_path" => "/home/user/project/#{long_relative_path}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+
+      [line] = TranscriptRenderer.render(messages, session_cwd: "/home/user/project")
+
+      assert line.kind == :tool_use
+      assert line.line =~ "● Read("
+      assert line.line =~ "lib/nested1"
+      refute line.line =~ "/home/user/project"
+      assert line.line =~ "…"
+    end
+  end
+
+  describe "token usage metadata" do
+    test "sets token_count_total on the first rendered line only" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{"blocks" => [%{"type" => "text", "text" => "first\nsecond"}]},
+          raw_payload: %{
+            "message" => %{
+              "usage" => %{
+                "input_tokens" => 10,
+                "output_tokens" => 5,
+                "cache_creation_input_tokens" => 2,
+                "cache_read_input_tokens" => 3
+              }
+            }
+          }
+        }
+      ]
+
+      [first, second] = TranscriptRenderer.render(messages)
+
+      assert first.token_count_total == 20
+      assert second.token_count_total == nil
+    end
+  end
+
   defp load_fixture(name) do
     path = Path.join(@fixtures_dir, name)
     {:ok, %{messages: messages}} = JsonlParser.parse_session_file(path)

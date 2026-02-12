@@ -27,6 +27,7 @@ defmodule Spotter.Transcripts.Message do
         :type,
         :role,
         :content,
+        :raw_payload,
         :timestamp,
         :is_sidechain,
         :agent_id,
@@ -44,6 +45,7 @@ defmodule Spotter.Transcripts.Message do
         :type,
         :role,
         :content,
+        :raw_payload,
         :timestamp,
         :is_sidechain,
         :agent_id,
@@ -54,7 +56,7 @@ defmodule Spotter.Transcripts.Message do
 
       upsert? true
       upsert_identity :unique_session_uuid
-      upsert_fields [:content, :type, :role]
+      upsert_fields [:content, :raw_payload, :type, :role]
     end
   end
 
@@ -88,6 +90,7 @@ defmodule Spotter.Transcripts.Message do
     end
 
     attribute :content, :map
+    attribute :raw_payload, :map
 
     attribute :timestamp, :utc_datetime_usec do
       allow_nil? false
