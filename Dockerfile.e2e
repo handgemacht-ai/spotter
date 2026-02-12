@@ -1,0 +1,35 @@
+FROM hexpm/elixir:1.19.2-erlang-27.3.4-debian-bookworm-20250203
+
+ENV MIX_ENV=dev \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    TZ=UTC
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    file \
+    git \
+    jq \
+    nodejs \
+    npm \
+    tmux \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g @anthropic-ai/claude-code
+
+WORKDIR /app
+
+RUN mix local.hex --force && mix local.rebar --force
+
+COPY mix.exs mix.lock ./
+COPY config config
+RUN mix deps.get
+
+COPY assets/package.json assets/package-lock.json ./assets/
+RUN npm ci --prefix assets
+
+COPY . .
+RUN mix compile
+
+CMD ["bash", "-lc", "scripts/e2e/start_spotter.sh"]

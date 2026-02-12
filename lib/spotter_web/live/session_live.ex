@@ -476,45 +476,46 @@ defmodule SpotterWeb.SessionLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="breadcrumb">
-      <a href="/">Dashboard</a>
-      <span class="breadcrumb-sep">/</span>
-      <span class="breadcrumb-current">Session {String.slice(@session_id, 0..7)}</span>
-      <span :if={@pane_id} class="breadcrumb-meta">
-        Pane: {@pane_id}
-      </span>
-    </div>
-    <div class="session-layout">
-      <div class="session-terminal">
-        <div class="session-terminal-inner">
-          <%= if @pane_id do %>
-            <div
-              id="terminal"
-              phx-hook="Terminal"
-              data-pane-id={@pane_id}
-              data-cols={@cols}
-              data-rows={@rows}
-              phx-update="ignore"
-              class="terminal-container"
-            >
-            </div>
-          <% else %>
-            <div class="terminal-connecting">
-              <div>
-                <div class="terminal-connecting-title">Connecting to session...</div>
-                <div class="terminal-connecting-subtitle">Waiting for terminal to be ready</div>
-              </div>
-            </div>
-          <% end %>
-        </div>
+    <div data-testid="session-root">
+      <div class="breadcrumb">
+        <a href="/">Dashboard</a>
+        <span class="breadcrumb-sep">/</span>
+        <span class="breadcrumb-current">Session {String.slice(@session_id, 0..7)}</span>
+        <span :if={@pane_id} class="breadcrumb-meta">
+          Pane: {@pane_id}
+        </span>
       </div>
-      <div id="transcript-panel" class="session-transcript">
-        <div class="transcript-header">
-          <h3>Transcript</h3>
-          <span class={"transcript-header-hint#{if @show_debug, do: " debug-active", else: ""}"}>
-            {if @show_debug, do: "DEBUG ON", else: "Ctrl+Shift+D: debug"}
-          </span>
+      <div class="session-layout">
+        <div class="session-terminal">
+          <div class="session-terminal-inner">
+            <%= if @pane_id do %>
+              <div
+                id="terminal"
+                phx-hook="Terminal"
+                data-pane-id={@pane_id}
+                data-cols={@cols}
+                data-rows={@rows}
+                phx-update="ignore"
+                class="terminal-container"
+              >
+              </div>
+            <% else %>
+              <div class="terminal-connecting">
+                <div>
+                  <div class="terminal-connecting-title">Connecting to session...</div>
+                  <div class="terminal-connecting-subtitle">Waiting for terminal to be ready</div>
+                </div>
+              </div>
+            <% end %>
+          </div>
         </div>
+        <div id="transcript-panel" class="session-transcript" data-testid="transcript-container">
+          <div class="transcript-header">
+            <h3>Transcript</h3>
+            <span class={"transcript-header-hint#{if @show_debug, do: " debug-active", else: ""}"}>
+              {if @show_debug, do: "DEBUG ON", else: "Ctrl+Shift+D: debug"}
+            </span>
+          </div>
 
         <%= if @errors != [] do %>
           <div class="transcript-error-panel">
@@ -554,6 +555,8 @@ defmodule SpotterWeb.SessionLive do
               <div
                 id={"msg-#{line.line_number}"}
                 data-message-id={line.message_id}
+                data-testid="transcript-row"
+                data-line-number={line.line_number}
                 class={transcript_row_classes(line, @current_message_id, @clicked_subagent)}
                 data-render-mode={to_string(line[:render_mode] || "plain")}
               >
@@ -583,7 +586,9 @@ defmodule SpotterWeb.SessionLive do
             <% end %>
           </div>
         <% else %>
-          <p class="transcript-empty">No transcript available for this session.</p>
+          <p class="transcript-empty" data-testid="transcript-empty">
+            No transcript available for this session.
+          </p>
         <% end %>
       </div>
       <div class="session-sidebar">
@@ -707,6 +712,7 @@ defmodule SpotterWeb.SessionLive do
           <% end %>
         </div>
       </div>
+    </div>
     </div>
     """
   end

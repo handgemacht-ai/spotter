@@ -1,0 +1,9 @@
+title = "spotter-gitleaks"
+
+[allowlist]
+description = "Allow explicit redaction placeholders in sanitized fixtures"
+regexes = [
+  '''REDACTED_EMAIL''',
+  '''REDACTED_SECRET''',
+  '''REDACTED_SIGNATURE'''
+]

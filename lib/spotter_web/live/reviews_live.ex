@@ -221,7 +221,7 @@ defmodule SpotterWeb.ReviewsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="container">
+    <div class="container" data-testid="reviews-root">
       <div class="page-header">
         <h1>Reviews</h1>
       </div>

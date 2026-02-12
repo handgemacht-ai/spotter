@@ -336,7 +336,7 @@ defmodule SpotterWeb.PaneListLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="container">
+    <div class="container" data-testid="dashboard-root">
       <div class="page-header">
         <h1>Dashboard</h1>
         <div class="page-header-actions">
@@ -348,7 +348,12 @@ defmodule SpotterWeb.PaneListLive do
       <div class="mb-4">
         <div class="page-header">
           <h2 class="section-heading">Session Transcripts</h2>
-          <button class="btn" phx-click="ingest" disabled={@ingest_running}>
+          <button
+            class="btn"
+            phx-click="ingest"
+            disabled={@ingest_running}
+            data-testid="sync-transcripts-button"
+          >
             <%= if @ingest_running, do: "Ingesting...", else: "Ingest" %>
           </button>
         </div>
@@ -422,7 +427,7 @@ defmodule SpotterWeb.PaneListLive do
                   <tbody>
                     <%= for session <- project.visible_sessions do %>
                       <% subagents = Map.get(@subagents_by_session, session.id, []) %>
-                      <tr>
+                      <tr data-testid="session-row" data-session-id={session.session_id}>
                         <td>
                           <div>{SessionPresenter.primary_label(session)}</div>
                           <div class="text-muted text-xs">{SessionPresenter.secondary_label(session)}</div>
@@ -541,7 +546,7 @@ defmodule SpotterWeb.PaneListLive do
                       <tbody>
                         <%= for session <- project.hidden_sessions do %>
                           <% subagents = Map.get(@subagents_by_session, session.id, []) %>
-                          <tr>
+                          <tr data-testid="session-row" data-session-id={session.session_id}>
                             <td>
                               <div>{SessionPresenter.primary_label(session)}</div>
                               <div class="text-muted text-xs">{SessionPresenter.secondary_label(session)}</div>

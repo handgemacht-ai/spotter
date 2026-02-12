@@ -47,7 +47,11 @@ defmodule SpotterWeb.SessionLiveTest do
 
       {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}")
 
+      assert html =~ ~s(data-testid="session-root")
+      assert html =~ ~s(data-testid="transcript-container")
       assert html =~ "transcript-row"
+      assert html =~ ~s(data-testid="transcript-row")
+      assert html =~ ~s(data-line-number="1")
       assert html =~ "Hello world"
     end
 
@@ -258,6 +262,7 @@ defmodule SpotterWeb.SessionLiveTest do
       {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}")
 
       assert html =~ "transcript-empty"
+      assert html =~ ~s(data-testid="transcript-empty")
       assert html =~ "No transcript available"
     end
   end

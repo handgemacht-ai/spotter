@@ -60,6 +60,53 @@ Only links with `confidence >= 0.60` are persisted.
 - Squash merges may require inference and can be low-confidence
 - Git-only in V1; no GitHub/GitLab API integration
 
+## Local E2E (Docker + Playwright + Live Claude)
+
+Spotter includes a local-only E2E harness that runs:
+
+- Spotter app in Docker (`tmux` + `claude` available in container)
+- Playwright smoke tests with full-page visual snapshots (`maxDiffPixelRatio: 0.001`)
+
+### Prerequisites
+
+- Docker + Docker Compose
+- `ANTHROPIC_API_KEY` exported in your shell
+
+### Refresh transcript fixtures from host Claude sessions
+
+Fixture snapshot source is restricted to:
+
+- `~/.claude/projects/-home-*-projects-spotter`
+- `~/.claude/projects/-home-*-projects-spotter-worktrees*`
+
+Run:
+
+```bash
+scripts/e2e/snapshot_transcripts.sh
+scripts/e2e/scan_fixtures_secrets.sh
+```
+
+The snapshot script selects longer sessions (line-count based), forces subagent coverage when available, sanitizes data, and writes metadata to `test/fixtures/transcripts/README.md`.
+
+### Run E2E suite
+
+```bash
+ANTHROPIC_API_KEY=... scripts/e2e/run.sh
+```
+
+This command:
+
+1. builds app + runner containers
+2. seeds fixture transcripts into container `~/.claude/projects`
+3. runs Playwright smoke tests
+4. always tears down the compose stack
+
+### Artifacts and visual policy
+
+- Playwright artifacts: `e2e/test-results/` and `e2e/playwright-report/`
+- Snapshot assertions use full-page captures with tolerance `0.001`
+- If recurring flakiness appears, report artifacts first. Do not switch to component snapshots without an explicit user decision.
+
 ## OpenTelemetry Tracing
 
 Spotter includes end-to-end OpenTelemetry instrumentation across the full request path:
@@ -147,4 +194,3 @@ npm run build
 
 - Astro `base` is `/spotter` for project pages path handling.
 - The workflow deploys only when files under `site/**` or the workflow file change.
-

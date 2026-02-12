@@ -169,7 +169,7 @@ defmodule SpotterWeb.HistoryLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="container">
+    <div class="container" data-testid="history-root">
       <div class="page-header">
         <h1>Commit History</h1>
       </div>
