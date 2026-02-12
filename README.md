@@ -70,7 +70,7 @@ Spotter includes a local-only E2E harness that runs:
 ### Prerequisites
 
 - Docker + Docker Compose
-- `ANTHROPIC_API_KEY` exported in your shell
+- `ANTHROPIC_API_KEY` exported in your shell (the app will fail to start in dev/prod without it)
 
 ### Refresh transcript fixtures from host Claude sessions
 

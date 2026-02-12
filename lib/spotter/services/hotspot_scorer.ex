@@ -2,11 +2,13 @@ defmodule Spotter.Services.HotspotScorer do
   @moduledoc "Scores code snippets using Claude via LangChain for review prioritization."
 
   require Logger
+  require OpenTelemetry.Tracer, as: Tracer
 
   alias LangChain.Chains.LLMChain
   alias LangChain.ChatModels.ChatAnthropic
   alias LangChain.Message
 
+  @max_lines 500
   @rubric_factors ~w(complexity duplication error_handling test_coverage change_risk)
 
   @scoring_prompt """
@@ -32,10 +34,31 @@ defmodule Spotter.Services.HotspotScorer do
   @spec score(String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def score(relative_path, content, opts \\ []) do
     model = Keyword.get(opts, :model, "claude-haiku-4-5-20251001")
+    lines = String.split(content, "\n")
+    input_lines = length(lines)
+    truncated = input_lines > @max_lines
 
-    with {:ok, llm} <- build_llm(model),
-         {:ok, response} <- run_chain(llm, relative_path, content) do
-      parse_response(response)
+    Tracer.with_span "spotter.hotspot_scorer.score" do
+      Tracer.set_attribute("spotter.relative_path", relative_path)
+      Tracer.set_attribute("spotter.model", model)
+      Tracer.set_attribute("spotter.input_lines", input_lines)
+      Tracer.set_attribute("spotter.input_truncated", truncated)
+
+      with {:ok, llm} <- build_llm(model),
+           {:ok, response} <- run_chain(llm, relative_path, content) do
+        case parse_response(response) do
+          {:ok, _} = result ->
+            result
+
+          {:error, reason} = error ->
+            Tracer.set_status(:error, "parse_error: #{inspect(reason)}")
+            error
+        end
+      else
+        {:error, reason} = error ->
+          Tracer.set_status(:error, "chain_error: #{inspect(reason)}")
+          error
+      end
     end
   end
 
@@ -131,7 +154,6 @@ defmodule Spotter.Services.HotspotScorer do
   defp clamp(n) when is_number(n), do: n |> max(0.0) |> min(100.0) |> Float.round(1)
 
   # Limit content to avoid token overflow - ~500 lines should be enough for scoring
-  @max_lines 500
   defp truncate_content(content) do
     lines = String.split(content, "\n")
 

@@ -24,8 +24,9 @@ defmodule Spotter.Transcripts.Jobs.ComputeHeatmapTest do
     })
   end
 
-  test "perform/1 computes heatmap for project" do
+  test "perform/1 computes heatmap and enqueues ScoreHotspots" do
     project = create_project("job-test")
+    project_id = project.id
     session = create_session(project)
 
     Ash.create!(FileSnapshot, %{
@@ -38,26 +39,49 @@ defmodule Spotter.Transcripts.Jobs.ComputeHeatmapTest do
       timestamp: DateTime.utc_now()
     })
 
-    assert :ok = ComputeHeatmap.perform(%Oban.Job{args: %{"project_id" => project.id}})
+    assert :ok = ComputeHeatmap.perform(%Oban.Job{args: %{"project_id" => project_id}})
 
     heatmaps =
       FileHeatmap
-      |> Ash.Query.filter(project_id == ^project.id)
+      |> Ash.Query.filter(project_id == ^project_id)
       |> Ash.read!()
 
     assert length(heatmaps) == 1
     assert hd(heatmaps).relative_path == "lib/mod.ex"
     assert hd(heatmaps).heat_score > 0
+
+    # Verify ScoreHotspots was enqueued
+    import Ecto.Query
+
+    assert [%{args: %{"project_id" => ^project_id}}] =
+             Repo.all(
+               from(j in Oban.Job,
+                 where: j.worker == "Spotter.Transcripts.Jobs.ScoreHotspots",
+                 where: j.state == "available"
+               )
+             )
   end
 
-  test "perform/1 succeeds for empty project" do
-    project = create_project("job-empty")
+  test "perform/1 succeeds for empty project and still enqueues ScoreHotspots" do
+    import Ecto.Query
 
-    assert :ok = ComputeHeatmap.perform(%Oban.Job{args: %{"project_id" => project.id}})
+    project = create_project("job-empty")
+    project_id = project.id
+
+    assert :ok = ComputeHeatmap.perform(%Oban.Job{args: %{"project_id" => project_id}})
 
     assert [] =
              FileHeatmap
-             |> Ash.Query.filter(project_id == ^project.id)
+             |> Ash.Query.filter(project_id == ^project_id)
              |> Ash.read!()
+
+    # ScoreHotspots should still be enqueued even for empty projects
+    assert [%{args: %{"project_id" => ^project_id}}] =
+             Repo.all(
+               from(j in Oban.Job,
+                 where: j.worker == "Spotter.Transcripts.Jobs.ScoreHotspots",
+                 where: j.state == "available"
+               )
+             )
   end
 end

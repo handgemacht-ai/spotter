@@ -8,20 +8,45 @@ defmodule SpotterWeb.HotspotsLive do
   @max_rows 100
 
   @impl true
-  def mount(%{"project_id" => project_id}, _session, socket) do
-    case Ash.get(Project, project_id) do
-      {:ok, project} ->
-        {:ok,
-         socket
-         |> assign(project: project, min_score: 0, sort_by: :overall_score)
-         |> load_hotspots()}
+  def mount(_params, _session, socket) do
+    projects =
+      try do
+        Project |> Ash.read!()
+      rescue
+        _ -> []
+      end
 
-      _ ->
-        {:ok, assign(socket, project: nil, hotspot_entries: [])}
-    end
+    {:ok,
+     socket
+     |> assign(
+       projects: projects,
+       selected_project_id: nil,
+       min_score: 0,
+       sort_by: :overall_score,
+       hotspot_entries: []
+     )}
   end
 
   @impl true
+  def handle_params(params, _uri, socket) do
+    project_id = parse_project_id(params["project_id"])
+
+    socket =
+      socket
+      |> assign(selected_project_id: project_id)
+      |> load_hotspots()
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("filter_project", %{"project-id" => raw_id}, socket) do
+    project_id = parse_project_id(raw_id)
+    path = if project_id, do: "/hotspots?project_id=#{project_id}", else: "/hotspots"
+
+    {:noreply, push_patch(socket, to: path)}
+  end
+
   def handle_event("filter_min_score", %{"min_score" => raw}, socket) do
     min_score = parse_min_score(raw)
 
@@ -41,17 +66,35 @@ defmodule SpotterWeb.HotspotsLive do
   end
 
   defp load_hotspots(socket) do
-    %{project: project, min_score: min_score, sort_by: sort_by} = socket.assigns
+    %{selected_project_id: project_id, min_score: min_score, sort_by: sort_by} = socket.assigns
 
-    entries =
+    query =
       CodeHotspot
-      |> Ash.Query.filter(project_id == ^project.id and overall_score >= ^min_score)
+      |> Ash.Query.filter(overall_score >= ^min_score)
       |> Ash.Query.sort([{sort_by, :desc}])
       |> Ash.Query.limit(@max_rows)
-      |> Ash.read!()
+
+    query =
+      if project_id do
+        Ash.Query.filter(query, project_id == ^project_id)
+      else
+        query
+      end
+
+    entries =
+      try do
+        Ash.read!(query)
+      rescue
+        _ -> []
+      end
 
     assign(socket, hotspot_entries: entries)
   end
+
+  defp parse_project_id("all"), do: nil
+  defp parse_project_id(nil), do: nil
+  defp parse_project_id(""), do: nil
+  defp parse_project_id(id), do: id
 
   defp parse_min_score(raw) when is_binary(raw) do
     case Integer.parse(raw) do
@@ -62,7 +105,6 @@ defmodule SpotterWeb.HotspotsLive do
 
   defp parse_min_score(_), do: 0
 
-  defp parse_sort_by("complexity"), do: :overall_score
   defp parse_sort_by("scored_at"), do: :scored_at
   defp parse_sort_by(_), do: :overall_score
 
@@ -98,104 +140,126 @@ defmodule SpotterWeb.HotspotsLive do
     end
   end
 
+  defp selected_project(assigns) do
+    Enum.find(assigns.projects, &(&1.id == assigns.selected_project_id))
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
     <div class="container">
-      <%= if @project == nil do %>
+      <div class="page-header">
+        <h1>AI Hotspots</h1>
+        <div>
+          <a :if={@selected_project_id} href={"/projects/#{@selected_project_id}/heatmap"} class="btn btn-ghost">Heatmap</a>
+          <a :if={@selected_project_id} href={"/co-change?project_id=#{@selected_project_id}"} class="btn btn-ghost">Co-change</a>
+        </div>
+      </div>
+
+      <div class="filter-section">
+        <div>
+          <label class="filter-label">Project</label>
+          <div class="filter-bar">
+            <button
+              phx-click="filter_project"
+              phx-value-project-id="all"
+              class={"filter-btn#{if @selected_project_id == nil, do: " is-active"}"}
+            >
+              All
+            </button>
+            <button
+              :for={project <- @projects}
+              phx-click="filter_project"
+              phx-value-project-id={project.id}
+              class={"filter-btn#{if @selected_project_id == project.id, do: " is-active"}"}
+            >
+              {project.name}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="filter-label">Min score</label>
+          <div class="filter-bar">
+            <button
+              :for={threshold <- [0, 15, 40, 70]}
+              phx-click="filter_min_score"
+              phx-value-min_score={threshold}
+              class={"filter-btn#{if @min_score == threshold, do: " is-active"}"}
+            >
+              {threshold}+
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="filter-label">Sort by</label>
+          <div class="filter-bar">
+            <button
+              phx-click="sort_by"
+              phx-value-field="overall_score"
+              class={"filter-btn#{if @sort_by == :overall_score, do: " is-active"}"}
+            >
+              Score
+            </button>
+            <button
+              phx-click="sort_by"
+              phx-value-field="scored_at"
+              class={"filter-btn#{if @sort_by == :scored_at, do: " is-active"}"}
+            >
+              Scored at
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <%= if @hotspot_entries == [] do %>
         <div class="empty-state">
-          <p>Project not found.</p>
-          <a href="/" class="btn">Back to dashboard</a>
+          <%= if @selected_project_id && selected_project(assigns) do %>
+            No AI-scored hotspots for {selected_project(assigns).name} yet.
+          <% else %>
+            No AI-scored hotspots yet.
+          <% end %>
+          Run the scoring pipeline to analyze top heatmap files.
         </div>
       <% else %>
-        <div class="page-header">
-          <h1>AI Hotspots &mdash; {@project.name}</h1>
-          <div>
-            <a href={"/projects/#{@project.id}/heatmap"} class="btn btn-ghost">Heatmap</a>
-            <a href="/" class="btn btn-ghost">Back</a>
-          </div>
-        </div>
-
-        <div class="filter-section">
-          <div>
-            <label class="filter-label">Min score</label>
-            <div class="filter-bar">
-              <button
-                :for={threshold <- [0, 15, 40, 70]}
-                phx-click="filter_min_score"
-                phx-value-min_score={threshold}
-                class={"filter-btn#{if @min_score == threshold, do: " is-active"}"}
-              >
-                {threshold}+
-              </button>
+        <div class="hotspot-list">
+          <div :for={entry <- @hotspot_entries} class="hotspot-card">
+            <div class="hotspot-header">
+              <span class="hotspot-path" title={entry.relative_path}>
+                {entry.relative_path}
+              </span>
+              <span class={score_badge_class(entry.overall_score)}>
+                {Float.round(entry.overall_score, 1)}
+              </span>
             </div>
-          </div>
 
-          <div>
-            <label class="filter-label">Sort by</label>
-            <div class="filter-bar">
-              <button
-                phx-click="sort_by"
-                phx-value-field="overall_score"
-                class={"filter-btn#{if @sort_by == :overall_score, do: " is-active"}"}
-              >
-                Score
-              </button>
-              <button
-                phx-click="sort_by"
-                phx-value-field="scored_at"
-                class={"filter-btn#{if @sort_by == :scored_at, do: " is-active"}"}
-              >
-                Scored at
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <%= if @hotspot_entries == [] do %>
-          <div class="empty-state">
-            No AI-scored hotspots yet.
-            Run the scoring pipeline to analyze top heatmap files.
-          </div>
-        <% else %>
-          <div class="hotspot-list">
-            <div :for={entry <- @hotspot_entries} class="hotspot-card">
-              <div class="hotspot-header">
-                <span class="hotspot-path" title={entry.relative_path}>
-                  {entry.relative_path}
-                </span>
-                <span class={score_badge_class(entry.overall_score)}>
-                  {Float.round(entry.overall_score, 1)}
-                </span>
-              </div>
-
-              <div class="rubric-factors">
-                <div :for={{name, score} <- entry.rubric} class="rubric-row">
-                  <span class="rubric-name">{format_rubric_name(name)}</span>
-                  <div class="rubric-bar-bg">
-                    <div
-                      class="rubric-bar-fill"
-                      style={"width: #{rubric_bar_width(score)}; background: #{rubric_bar_color(score)}"}
-                    >
-                    </div>
+            <div class="rubric-factors">
+              <div :for={{name, score} <- entry.rubric} class="rubric-row">
+                <span class="rubric-name">{format_rubric_name(name)}</span>
+                <div class="rubric-bar-bg">
+                  <div
+                    class="rubric-bar-fill"
+                    style={"width: #{rubric_bar_width(score)}; background: #{rubric_bar_color(score)}"}
+                  >
                   </div>
-                  <span class="rubric-value">{round(score)}</span>
                 </div>
+                <span class="rubric-value">{round(score)}</span>
               </div>
-
-              <div class="hotspot-meta">
-                <span>Lines {entry.line_start}-{entry.line_end}</span>
-                <span>Scored {relative_time(entry.scored_at)}</span>
-                <span class="model-tag">{entry.model_used}</span>
-              </div>
-
-              <details class="snippet-details">
-                <summary>Preview snippet</summary>
-                <pre class="snippet-pre"><code>{entry.snippet}</code></pre>
-              </details>
             </div>
+
+            <div class="hotspot-meta">
+              <span>Lines {entry.line_start}-{entry.line_end}</span>
+              <span>Scored {relative_time(entry.scored_at)}</span>
+              <span class="model-tag">{entry.model_used}</span>
+            </div>
+
+            <details class="snippet-details">
+              <summary>Preview snippet</summary>
+              <pre class="snippet-pre"><code>{entry.snippet}</code></pre>
+            </details>
           </div>
-        <% end %>
+        </div>
       <% end %>
     </div>
 

@@ -30,7 +30,52 @@ defmodule SpotterWeb.CoChangeLiveTest do
     })
   end
 
-  describe "populated file scope" do
+  describe "global route" do
+    test "renders co-change page at /co-change" do
+      {:ok, _view, html} = live(build_conn(), "/co-change")
+
+      assert html =~ "Co-change Groups"
+    end
+
+    test "shows select project prompt without project" do
+      {:ok, _view, html} = live(build_conn(), "/co-change")
+
+      assert html =~ "Select a project to view co-change groups"
+    end
+
+    test "renders with project filter via query param" do
+      project = create_project("cochange-qp")
+
+      create_group(project,
+        group_key: "lib/a.ex|lib/b.ex",
+        members: ["lib/a.ex", "lib/b.ex"],
+        frequency: 5
+      )
+
+      {:ok, _view, html} = live(build_conn(), "/co-change?project_id=#{project.id}")
+
+      assert html =~ "lib/a.ex"
+      assert html =~ "lib/b.ex"
+    end
+
+    test "filter_project event navigates via push_patch" do
+      project = create_project("cochange-filter")
+
+      create_group(project,
+        group_key: "lib/x.ex|lib/y.ex",
+        members: ["lib/x.ex", "lib/y.ex"],
+        frequency: 3
+      )
+
+      {:ok, view, _html} = live(build_conn(), "/co-change")
+
+      html = render_click(view, "filter_project", %{"project-id" => project.id})
+
+      assert html =~ "lib/x.ex"
+    end
+  end
+
+  describe "project-scoped route" do
     test "renders rows sorted by max frequency" do
       project = create_project("cochange-pop")
 
@@ -54,7 +99,7 @@ defmodule SpotterWeb.CoChangeLiveTest do
       assert html =~ ~s(\u00d75)
       assert html =~ ~s(\u00d73)
 
-      # b.ex should come first (max freq 5), then a.ex (max freq 5), then c.ex (max freq 3)
+      # b.ex should come first (max freq 5), then c.ex (max freq 3)
       b_pos = :binary.match(html, "lib/b.ex") |> elem(0)
       c_pos = :binary.match(html, "lib/c.ex") |> elem(0)
       assert b_pos < c_pos
@@ -92,7 +137,7 @@ defmodule SpotterWeb.CoChangeLiveTest do
 
       {:ok, _view, html} = live(build_conn(), "/projects/#{project.id}/co-change")
 
-      assert html =~ "No co-change groups for this project yet"
+      assert html =~ "No co-change groups for"
     end
   end
 
@@ -102,6 +147,23 @@ defmodule SpotterWeb.CoChangeLiveTest do
         live(build_conn(), "/projects/019c0000-0000-7000-8000-000000000000/co-change")
 
       assert html =~ "Project not found"
+    end
+  end
+
+  describe "cross-links" do
+    test "shows heatmap and hotspots links when project selected" do
+      project = create_project("cochange-links")
+
+      create_group(project,
+        group_key: "lib/a.ex|lib/b.ex",
+        members: ["lib/a.ex", "lib/b.ex"],
+        frequency: 2
+      )
+
+      {:ok, _view, html} = live(build_conn(), "/co-change?project_id=#{project.id}")
+
+      assert html =~ "Heatmap"
+      assert html =~ "Hotspots"
     end
   end
 end

@@ -74,4 +74,6 @@ config :spark,
     ]
   ]
 
+config :spotter, env: config_env()
+
 import_config "#{config_env()}.exs"
