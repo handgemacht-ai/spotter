@@ -60,6 +60,64 @@ Only links with `confidence >= 0.60` are persisted.
 - Squash merges may require inference and can be low-confidence
 - Git-only in V1; no GitHub/GitLab API integration
 
+## OpenTelemetry Tracing
+
+Spotter includes end-to-end OpenTelemetry instrumentation across the full request path:
+
+```
+Plugin hooks → traceparent header → Phoenix controllers → Ash actions → LiveView → TerminalChannel
+```
+
+### Architecture
+
+| Layer | Instrumentation | Span/Event names |
+|---|---|---|
+| Plugin hooks | W3C `traceparent` header generation | (client-side, no spans) |
+| Phoenix controllers | `with_span` macro in hook controllers | `spotter.hook.*` |
+| Ash Framework | `opentelemetry_ash` tracer (action, custom, flow) | `ash.*` |
+| Oban jobs | Manual spans in `EnrichCommits.perform/1` | `spotter.enrich_commits.perform` |
+| LiveView | Telemetry handler for mount/handle_params/handle_event | `spotter.liveview.*` |
+| TerminalChannel | Span events for join/input/resize/stream lifecycle | `spotter.channel.*` |
+
+### Local mode (console exporter)
+
+By default in dev, spans are printed to stdout via the console exporter. No external collector required.
+
+```bash
+mix phx.server
+# Spans will appear in the terminal output
+```
+
+### Disabling tracing
+
+Set the environment variable before starting the server:
+
+```bash
+SPOTTER_OTEL_ENABLED=false mix phx.server
+```
+
+In test environment, the exporter is set to `:none` by default so no span output is produced.
+
+### Production (OTLP exporter)
+
+Set these environment variables to send spans to an OTLP-compatible collector:
+
+```bash
+export OTEL_EXPORTER=otlp
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+```
+
+### Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| No spans in console | `SPOTTER_OTEL_ENABLED=false` or test env | Check env var, ensure `traces_exporter: :stdout` in dev config |
+| Missing `x-spotter-trace-id` response header | No active span context | Verify plugin sends `traceparent` header |
+| Malformed `traceparent` from plugin | `openssl` unavailable in hook environment | Install openssl or check `/proc/sys/kernel/random/uuid` |
+| Exporter connection errors | OTLP endpoint unreachable | Verify `OTEL_EXPORTER_OTLP_ENDPOINT` is correct |
+| Duplicate telemetry handlers after code reload | Handler re-attachment | `LiveviewOtel.setup/0` detaches before re-attaching |
+| Ash action spans missing | Tracer not configured | Verify `config :ash, tracer: [OpentelemetryAsh]` in config |
+
 ## Landing page (Astro + GitHub Pages)
 
 ### Local development

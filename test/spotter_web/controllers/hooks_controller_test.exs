@@ -21,29 +21,37 @@ defmodule SpotterWeb.HooksControllerTest do
     %{session: session}
   end
 
-  defp post_snapshot(params) do
+  @valid_traceparent "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+  @malformed_traceparent "not-a-valid-traceparent"
+
+  defp post_snapshot(params, headers \\ []) do
     conn =
-      Phoenix.ConnTest.build_conn()
+      Enum.reduce(headers, Phoenix.ConnTest.build_conn(), fn {k, v}, conn ->
+        Plug.Conn.put_req_header(conn, k, v)
+      end)
       |> Plug.Conn.put_req_header("content-type", "application/json")
       |> Phoenix.ConnTest.dispatch(@endpoint, :post, "/api/hooks/file-snapshot", params)
 
-    {conn.status, Jason.decode!(conn.resp_body)}
+    {conn.status, Jason.decode!(conn.resp_body), conn}
+  end
+
+  defp snapshot_params(session) do
+    %{
+      "session_id" => session.session_id,
+      "tool_use_id" => "tool_abc",
+      "file_path" => "/tmp/test.ex",
+      "relative_path" => "test.ex",
+      "content_before" => nil,
+      "content_after" => "defmodule Test do\nend",
+      "change_type" => "created",
+      "source" => "write",
+      "timestamp" => DateTime.to_iso8601(DateTime.utc_now())
+    }
   end
 
   describe "POST /api/hooks/file-snapshot" do
     test "creates snapshot with valid params", %{session: session} do
-      {status, body} =
-        post_snapshot(%{
-          "session_id" => session.session_id,
-          "tool_use_id" => "tool_abc",
-          "file_path" => "/tmp/test.ex",
-          "relative_path" => "test.ex",
-          "content_before" => nil,
-          "content_after" => "defmodule Test do\nend",
-          "change_type" => "created",
-          "source" => "write",
-          "timestamp" => DateTime.to_iso8601(DateTime.utc_now())
-        })
+      {status, body, _conn} = post_snapshot(snapshot_params(session))
 
       assert status == 201
       assert body["ok"] == true
@@ -56,7 +64,7 @@ defmodule SpotterWeb.HooksControllerTest do
     end
 
     test "returns 404 for unknown session" do
-      {status, body} =
+      {status, body, _conn} =
         post_snapshot(%{
           "session_id" => Ash.UUID.generate(),
           "tool_use_id" => "tool_abc",
@@ -71,7 +79,7 @@ defmodule SpotterWeb.HooksControllerTest do
     end
 
     test "returns 400 for missing session_id" do
-      {status, body} =
+      {status, body, _conn} =
         post_snapshot(%{
           "tool_use_id" => "tool_abc",
           "file_path" => "/tmp/test.ex"
@@ -82,7 +90,7 @@ defmodule SpotterWeb.HooksControllerTest do
     end
 
     test "returns 400 for invalid change_type atom", %{session: session} do
-      {status, body} =
+      {status, body, _conn} =
         post_snapshot(%{
           "session_id" => session.session_id,
           "tool_use_id" => "tool_abc",
@@ -95,22 +103,61 @@ defmodule SpotterWeb.HooksControllerTest do
       assert status == 400
       assert body["error"] =~ "invalid change_type"
     end
+
+    test "succeeds with valid traceparent header", %{session: session} do
+      {status, body, conn} =
+        post_snapshot(snapshot_params(session), [{"traceparent", @valid_traceparent}])
+
+      assert status == 201
+      assert body["ok"] == true
+      assert Plug.Conn.get_resp_header(conn, "x-spotter-trace-id") != []
+    end
+
+    test "succeeds with malformed traceparent header", %{session: session} do
+      {status, body, _conn} =
+        post_snapshot(snapshot_params(session), [{"traceparent", @malformed_traceparent}])
+
+      assert status == 201
+      assert body["ok"] == true
+    end
+
+    test "succeeds without traceparent header", %{session: session} do
+      {status, body, _conn} = post_snapshot(snapshot_params(session))
+
+      assert status == 201
+      assert body["ok"] == true
+    end
   end
 
-  defp post_commit_event(params) do
+  defp post_commit_event(params, headers \\ []) do
     conn =
-      Phoenix.ConnTest.build_conn()
+      Enum.reduce(headers, Phoenix.ConnTest.build_conn(), fn {k, v}, conn ->
+        Plug.Conn.put_req_header(conn, k, v)
+      end)
       |> Plug.Conn.put_req_header("content-type", "application/json")
       |> Phoenix.ConnTest.dispatch(@endpoint, :post, "/api/hooks/commit-event", params)
 
-    {conn.status, Jason.decode!(conn.resp_body)}
+    {conn.status, Jason.decode!(conn.resp_body), conn}
+  end
+
+  defp commit_event_params(session) do
+    hash = String.duplicate("a", 40)
+
+    %{
+      "session_id" => session.session_id,
+      "tool_use_id" => "tool_xyz",
+      "new_commit_hashes" => [hash],
+      "base_head" => String.duplicate("0", 40),
+      "head" => hash,
+      "captured_at" => DateTime.to_iso8601(DateTime.utc_now())
+    }
   end
 
   describe "POST /api/hooks/commit-event" do
     test "ingests commits with valid params", %{session: session} do
       hash = String.duplicate("a", 40)
 
-      {status, body} =
+      {status, body, _conn} =
         post_commit_event(%{
           "session_id" => session.session_id,
           "tool_use_id" => "tool_xyz",
@@ -133,7 +180,7 @@ defmodule SpotterWeb.HooksControllerTest do
     end
 
     test "handles empty hashes array", %{session: session} do
-      {status, body} =
+      {status, body, _conn} =
         post_commit_event(%{
           "session_id" => session.session_id,
           "tool_use_id" => "tool_xyz",
@@ -153,15 +200,15 @@ defmodule SpotterWeb.HooksControllerTest do
         "new_commit_hashes" => [hash]
       }
 
-      {201, _} = post_commit_event(params)
-      {201, _} = post_commit_event(params)
+      {201, _, _} = post_commit_event(params)
+      {201, _, _} = post_commit_event(params)
 
       assert length(Ash.read!(Commit)) == 1
       assert length(Ash.read!(SessionCommitLink)) == 1
     end
 
     test "returns 404 for unknown session" do
-      {status, body} =
+      {status, body, _conn} =
         post_commit_event(%{
           "session_id" => Ash.UUID.generate(),
           "tool_use_id" => "tool_xyz",
@@ -173,7 +220,7 @@ defmodule SpotterWeb.HooksControllerTest do
     end
 
     test "returns 400 for invalid hash format", %{session: session} do
-      {status, body} =
+      {status, body, _conn} =
         post_commit_event(%{
           "session_id" => session.session_id,
           "tool_use_id" => "tool_xyz",
@@ -187,7 +234,7 @@ defmodule SpotterWeb.HooksControllerTest do
     test "returns 400 for too many hashes", %{session: session} do
       hashes = for i <- 1..51, do: String.pad_leading("#{i}", 40, "0")
 
-      {status, body} =
+      {status, body, _conn} =
         post_commit_event(%{
           "session_id" => session.session_id,
           "tool_use_id" => "tool_xyz",
@@ -199,10 +246,36 @@ defmodule SpotterWeb.HooksControllerTest do
     end
 
     test "returns 400 for missing required fields" do
-      {status, body} = post_commit_event(%{"session_id" => "abc"})
+      {status, body, _conn} = post_commit_event(%{"session_id" => "abc"})
 
       assert status == 400
       assert body["error"] =~ "required"
+    end
+
+    test "succeeds with valid traceparent header", %{session: session} do
+      {status, body, conn} =
+        post_commit_event(commit_event_params(session), [{"traceparent", @valid_traceparent}])
+
+      assert status == 201
+      assert body["ok"] == true
+      assert Plug.Conn.get_resp_header(conn, "x-spotter-trace-id") != []
+    end
+
+    test "succeeds with malformed traceparent header", %{session: session} do
+      {status, body, _conn} =
+        post_commit_event(commit_event_params(session), [
+          {"traceparent", @malformed_traceparent}
+        ])
+
+      assert status == 201
+      assert body["ok"] == true
+    end
+
+    test "succeeds without traceparent header", %{session: session} do
+      {status, body, _conn} = post_commit_event(commit_event_params(session))
+
+      assert status == 201
+      assert body["ok"] == true
     end
   end
 end
