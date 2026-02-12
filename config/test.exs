@@ -1,5 +1,8 @@
 import Config
 
+# Disable trace exporting during tests to avoid noise
+config :opentelemetry, traces_exporter: :none
+
 config :spotter, Oban, testing: :manual
 config :logger, level: :warning
 

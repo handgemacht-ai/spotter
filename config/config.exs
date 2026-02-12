@@ -1,5 +1,14 @@
 import Config
 
+# OpenTelemetry configuration
+config :opentelemetry,
+  text_map_propagators: [:trace_context, :baggage],
+  traces_exporter: :stdout
+
+# Configure Ash to use OpenTelemetry
+config :ash,
+  tracer: [OpentelemetryAsh]
+
 config :ash_oban, pro?: false
 
 config :spotter, Oban,

@@ -3,8 +3,13 @@ defmodule Spotter.Application do
 
   use Application
 
+  alias Spotter.Telemetry.Otel
+
   @impl true
   def start(_type, _args) do
+    # Initialize OpenTelemetry before starting children
+    Otel.setup()
+
     children = [
       {Phoenix.PubSub, name: Spotter.PubSub},
       Spotter.Services.SessionRegistry,

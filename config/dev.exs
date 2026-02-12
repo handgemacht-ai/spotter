@@ -1,5 +1,11 @@
 import Config
 
+# OpenTelemetry development configuration
+# Use stdout exporter and full sampling for local debugging
+config :opentelemetry,
+  span_processor: :batch,
+  traces_exporter: :stdout
+
 config :spotter, Spotter.Repo,
   database: "../path/to/your.db",
   show_sensitive_data_on_connection_error: true,
