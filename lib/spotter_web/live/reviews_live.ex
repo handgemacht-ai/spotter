@@ -218,6 +218,62 @@ defmodule SpotterWeb.ReviewsLive do
     end
   end
 
+  defp annotations_for_project(project_id, annotations, sessions_by_id) do
+    Enum.filter(annotations, fn ann ->
+      case Map.get(sessions_by_id, ann.session_id) do
+        %{project_id: ^project_id} -> true
+        _ -> false
+      end
+    end)
+  end
+
+  defp annotation_card(assigns) do
+    ann = assigns.ann
+    session = Map.get(assigns.sessions_by_id, ann.session_id)
+    project = session && Map.get(assigns.projects_by_id, session.project_id)
+
+    assigns =
+      assigns
+      |> assign(session: session, project: project)
+
+    ~H"""
+    <div class="annotation-card">
+      <div class="flex items-center gap-2 mb-2">
+        <span class={source_badge_class(@ann.source)}>
+          {source_badge(@ann.source)}
+        </span>
+        <span :if={@ann.source == :transcript && @ann.message_refs != []} class="text-muted text-xs">
+          {length(@ann.message_refs)} messages
+        </span>
+        <span :if={@project} class="text-muted text-xs">
+          {@project.name}
+        </span>
+        <span :if={@session} class="text-muted text-xs">
+          {session_label(@session)}
+        </span>
+        <%= if subagent_label(@ann) do %>
+          <span class="badge badge-agent">Subagent</span>
+          <span class="text-muted text-xs">{subagent_label(@ann)}</span>
+        <% else %>
+          <%= if @ann.subagent_id do %>
+            <span class="badge badge-agent">Subagent (missing)</span>
+          <% end %>
+        <% end %>
+      </div>
+      <pre class="annotation-text"><%= @ann.selected_text %></pre>
+      <p class="annotation-comment"><%= @ann.comment %></p>
+      <div class="annotation-meta">
+        <span class="annotation-time">
+          <%= Calendar.strftime(@ann.inserted_at, "%H:%M") %>
+        </span>
+        <a :if={@session} href={annotation_link(@ann, @session)} class="text-xs">
+          <%= if @ann.subagent_id && @ann.subagent, do: "View agent", else: "View session" %>
+        </a>
+      </div>
+    </div>
+    """
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -257,11 +313,7 @@ defmodule SpotterWeb.ReviewsLive do
         </div>
       </div>
 
-      <%= if @selected_project_id == nil do %>
-        <div class="review-header">
-          <span class="text-muted">Select a project to open or close a review session.</span>
-        </div>
-      <% else %>
+      <%= if @selected_project_id do %>
         <div class="review-header">
           <span class="review-count">
             {length(@open_annotations)} open annotations
@@ -275,49 +327,31 @@ defmodule SpotterWeb.ReviewsLive do
             </button>
           </div>
         </div>
-      <% end %>
 
-      <%= if @open_annotations == [] do %>
-        <div class="empty-state">
-          No open annotations for the selected scope.
-        </div>
+        <%= if @open_annotations == [] do %>
+          <div class="empty-state">
+            No open annotations for the selected scope.
+          </div>
+        <% else %>
+          <%= for ann <- @open_annotations do %>
+            <.annotation_card ann={ann} sessions_by_id={@sessions_by_id} projects_by_id={@projects_by_id} />
+          <% end %>
+        <% end %>
       <% else %>
-        <%= for ann <- @open_annotations do %>
-          <% session = Map.get(@sessions_by_id, ann.session_id) %>
-          <% project = session && Map.get(@projects_by_id, session.project_id) %>
-          <div class="annotation-card">
-            <div class="flex items-center gap-2 mb-2">
-              <span class={source_badge_class(ann.source)}>
-                {source_badge(ann.source)}
-              </span>
-              <span :if={ann.source == :transcript && ann.message_refs != []} class="text-muted text-xs">
-                {length(ann.message_refs)} messages
-              </span>
-              <span :if={project} class="text-muted text-xs">
-                {project.name}
-              </span>
-              <span :if={session} class="text-muted text-xs">
-                {session_label(session)}
-              </span>
-              <%= if subagent_label(ann) do %>
-                <span class="badge badge-agent">Subagent</span>
-                <span class="text-muted text-xs">{subagent_label(ann)}</span>
-              <% else %>
-                <%= if ann.subagent_id do %>
-                  <span class="badge badge-agent">Subagent (missing)</span>
-                <% end %>
+        <%= for pc <- @project_counts do %>
+          <% project_annotations = annotations_for_project(pc.project_id, @open_annotations, @sessions_by_id) %>
+          <div class="project-section">
+            <div class="project-header">
+              <span class="project-name">{pc.project_name}</span>
+              <span class="project-count">({pc.open_count} open)</span>
+            </div>
+            <%= if project_annotations == [] do %>
+              <div class="text-muted text-sm">No open annotations.</div>
+            <% else %>
+              <%= for ann <- project_annotations do %>
+                <.annotation_card ann={ann} sessions_by_id={@sessions_by_id} projects_by_id={@projects_by_id} />
               <% end %>
-            </div>
-            <pre class="annotation-text"><%= ann.selected_text %></pre>
-            <p class="annotation-comment"><%= ann.comment %></p>
-            <div class="annotation-meta">
-              <span class="annotation-time">
-                <%= Calendar.strftime(ann.inserted_at, "%H:%M") %>
-              </span>
-              <a :if={session} href={annotation_link(ann, session)} class="text-xs">
-                <%= if ann.subagent_id && ann.subagent, do: "View agent", else: "View session" %>
-              </a>
-            </div>
+            <% end %>
           </div>
         <% end %>
       <% end %>
