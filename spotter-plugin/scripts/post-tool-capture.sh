@@ -6,18 +6,26 @@
 set -euo pipefail
 trap 'exit 0' ERR
 
+# Source trace context helper (fail silently if unavailable)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+LIB_DIR="${SCRIPT_DIR}/lib"
+[ -f "${LIB_DIR}/trace_context.sh" ] && . "${LIB_DIR}/trace_context.sh"
+
 INPUT="$(cat)"
 
 TOOL_NAME="$(echo "$INPUT" | jq -r '.tool_name // empty')"
 TOOL_USE_ID="$(echo "$INPUT" | jq -r '.tool_use_id // empty')"
 SESSION_ID="$(echo "$INPUT" | jq -r '.session_id // empty')"
+HOOK_EVENT="$(echo "$INPUT" | jq -r '.hook_event_name // empty')"
 
 if [ -z "$TOOL_USE_ID" ] || [ -z "$SESSION_ID" ]; then
   exit 0
 fi
 
+# Generate trace context (fail gracefully if unavailable)
+TRACEPARENT="$(spotter_generate_traceparent 2>/dev/null || true)"
+
 # Determine Spotter URL
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
 PORT_FILE="$PLUGIN_DIR/../.port"
 
@@ -32,13 +40,19 @@ TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%S.%6NZ)"
 
 post_snapshot() {
   local json="$1"
-  curl -s -o /dev/null -X POST \
-    "${SPOTTER_URL}/api/hooks/file-snapshot" \
-    -H "Content-Type: application/json" \
-    -d "$json" \
-    --connect-timeout 2 \
-    --max-time 5 \
-    2>/dev/null || true
+  local curl_args=(
+    -s -o /dev/null -X POST
+    "${SPOTTER_URL}/api/hooks/file-snapshot"
+    -H "Content-Type: application/json"
+    -H "x-spotter-hook-event: ${HOOK_EVENT:-PostToolUse}"
+    -H "x-spotter-hook-script: post-tool-capture.sh"
+    -d "$json"
+    --connect-timeout 2
+    --max-time 5
+  )
+  # Add traceparent header if available
+  [ -n "${TRACEPARENT:-}" ] && curl_args+=(-H "traceparent: ${TRACEPARENT}")
+  curl "${curl_args[@]}" 2>/dev/null || true
 }
 
 get_relative_path() {
@@ -180,13 +194,19 @@ case "$TOOL_NAME" in
         '{session_id: $session_id, tool_use_id: $tool_use_id, git_branch: $git_branch, base_head: $base_head, head: $head, new_commit_hashes: $new_commit_hashes, captured_at: $captured_at}'
       )"
 
-      curl -s -o /dev/null -X POST \
-        "${SPOTTER_URL}/api/hooks/commit-event" \
-        -H "Content-Type: application/json" \
-        -d "$COMMIT_JSON" \
-        --connect-timeout 0.1 \
-        --max-time 0.3 \
-        2>/dev/null || true
+      local commit_curl_args=(
+        -s -o /dev/null -X POST
+        "${SPOTTER_URL}/api/hooks/commit-event"
+        -H "Content-Type: application/json"
+        -H "x-spotter-hook-event: ${HOOK_EVENT:-PostToolUse}"
+        -H "x-spotter-hook-script: post-tool-capture.sh"
+        -d "$COMMIT_JSON"
+        --connect-timeout 0.1
+        --max-time 0.3
+      )
+      # Add traceparent header if available
+      [ -n "${TRACEPARENT:-}" ] && commit_curl_args+=(-H "traceparent: ${TRACEPARENT}")
+      curl "${commit_curl_args[@]}" 2>/dev/null || true
     fi
 
     # Capture current state

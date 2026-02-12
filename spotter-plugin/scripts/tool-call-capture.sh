@@ -6,6 +6,11 @@
 set -euo pipefail
 trap 'exit 0' ERR
 
+# Source trace context helper (fail silently if unavailable)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+LIB_DIR="${SCRIPT_DIR}/lib"
+[ -f "${LIB_DIR}/trace_context.sh" ] && . "${LIB_DIR}/trace_context.sh"
+
 INPUT="$(cat)"
 
 SESSION_ID="$(echo "$INPUT" | jq -r '.session_id // empty')"
@@ -17,8 +22,10 @@ if [ -z "$TOOL_USE_ID" ] || [ -z "$SESSION_ID" ]; then
   exit 0
 fi
 
+# Generate trace context (fail gracefully if unavailable)
+TRACEPARENT="$(spotter_generate_traceparent 2>/dev/null || true)"
+
 # Determine Spotter URL
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
 PORT_FILE="$PLUGIN_DIR/../.port"
 
@@ -48,12 +55,20 @@ JSON="$(jq -n \
   '{session_id: $session_id, tool_use_id: $tool_use_id, tool_name: $tool_name, is_error: $is_error, error_content: (if $error_content == "" then null else $error_content end)}'
 )"
 
-curl -s -o /dev/null -X POST \
-  "${SPOTTER_URL}/api/hooks/tool-call" \
-  -H "Content-Type: application/json" \
-  -d "$JSON" \
-  --connect-timeout 2 \
-  --max-time 5 \
-  2>/dev/null || true
+CURL_ARGS=(
+  -s -o /dev/null -X POST
+  "${SPOTTER_URL}/api/hooks/tool-call"
+  -H "Content-Type: application/json"
+  -H "x-spotter-hook-event: ${HOOK_EVENT:-PostToolUse}"
+  -H "x-spotter-hook-script: tool-call-capture.sh"
+  -d "$JSON"
+  --connect-timeout 2
+  --max-time 5
+)
+
+# Add traceparent header if available
+[ -n "${TRACEPARENT:-}" ] && CURL_ARGS+=(-H "traceparent: ${TRACEPARENT}")
+
+curl "${CURL_ARGS[@]}" 2>/dev/null || true
 
 exit 0
