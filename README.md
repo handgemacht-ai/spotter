@@ -187,8 +187,14 @@ npm run build
 
 - Go to `Settings -> Pages` in `github.com/marot/spotter`
 - Under **Build and deployment**, set **Source** to `GitHub Actions`
-- Push to `main` to trigger `.github/workflows/deploy-pages.yml`
-- Confirm published URL is `https://marot.github.io/spotter/`
+- Pushes to `master` or `main` trigger `.github/workflows/deploy-pages.yml` when `site/**` or workflow files change
+
+### Verification checklist
+
+- Workflow run name is `Deploy Astro site to Pages`.
+- Build job completes `npm ci` and `npm run build` in `site/`.
+- Deploy job publishes `site/dist` to `github-pages` environment.
+- Published URL remains `https://marot.github.io/spotter/`.
 
 ### Notes
 

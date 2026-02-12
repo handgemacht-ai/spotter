@@ -4,7 +4,7 @@ interface Props {
   description?: string;
 }
 
-const { title, description = "Terminal session intelligence for teams." } = Astro.props;
+const { title, description = "Review Claude Code sessions with commit-level intelligence." } = Astro.props;
 ---
 
 <!doctype html>
@@ -13,7 +13,10 @@ const { title, description = "Terminal session intelligence for teams." } = Astr
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
-    <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}favicon.svg`} />
+    <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL.replace(/\/?$/, '/')}favicon.svg`} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <title>{title}</title>
   </head>
   <body>
@@ -23,13 +26,17 @@ const { title, description = "Terminal session intelligence for teams." } = Astr
 
 <style is:global>
   :root {
-    --color-bg: #0f172a;
-    --color-surface: #1e293b;
-    --color-text: #e2e8f0;
-    --color-muted: #94a3b8;
-    --color-accent: #818cf8;
-    --color-accent-hover: #6366f1;
-    --max-width: 64rem;
+    --bg: #0c1120;
+    --bg-elevated: #141d2f;
+    --text: #d8dee9;
+    --muted: #7b879a;
+    --accent: #d4915e;
+    --accent-strong: #e8a46d;
+    --border: #1e2a3e;
+    --shadow: rgba(0, 0, 0, 0.45);
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+    --max-width: 72rem;
   }
 
   *,
@@ -41,13 +48,48 @@ const { title, description = "Terminal session intelligence for teams." } = Astr
   }
 
   html {
-    font-family: system-ui, -apple-system, sans-serif;
-    background: var(--color-bg);
-    color: var(--color-text);
+    font-family: var(--font-display);
+    background: var(--bg);
+    color: var(--text);
     line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   body {
     min-height: 100dvh;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* Layered background: base gradient + dot grid pattern + radial glow */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(212, 145, 94, 0.07) 0%, transparent 60%),
+      linear-gradient(170deg, #0c1120 0%, #0e1526 40%, #111a2d 100%);
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background-image: radial-gradient(circle, rgba(212, 145, 94, 0.04) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.4) 20%, rgba(0,0,0,0.4) 80%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.4) 20%, rgba(0,0,0,0.4) 80%, transparent 100%);
+  }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 </style>

@@ -2,116 +2,557 @@
 import Layout from "../layouts/Layout.astro";
 ---
 
-<Layout title="Spotter | Terminal Session Intelligence">
+<Layout title="Spotter | Review Claude Code Sessions with Commit-Level Intelligence">
   <main>
+    <!-- Hero -->
     <section class="hero">
-      <h1>Spotter</h1>
-      <p class="lead">
-        Spotter gives structure to terminal session output so teams can search,
-        review, and analyze runs without scrolling through raw logs.
+      <div class="hero-badge">Open-source session reviewer</div>
+      <h1 class="hero-headline">Review Claude Code sessions with commit-level intelligence.</h1>
+      <p class="hero-sub">
+        Spotter turns raw terminal and transcript streams into searchable timelines,
+        linked commits, AI-ranked hotspots, and traceable execution context.
       </p>
-      <div class="cta">
-        <a href="https://github.com/marot/spotter" class="btn btn-primary">View on GitHub</a>
-        <a href="https://github.com/marot/spotter/issues" class="btn btn-secondary">Report an Issue</a>
+      <div class="hero-ctas">
+        <a href="https://github.com/marot/spotter" class="btn btn-primary">View the code on GitHub</a>
+        <a href="https://github.com/marot/spotter/blob/master/.beads/issues.jsonl" class="btn btn-secondary">Track roadmap in beads</a>
+      </div>
+      <div class="hero-tertiary">
+        <a href="https://github.com/marot/spotter/issues" class="link-tertiary">Report or request on GitHub Issues</a>
       </div>
     </section>
 
-    <section class="features">
-      <div class="card">
-        <h2>Capture Context</h2>
-        <p>Record terminal sessions with structured metadata so every command, output, and annotation is preserved.</p>
+    <!-- Features -->
+    <section class="features" id="features">
+      <h2 class="section-label">What Spotter does today</h2>
+      <div class="feature-grid">
+        <div class="feature-card" style="--delay: 0">
+          <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M6 8l4 3-4 3"/><line x1="12" y1="14" x2="18" y2="14"/></svg></div>
+          <h3>Live Transcript + Terminal Parity</h3>
+          <ul>
+            <li>Review sessions with a synchronized terminal replay alongside a structured transcript, so you never lose the context of what the agent saw when it made a decision.</li>
+            <li>Search, scroll, and annotate directly in the transcript without switching between raw log files and terminal windows.</li>
+            <li>See tool calls, errors, and rework events inline so failed attempts are visible at a glance rather than buried in output.</li>
+          </ul>
+        </div>
+        <div class="feature-card" style="--delay: 1">
+          <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></svg></div>
+          <h3>Session-to-Commit Lineage</h3>
+          <ul>
+            <li>Every commit created during a Claude Code session is automatically linked back to that session with verified confidence, so you know exactly which conversation produced which code.</li>
+            <li>Inferred links surface related commits even when they were not directly captured, using parent ancestry, patch matching, and file overlap signals.</li>
+            <li>Browse commit history filtered by project and branch, with session associations displayed alongside each commit for fast cross-referencing.</li>
+          </ul>
+        </div>
+        <div class="feature-card" style="--delay: 2">
+          <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div>
+          <h3>AI Hotspots + Co-change Evidence</h3>
+          <ul>
+            <li>AI-scored hotspots rank code snippets by review priority using a multi-factor rubric, so reviewers focus on the riskiest changes first instead of reading diffs linearly.</li>
+            <li>Co-change analysis groups files that were modified together across sessions, revealing implicit coupling and unexpected dependencies before they cause merge conflicts.</li>
+            <li>Heatmaps visualize file-level churn and edit frequency per project, giving teams a quick overview of where AI agents concentrated their changes.</li>
+          </ul>
+        </div>
+        <div class="feature-card" style="--delay: 3">
+          <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div>
+          <h3>Subagent-aware Review Flow</h3>
+          <ul>
+            <li>Subagents spawned during a session are listed with their own message counts and timestamps, so reviewers can drill into each agent's contribution separately.</li>
+            <li>Navigate from a parent session to any subagent transcript with a single click, maintaining full context about the session hierarchy.</li>
+            <li>Annotate subagent transcripts independently, keeping review notes scoped to the specific agent that produced the code under review.</li>
+          </ul>
+        </div>
+        <div class="feature-card" style="--delay: 4">
+          <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div>
+          <h3>Tracing + Local E2E Confidence</h3>
+          <ul>
+            <li>End-to-end OpenTelemetry instrumentation traces requests from plugin hooks through Phoenix controllers, Ash actions, and LiveView interactions, so every operation is observable.</li>
+            <li>Local E2E tests with Playwright run against real transcript fixtures inside Docker, giving teams confidence that the review workflow works before deploying changes.</li>
+            <li>Silent-fail hook semantics guarantee that Spotter never blocks Claude Code, keeping agent performance within the sub-200ms budget even when the review server is unavailable.</li>
+          </ul>
+        </div>
       </div>
-      <div class="card">
-        <h2>Inspect Faster</h2>
-        <p>Navigate sessions with search, filtering, and an interactive terminal replay instead of scrolling raw text.</p>
+    </section>
+
+    <!-- How It Works -->
+    <section class="how-it-works">
+      <h2 class="section-label">How Spotter works</h2>
+      <div class="steps">
+        <div class="step">
+          <span class="step-number">1</span>
+          <div class="step-content">
+            <h3>Install hooks and start the server</h3>
+            <p>Install the Spotter hooks in your Claude Code environment and start the Phoenix server locally. As you work with Claude Code, hooks automatically capture session events and commit metadata in the background without interrupting your workflow.</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-number">2</span>
+          <div class="step-content">
+            <h3>Browse sessions on the dashboard</h3>
+            <p>Open the Spotter dashboard to see all your projects and sessions organized by recency. Click any session to enter the review view, where a live terminal replay runs alongside a structured, searchable transcript with inline errors, tool calls, and rework indicators.</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-number">3</span>
+          <div class="step-content">
+            <h3>Review, annotate, and trace</h3>
+            <p>Use the sidebar to inspect linked commits, review AI-scored hotspots that flag the riskiest changes, and add annotations to specific terminal selections or transcript passages. Drill into subagent transcripts when sessions spawned child agents, and use the commit history and co-change views to trace how AI-generated code flows into your repository.</p>
+          </div>
+        </div>
       </div>
-      <div class="card">
-        <h2>Self-hosted and OSS</h2>
-        <p>Run Spotter on your own infrastructure. No third-party services, no data leaving your network.</p>
+    </section>
+
+    <!-- Proof -->
+    <section class="proof">
+      <h2 class="section-label">Built for real review work</h2>
+      <div class="proof-grid">
+        <div class="proof-item">
+          <span class="proof-accent">Faster reviews</span>
+          <p>AI-ranked hotspots and inline error panels surface what matters first, cutting time spent scrolling through clean diffs to find the risky changes.</p>
+        </div>
+        <div class="proof-item">
+          <span class="proof-accent">Clearer context</span>
+          <p>Session-to-commit linking and subagent-aware transcripts give reviewers the full picture of why code was written, not just what changed.</p>
+        </div>
+        <div class="proof-item">
+          <span class="proof-accent">Confident merges</span>
+          <p>Co-change evidence, tracing instrumentation, and local E2E coverage let teams verify AI-generated code before it reaches the main branch.</p>
+        </div>
       </div>
+    </section>
+
+    <!-- Quickstart -->
+    <section class="quickstart">
+      <h2 class="section-label">Try Spotter locally</h2>
+      <div class="quickstart-steps">
+        <div class="step">
+          <span class="step-number">1</span>
+          <div class="step-content">
+            <h3>Clone the repository</h3>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-number">2</span>
+          <div class="step-content">
+            <h3>Install dependencies</h3>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-number">3</span>
+          <div class="step-content">
+            <h3>Run the Phoenix server</h3>
+          </div>
+        </div>
+      </div>
+      <pre class="quickstart-code"><code>git clone https://github.com/marot/spotter.git
+cd spotter
+mix setup && mix phx.server</code></pre>
+      <p class="quickstart-guardrail">Spotter is an open-source localhost prototype; managed cloud hosting is not part of the current product.</p>
+    </section>
+
+    <!-- Footer CTA -->
+    <section class="footer-cta">
+      <p class="footer-mono">Self-hosted. Open source. Run it locally today.</p>
+      <a href="https://github.com/marot/spotter" class="btn btn-primary">View the code on GitHub</a>
     </section>
   </main>
 </Layout>
 
 <style>
+  /* ---- Base ---- */
   main {
     max-width: var(--max-width);
     margin: 0 auto;
-    padding: 4rem 1.5rem;
+    padding: 0 1.5rem;
   }
 
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 2.5rem;
+  }
+
+  /* ---- Hero ---- */
   .hero {
     text-align: center;
-    margin-bottom: 4rem;
+    padding: 6rem 0 5rem;
+    animation: heroIn 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
-  .hero h1 {
-    font-size: clamp(2.5rem, 6vw, 4rem);
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    margin-bottom: 1rem;
+  @keyframes heroIn {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
-  .lead {
-    font-size: 1.25rem;
-    color: var(--color-muted);
-    max-width: 40rem;
-    margin: 0 auto 2rem;
+  .hero-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 0.35rem 1rem;
+    margin-bottom: 2rem;
+    background: rgba(212, 145, 94, 0.04);
   }
 
-  .cta {
+  .hero-headline {
+    font-size: clamp(2rem, 5.5vw, 3.5rem);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.025em;
+    max-width: 48rem;
+    margin: 0 auto 1.5rem;
+    color: #f0f3f8;
+  }
+
+  .hero-sub {
+    font-size: clamp(1rem, 2vw, 1.2rem);
+    color: var(--muted);
+    max-width: 38rem;
+    margin: 0 auto 2.5rem;
+    line-height: 1.7;
+  }
+
+  .hero-ctas {
     display: flex;
-    gap: 1rem;
+    gap: 0.75rem;
     justify-content: center;
     flex-wrap: wrap;
   }
 
+  /* ---- Buttons ---- */
   .btn {
     display: inline-block;
-    padding: 0.75rem 1.5rem;
-    border-radius: 0.5rem;
-    font-weight: 600;
+    font-family: var(--font-display);
+    font-size: 0.9rem;
+    font-weight: 500;
     text-decoration: none;
-    transition: background 0.15s;
+    padding: 0.7rem 1.5rem;
+    border-radius: 8px;
+    transition: background 0.15s, box-shadow 0.15s;
   }
 
   .btn-primary {
-    background: var(--color-accent);
-    color: #fff;
+    background: var(--accent);
+    color: #0c1120;
+    box-shadow: 0 1px 3px var(--shadow), inset 0 1px 0 rgba(255,255,255,0.12);
   }
 
   .btn-primary:hover {
-    background: var(--color-accent-hover);
+    background: var(--accent-strong);
+    box-shadow: 0 4px 16px rgba(212, 145, 94, 0.25);
   }
 
   .btn-secondary {
-    background: var(--color-surface);
-    color: var(--color-text);
+    background: var(--bg-elevated);
+    color: var(--text);
+    border: 1px solid var(--border);
   }
 
   .btn-secondary:hover {
-    background: #334155;
+    background: #1a2640;
+    border-color: #2a3a54;
   }
 
+  /* ---- Features ---- */
   .features {
+    padding: 4rem 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+    gap: 1.25rem;
+  }
+
+  .feature-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.75rem;
+    animation: cardIn 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(100ms + var(--delay, 0) * 80ms);
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .feature-card:hover {
+    border-color: #2a3a54;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  }
+
+  @keyframes cardIn {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .feature-icon {
+    width: 2rem;
+    height: 2rem;
+    color: var(--accent);
+    margin-bottom: 1rem;
+  }
+
+  .feature-icon svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .feature-card h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+    color: #f0f3f8;
+  }
+
+  .feature-card ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .feature-card li {
+    font-size: 0.88rem;
+    line-height: 1.6;
+    color: var(--muted);
+    padding-left: 1rem;
+    position: relative;
+  }
+
+  .feature-card li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.55em;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0.6;
+  }
+
+  /* ---- How It Works ---- */
+  .how-it-works {
+    padding: 4rem 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    max-width: 44rem;
+  }
+
+  .step {
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-start;
+  }
+
+  .step-number {
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--accent);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(212, 145, 94, 0.04);
+  }
+
+  .step-content h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 0.4rem;
+    color: #f0f3f8;
+  }
+
+  .step-content p {
+    font-size: 0.9rem;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+
+  /* ---- Proof ---- */
+  .proof {
+    padding: 4rem 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .proof-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 1.25rem;
+  }
+
+  .proof-item {
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-elevated);
+  }
+
+  .proof-accent {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--accent);
+    letter-spacing: 0.03em;
+    margin-bottom: 0.6rem;
+  }
+
+  .proof-item p {
+    font-size: 0.88rem;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+
+  /* ---- Footer CTA ---- */
+  .footer-cta {
+    padding: 4rem 0 5rem;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: 1.5rem;
   }
 
-  .card {
-    background: var(--color-surface);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
+  .footer-mono {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: var(--muted);
+    letter-spacing: 0.02em;
   }
 
-  .card h2 {
-    font-size: 1.25rem;
-    margin-bottom: 0.5rem;
+  /* ---- Tertiary link ---- */
+  .hero-tertiary {
+    margin-top: 1rem;
+    text-align: center;
   }
 
-  .card p {
-    color: var(--color-muted);
-    font-size: 0.95rem;
+  .link-tertiary {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: var(--muted);
+    text-decoration: none;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 1px;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .link-tertiary:hover {
+    color: var(--text);
+    border-color: var(--muted);
+  }
+
+  /* ---- Quickstart ---- */
+  .quickstart {
+    padding: 4rem 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .quickstart-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-width: 44rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .quickstart-code {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: var(--text);
+    line-height: 1.7;
+    overflow-x: auto;
+    max-width: 44rem;
+  }
+
+  .quickstart-guardrail {
+    margin-top: 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: var(--muted);
+    max-width: 44rem;
+  }
+
+  /* ---- Responsive: Desktop wide ---- */
+  @media (min-width: 1200px) {
+    .feature-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .proof-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  /* ---- Responsive: Mobile ---- */
+  @media (max-width: 480px) {
+    .hero {
+      padding: 3.5rem 0 3rem;
+    }
+
+    .hero-headline {
+      font-size: 1.75rem;
+    }
+
+    .hero-ctas {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .btn {
+      text-align: center;
+    }
+
+    .feature-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .step {
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .proof-grid {
+      grid-template-columns: 1fr;
+    }
   }
 </style>
