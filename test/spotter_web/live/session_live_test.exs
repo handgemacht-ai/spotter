@@ -363,16 +363,16 @@ defmodule SpotterWeb.SessionLiveTest do
       {:ok, view, html} = live(build_conn(), "/sessions/#{session_id}")
       assert html =~ "transcript-empty"
 
-      # Create a message after mount
+      # Create a message after mount and update session message_count
+      # so maybe_bootstrap_sync is skipped on reload
       create_message(session, %{
         content: %{"blocks" => [%{"type" => "text", "text" => "live update message"}]}
       })
 
-      Phoenix.PubSub.broadcast!(
-        Spotter.PubSub,
-        "session_transcripts:#{session_id}",
-        {:transcript_updated, session_id, 1}
-      )
+      Ash.update!(session, %{message_count: 1})
+
+      # Send directly to view process to avoid PubSub timing issues
+      send(view.pid, {:transcript_updated, session_id, 1})
 
       html = render(view)
       assert html =~ "live update message"

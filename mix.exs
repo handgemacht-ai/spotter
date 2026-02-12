@@ -12,7 +12,8 @@ defmodule Spotter.MixProject do
       aliases: aliases(),
       elixirc_paths: elixirc_paths(Mix.env()),
       usage_rules: usage_rules(),
-      listeners: [Phoenix.CodeReloader]
+      listeners: [Phoenix.CodeReloader],
+      dialyzer: [plt_add_apps: [:mix]]
     ]
   end
 

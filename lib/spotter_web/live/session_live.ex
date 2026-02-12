@@ -432,26 +432,31 @@ defmodule SpotterWeb.SessionLive do
     session_id = socket.assigns.session_id
     {session_record, messages} = load_session_data(session_id)
 
-    opts =
-      if session_record && session_record.cwd, do: [session_cwd: session_record.cwd], else: []
+    session_cwd = if session_record, do: session_record.cwd, else: nil
 
-    rendered_lines = Spotter.Services.TranscriptRenderer.render(messages, opts)
     errors = load_errors(session_record)
     rework_events = load_rework_events(session_record)
     commit_links = load_commit_links(session_id)
+
+    socket =
+      socket
+      |> assign(
+        session_record: session_record,
+        messages: messages,
+        errors: errors,
+        rework_events: rework_events,
+        commit_links: commit_links
+      )
+      |> update_computer_inputs(:transcript_view, %{
+        messages: messages,
+        session_cwd: session_cwd
+      })
+
+    rendered_lines = socket.assigns.transcript_view_rendered_lines
     {breakpoint_map, anchors} = compute_sync_data(socket.assigns.pane_id, rendered_lines)
 
     socket
-    |> assign(
-      session_record: session_record,
-      messages: messages,
-      rendered_lines: rendered_lines,
-      errors: errors,
-      rework_events: rework_events,
-      commit_links: commit_links,
-      breakpoint_map: breakpoint_map,
-      anchors: anchors
-    )
+    |> assign(breakpoint_map: breakpoint_map, anchors: anchors)
     |> push_sync_events()
   end
 

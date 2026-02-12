@@ -42,6 +42,7 @@ defmodule SpotterWeb.TranscriptComponents do
     <%= if @rendered_lines != [] do %>
       <div
         id="transcript-messages"
+        data-testid="transcript-container"
         phx-hook="TranscriptHighlighter"
         phx-update="replace"
         class={if @show_debug, do: "transcript-debug-grid", else: ""}
@@ -66,7 +67,7 @@ defmodule SpotterWeb.TranscriptComponents do
         <% end %>
       </div>
     <% else %>
-      <p class="transcript-empty">{@empty_message}</p>
+      <p class="transcript-empty" data-testid="transcript-empty">{@empty_message}</p>
     <% end %>
     """
   end
@@ -84,7 +85,9 @@ defmodule SpotterWeb.TranscriptComponents do
     ~H"""
     <div
       id={"msg-#{@line.line_number}"}
+      data-testid="transcript-row"
       data-message-id={@line.message_id}
+      data-line-number={@line.line_number}
       class={row_classes(@line, @current_message_id, @clicked_subagent)}
       data-render-mode={to_string(@line[:render_mode] || "plain")}
     >
