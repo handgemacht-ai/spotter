@@ -119,6 +119,7 @@ defmodule Spotter.Transcripts.Session do
     has_many :subagents, Spotter.Transcripts.Subagent
     has_many :annotations, Spotter.Transcripts.Annotation
     has_many :tool_calls, Spotter.Transcripts.ToolCall
+    has_many :session_reworks, Spotter.Transcripts.SessionRework
   end
 
   identities do

@@ -51,6 +51,11 @@ defmodule Spotter.Transcripts do
         get :read
         index :read
       end
+
+      base_route "/session_reworks", Spotter.Transcripts.SessionRework do
+        get :read
+        index :read
+      end
     end
   end
 
@@ -66,5 +71,6 @@ defmodule Spotter.Transcripts do
     resource Spotter.Transcripts.Commit
     resource Spotter.Transcripts.SessionCommitLink
     resource Spotter.Transcripts.FileHeatmap
+    resource Spotter.Transcripts.SessionRework
   end
 end

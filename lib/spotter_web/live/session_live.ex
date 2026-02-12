@@ -16,6 +16,7 @@ defmodule SpotterWeb.SessionLive do
     Message,
     Session,
     SessionCommitLink,
+    SessionRework,
     ToolCall
   }
 
@@ -45,6 +46,7 @@ defmodule SpotterWeb.SessionLive do
     {session_record, messages, rendered_lines} = load_transcript(session_id)
     annotations = load_annotations(session_record)
     errors = load_errors(session_record)
+    rework_events = load_rework_events(session_record)
     commit_links = load_commit_links(session_id)
     {breakpoint_map, anchors} = compute_sync_data(pane_id, rendered_lines)
 
@@ -67,6 +69,7 @@ defmodule SpotterWeb.SessionLive do
         messages: messages,
         rendered_lines: rendered_lines,
         errors: errors,
+        rework_events: rework_events,
         commit_links: commit_links,
         current_message_id: nil,
         show_transcript: true,
@@ -250,19 +253,11 @@ defmodule SpotterWeb.SessionLive do
   end
 
   def handle_event("jump_to_error", %{"tool-use-id" => tool_use_id}, socket) do
-    line_index =
-      Enum.find_index(socket.assigns.rendered_lines, fn line ->
-        line[:tool_use_id] == tool_use_id
-      end)
+    {:noreply, jump_to_tool_use(socket, tool_use_id)}
+  end
 
-    socket =
-      if line_index do
-        push_event(socket, "scroll_to_transcript_line", %{index: line_index})
-      else
-        socket
-      end
-
-    {:noreply, socket}
+  def handle_event("jump_to_rework", %{"tool-use-id" => tool_use_id}, socket) do
+    {:noreply, jump_to_tool_use(socket, tool_use_id)}
   end
 
   def handle_event("toggle_debug", _params, socket) do
@@ -275,6 +270,19 @@ defmodule SpotterWeb.SessionLive do
 
   def handle_event("switch_sidebar_tab", %{"tab" => tab}, socket) do
     {:noreply, assign(socket, active_sidebar_tab: String.to_existing_atom(tab))}
+  end
+
+  defp jump_to_tool_use(socket, tool_use_id) do
+    line_index =
+      Enum.find_index(socket.assigns.rendered_lines, fn line ->
+        line[:tool_use_id] == tool_use_id
+      end)
+
+    if line_index do
+      push_event(socket, "scroll_to_transcript_line", %{index: line_index})
+    else
+      socket
+    end
   end
 
   defp compute_sync_data(nil, _rendered_lines), do: {[], []}
@@ -409,6 +417,15 @@ defmodule SpotterWeb.SessionLive do
     |> Ash.read!()
   end
 
+  defp load_rework_events(nil), do: []
+
+  defp load_rework_events(session) do
+    SessionRework
+    |> Ash.Query.filter(session_id == ^session.id)
+    |> Ash.Query.sort(occurrence_index: :asc, event_timestamp: :asc)
+    |> Ash.read!()
+  end
+
   defp load_annotations(nil), do: []
 
   defp load_annotations(%Session{id: id}) do
@@ -509,6 +526,21 @@ defmodule SpotterWeb.SessionLive do
               <span :if={error.error_content} class="error-content">
                 {String.slice(error.error_content, 0, 100)}
               </span>
+            </div>
+          </div>
+        <% end %>
+
+        <%= if @rework_events != [] do %>
+          <div class="transcript-rework-panel">
+            <div class="rework-title">Rework ({length(@rework_events)})</div>
+            <div
+              :for={event <- @rework_events}
+              phx-click="jump_to_rework"
+              phx-value-tool-use-id={event.tool_use_id}
+              class="transcript-rework-item"
+            >
+              <span class="rework-file">{event.relative_path || event.file_path}</span>
+              <span class="rework-occurrence">#{event.occurrence_index}</span>
             </div>
           </div>
         <% end %>

@@ -155,6 +155,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
         session = upsert_session!(project, transcript_dir, parsed, index_meta)
         create_messages!(session, parsed.messages)
         create_tool_calls!(session, parsed.messages)
+        create_session_reworks!(session, parsed)
         sync_subagents(session, dir, parsed.session_id)
 
       {:error, reason} ->
@@ -323,6 +324,18 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   end
 
   defp extract_text_content(_), do: ""
+
+  defp create_session_reworks!(session, parsed) do
+    rework_records =
+      JsonlParser.extract_session_rework_records(parsed.messages, session_cwd: parsed.cwd)
+
+    rework_records
+    |> Enum.map(&Map.put(&1, :session_id, session.id))
+    |> Enum.chunk_every(@batch_size)
+    |> Enum.each(fn batch ->
+      Ash.bulk_create!(batch, Spotter.Transcripts.SessionRework, :upsert)
+    end)
+  end
 
   defp sync_subagents(session, dir, session_id) when is_binary(session_id) do
     subagents_dir = Path.join([dir, session_id, "subagents"])

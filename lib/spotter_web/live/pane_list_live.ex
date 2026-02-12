@@ -5,7 +5,7 @@ defmodule SpotterWeb.PaneListLive do
   alias Spotter.Services.SessionRegistry
   alias Spotter.Services.Tmux
   alias Spotter.Transcripts.Jobs.SyncTranscripts
-  alias Spotter.Transcripts.{Session, SessionPresenter, Subagent, ToolCall}
+  alias Spotter.Transcripts.{Session, SessionPresenter, SessionRework, Subagent, ToolCall}
 
   require Ash.Query
 
@@ -63,6 +63,32 @@ defmodule SpotterWeb.PaneListLive do
             |> Map.new(fn {sid, calls} ->
               failed = Enum.count(calls, & &1.is_error)
               {sid, %{total: length(calls), failed: failed}}
+            end)
+          rescue
+            _ -> %{}
+          end
+        end
+      end)
+    end
+  end
+
+  computer :rework_stats do
+    input :session_ids do
+      initial []
+    end
+
+    val :stats do
+      compute(fn %{session_ids: session_ids} ->
+        if session_ids == [] do
+          %{}
+        else
+          try do
+            SessionRework
+            |> Ash.Query.filter(session_id in ^session_ids)
+            |> Ash.read!()
+            |> Enum.group_by(& &1.session_id)
+            |> Map.new(fn {sid, records} ->
+              {sid, %{count: length(records)}}
             end)
           rescue
             _ -> %{}
@@ -220,6 +246,7 @@ defmodule SpotterWeb.PaneListLive do
     |> assign(subagents_by_session: subagents_by_session)
     |> update_computer_inputs(:session_data, %{projects: projects})
     |> update_computer_inputs(:tool_call_stats, %{session_ids: session_ids})
+    |> update_computer_inputs(:rework_stats, %{session_ids: session_ids})
   end
 
   defp append_session_page(socket, project_id, visibility) do
@@ -261,6 +288,7 @@ defmodule SpotterWeb.PaneListLive do
     |> assign(subagents_by_session: Map.merge(socket.assigns.subagents_by_session, new_subagents))
     |> update_computer_inputs(:session_data, %{projects: updated_projects})
     |> update_computer_inputs(:tool_call_stats, %{session_ids: session_ids})
+    |> update_computer_inputs(:rework_stats, %{session_ids: session_ids})
   end
 
   defp load_project_sessions(project_id, visibility, opts \\ []) do
@@ -385,6 +413,7 @@ defmodule SpotterWeb.PaneListLive do
                       <th>Branch</th>
                       <th>Messages</th>
                       <th>Tools</th>
+                      <th>Rework</th>
                       <th>Started</th>
                       <th></th>
                     </tr>
@@ -423,6 +452,14 @@ defmodule SpotterWeb.PaneListLive do
                           <% end %>
                         </td>
                         <td>
+                          <% rework = Map.get(@rework_stats_stats, session.id) %>
+                          <%= if rework && rework.count > 0 do %>
+                            <span class="text-warning">{rework.count}</span>
+                          <% else %>
+                            <span>—</span>
+                          <% end %>
+                        </td>
+                        <td>
                           <% started = SessionPresenter.started_display(session.started_at) %>
                           <%= if started do %>
                             <div>{started.relative}</div>
@@ -445,6 +482,7 @@ defmodule SpotterWeb.PaneListLive do
                           <td>{sa.slug || String.slice(sa.agent_id, 0, 7)}</td>
                           <td></td>
                           <td>{sa.message_count || 0}</td>
+                          <td></td>
                           <td></td>
                           <td>{relative_time(sa.started_at)}</td>
                           <td>
@@ -494,6 +532,7 @@ defmodule SpotterWeb.PaneListLive do
                           <th>Branch</th>
                           <th>Messages</th>
                           <th>Tools</th>
+                          <th>Rework</th>
                           <th>Hidden</th>
                           <th></th>
                         </tr>
@@ -531,6 +570,14 @@ defmodule SpotterWeb.PaneListLive do
                                   <span>—</span>
                               <% end %>
                             </td>
+                            <td>
+                              <% rework = Map.get(@rework_stats_stats, session.id) %>
+                              <%= if rework && rework.count > 0 do %>
+                                <span class="text-warning">{rework.count}</span>
+                              <% else %>
+                                <span>—</span>
+                              <% end %>
+                            </td>
                             <td>{relative_time(session.hidden_at)}</td>
                             <td>
                               <button class="btn btn-success" phx-click="unhide_session" phx-value-id={session.id}>
@@ -543,6 +590,7 @@ defmodule SpotterWeb.PaneListLive do
                               <td>{sa.slug || String.slice(sa.agent_id, 0, 7)}</td>
                               <td></td>
                               <td>{sa.message_count || 0}</td>
+                              <td></td>
                               <td></td>
                               <td>{relative_time(sa.started_at)}</td>
                               <td>

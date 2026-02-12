@@ -31,6 +31,14 @@ const Hooks = {}
 Hooks.TranscriptHighlighter = {
   mounted() {
     highlightTranscriptCode(this.el)
+
+    this.handleEvent("scroll_to_transcript_line", ({ index }) => {
+      const el = document.getElementById(`msg-${index + 1}`)
+      if (!el) return
+      el.scrollIntoView({ behavior: "smooth", block: "center" })
+      el.classList.add("is-jump-highlight")
+      setTimeout(() => el.classList.remove("is-jump-highlight"), 2000)
+    })
   },
   updated() {
     highlightTranscriptCode(this.el)

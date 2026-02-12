@@ -13,6 +13,7 @@ defmodule Spotter.Transcripts.ResourcesTest do
     Project,
     Session,
     SessionCommitLink,
+    SessionRework,
     Subagent
   }
 
@@ -281,6 +282,96 @@ defmodule Spotter.Transcripts.ResourcesTest do
           heat_score: -1.0
         })
       end
+    end
+  end
+
+  describe "SessionRework" do
+    setup do
+      project = Ash.create!(Project, %{name: "test-rework", pattern: "^test"})
+
+      session =
+        Ash.create!(Session, %{
+          session_id: Ash.UUID.generate(),
+          transcript_dir: "test-dir",
+          project_id: project.id
+        })
+
+      %{session: session}
+    end
+
+    test "creates a session rework record", %{session: session} do
+      rework =
+        Ash.create!(SessionRework, %{
+          tool_use_id: "tu-002",
+          file_path: "/home/user/project/lib/foo.ex",
+          relative_path: "lib/foo.ex",
+          occurrence_index: 2,
+          first_tool_use_id: "tu-001",
+          event_timestamp: ~U[2026-02-12 10:00:00Z],
+          session_id: session.id
+        })
+
+      assert rework.tool_use_id == "tu-002"
+      assert rework.file_path == "/home/user/project/lib/foo.ex"
+      assert rework.relative_path == "lib/foo.ex"
+      assert rework.occurrence_index == 2
+      assert rework.first_tool_use_id == "tu-001"
+      assert rework.detection_source == :transcript_sync
+    end
+
+    test "upsert is idempotent for same session_id + tool_use_id", %{session: session} do
+      attrs = %{
+        tool_use_id: "tu-003",
+        file_path: "/home/user/project/lib/bar.ex",
+        occurrence_index: 2,
+        first_tool_use_id: "tu-001",
+        session_id: session.id
+      }
+
+      first = Ash.create!(SessionRework, attrs, action: :upsert)
+
+      second =
+        Ash.create!(SessionRework, %{attrs | occurrence_index: 3, file_path: "/updated/path.ex"},
+          action: :upsert
+        )
+
+      assert first.id == second.id
+      assert second.occurrence_index == 3
+      assert second.file_path == "/updated/path.ex"
+    end
+
+    test "allows relative_path to be nil", %{session: session} do
+      rework =
+        Ash.create!(SessionRework, %{
+          tool_use_id: "tu-004",
+          file_path: "/absolute/only/path.ex",
+          occurrence_index: 2,
+          first_tool_use_id: "tu-001",
+          session_id: session.id
+        })
+
+      assert rework.relative_path == nil
+    end
+
+    test "is queryable via Ash read", %{session: session} do
+      Ash.create!(SessionRework, %{
+        tool_use_id: "tu-005",
+        file_path: "lib/a.ex",
+        occurrence_index: 2,
+        first_tool_use_id: "tu-001",
+        session_id: session.id
+      })
+
+      Ash.create!(SessionRework, %{
+        tool_use_id: "tu-006",
+        file_path: "lib/a.ex",
+        occurrence_index: 3,
+        first_tool_use_id: "tu-001",
+        session_id: session.id
+      })
+
+      reworks = Ash.read!(SessionRework)
+      assert length(reworks) == 2
     end
   end
 

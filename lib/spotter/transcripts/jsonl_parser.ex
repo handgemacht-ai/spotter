@@ -65,6 +65,151 @@ defmodule Spotter.Transcripts.JsonlParser do
   @spec detect_schema_version([map()]) :: integer()
   def detect_schema_version(_messages), do: 1
 
+  @doc """
+  Extracts session rework records from parsed messages.
+
+  Rework is defined as the 2nd+ successful Write/Edit modification to the same file.
+  Returns a list of rework record maps in transcript order.
+
+  Options:
+    - `:session_cwd` - working directory for relative path derivation
+  """
+  @spec extract_session_rework_records([map()], keyword()) :: [map()]
+  def extract_session_rework_records(messages, opts \\ []) do
+    session_cwd = Keyword.get(opts, :session_cwd)
+
+    # Phase 1: Collect pending file tool_use blocks from assistant messages
+    pending_file_tools =
+      messages
+      |> Enum.reduce(%{}, fn msg, acc ->
+        if msg[:type] in [:assistant, :tool_use] do
+          collect_file_tool_uses(msg, acc)
+        else
+          acc
+        end
+      end)
+
+    # Phase 2: Walk messages in order, match tool_results, build running aggregate
+    initial_state = %{
+      pending_file_tools: pending_file_tools,
+      file_mod_counts: %{},
+      first_tool_use_by_file: %{},
+      rework_records: []
+    }
+
+    state =
+      Enum.reduce(messages, initial_state, fn msg, state ->
+        if msg[:type] in [:tool_result, :user] do
+          process_tool_results(msg, state, session_cwd)
+        else
+          state
+        end
+      end)
+
+    Enum.reverse(state.rework_records)
+  end
+
+  defp collect_file_tool_uses(msg, acc) do
+    blocks = get_content_blocks(msg[:content])
+
+    Enum.reduce(blocks, acc, fn block, inner_acc ->
+      with "tool_use" <- block["type"],
+           name when name in ["Write", "Edit"] <- block["name"],
+           id when is_binary(id) <- block["id"],
+           file_path when is_binary(file_path) <- get_in(block, ["input", "file_path"]) do
+        Map.put(inner_acc, id, %{
+          tool_use_id: id,
+          tool_name: name,
+          file_path: file_path,
+          timestamp: msg[:timestamp],
+          message_uuid: msg[:uuid]
+        })
+      else
+        _ -> inner_acc
+      end
+    end)
+  end
+
+  defp process_tool_results(msg, state, session_cwd) do
+    msg[:content]
+    |> get_content_blocks()
+    |> Enum.reduce(state, fn block, st ->
+      maybe_record_successful_tool_result(block, st, session_cwd)
+    end)
+  end
+
+  defp maybe_record_successful_tool_result(block, state, session_cwd) do
+    with "tool_result" <- block["type"],
+         tool_use_id when is_binary(tool_use_id) <- block["tool_use_id"],
+         false <- block["is_error"] == true,
+         %{file_path: file_path} = tool_info <- Map.get(state.pending_file_tools, tool_use_id) do
+      apply_successful_file_mod(state, tool_use_id, file_path, tool_info, session_cwd)
+    else
+      _ -> state
+    end
+  end
+
+  defp apply_successful_file_mod(state, tool_use_id, file_path, tool_info, session_cwd) do
+    file_key = compute_file_key(file_path, session_cwd)
+    relative_path = compute_relative_path(file_path, session_cwd)
+
+    new_count = Map.get(state.file_mod_counts, file_key, 0) + 1
+
+    first_tool_use_by_file =
+      Map.put_new(state.first_tool_use_by_file, file_key, tool_use_id)
+
+    rework_records =
+      if new_count >= 2 do
+        record = %{
+          tool_use_id: tool_use_id,
+          file_path: file_path,
+          relative_path: relative_path,
+          occurrence_index: new_count,
+          first_tool_use_id: Map.fetch!(first_tool_use_by_file, file_key),
+          event_timestamp: tool_info.timestamp,
+          detection_source: :transcript_sync
+        }
+
+        [record | state.rework_records]
+      else
+        state.rework_records
+      end
+
+    %{
+      state
+      | file_mod_counts: Map.put(state.file_mod_counts, file_key, new_count),
+        first_tool_use_by_file: first_tool_use_by_file,
+        rework_records: rework_records,
+        pending_file_tools: Map.delete(state.pending_file_tools, tool_use_id)
+    }
+  end
+
+  defp get_content_blocks(%{"blocks" => blocks}) when is_list(blocks), do: blocks
+  defp get_content_blocks(content) when is_list(content), do: content
+  defp get_content_blocks(_), do: []
+
+  defp compute_file_key(file_path, nil), do: file_path
+
+  defp compute_file_key(file_path, session_cwd) do
+    if String.starts_with?(file_path, "/") do
+      relative = Path.relative_to(file_path, session_cwd)
+      if relative == file_path, do: file_path, else: relative
+    else
+      file_path
+    end
+  end
+
+  defp compute_relative_path(_file_path, nil), do: nil
+
+  defp compute_relative_path(file_path, session_cwd) do
+    if String.starts_with?(file_path, "/") do
+      relative = Path.relative_to(file_path, session_cwd)
+      if relative == file_path, do: nil, else: relative
+    else
+      file_path
+    end
+  end
+
   # Private
 
   defp parse_lines(path) do

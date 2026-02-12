@@ -160,4 +160,169 @@ defmodule Spotter.Transcripts.JsonlParserTest do
       assert JsonlParser.detect_schema_version([]) == 1
     end
   end
+
+  describe "extract_session_rework_records/2" do
+    defp write_msg(tool_use_id, file_path) do
+      %{
+        uuid: "msg-#{tool_use_id}",
+        type: :assistant,
+        role: :assistant,
+        timestamp: ~U[2026-02-12 10:00:00Z],
+        content: %{
+          "blocks" => [
+            %{
+              "type" => "tool_use",
+              "id" => tool_use_id,
+              "name" => "Write",
+              "input" => %{"file_path" => file_path}
+            }
+          ]
+        }
+      }
+    end
+
+    defp edit_msg(tool_use_id, file_path) do
+      %{
+        uuid: "msg-#{tool_use_id}",
+        type: :assistant,
+        role: :assistant,
+        timestamp: ~U[2026-02-12 10:01:00Z],
+        content: %{
+          "blocks" => [
+            %{
+              "type" => "tool_use",
+              "id" => tool_use_id,
+              "name" => "Edit",
+              "input" => %{"file_path" => file_path}
+            }
+          ]
+        }
+      }
+    end
+
+    defp success_result(tool_use_id) do
+      %{
+        uuid: "result-#{tool_use_id}",
+        type: :tool_result,
+        role: :user,
+        timestamp: ~U[2026-02-12 10:00:01Z],
+        content: %{
+          "blocks" => [
+            %{"type" => "tool_result", "tool_use_id" => tool_use_id, "content" => "OK"}
+          ]
+        }
+      }
+    end
+
+    defp error_result(tool_use_id) do
+      %{
+        uuid: "result-#{tool_use_id}",
+        type: :tool_result,
+        role: :user,
+        timestamp: ~U[2026-02-12 10:00:01Z],
+        content: %{
+          "blocks" => [
+            %{
+              "type" => "tool_result",
+              "tool_use_id" => tool_use_id,
+              "is_error" => true,
+              "content" => "Permission denied"
+            }
+          ]
+        }
+      }
+    end
+
+    test "produces rework records for 2nd+ successful modification of same file" do
+      messages = [
+        write_msg("tu-1", "/home/user/project/lib/foo.ex"),
+        success_result("tu-1"),
+        edit_msg("tu-2", "/home/user/project/lib/foo.ex"),
+        success_result("tu-2"),
+        edit_msg("tu-3", "/home/user/project/lib/foo.ex"),
+        success_result("tu-3")
+      ]
+
+      records = JsonlParser.extract_session_rework_records(messages)
+
+      assert length(records) == 2
+      [r1, r2] = records
+      assert r1.tool_use_id == "tu-2"
+      assert r1.occurrence_index == 2
+      assert r1.first_tool_use_id == "tu-1"
+      assert r2.tool_use_id == "tu-3"
+      assert r2.occurrence_index == 3
+      assert r2.first_tool_use_id == "tu-1"
+    end
+
+    test "ignores failed tool results" do
+      messages = [
+        write_msg("tu-1", "/home/user/project/lib/foo.ex"),
+        success_result("tu-1"),
+        edit_msg("tu-2", "/home/user/project/lib/foo.ex"),
+        error_result("tu-2"),
+        edit_msg("tu-3", "/home/user/project/lib/foo.ex"),
+        success_result("tu-3")
+      ]
+
+      records = JsonlParser.extract_session_rework_records(messages)
+
+      assert length(records) == 1
+      [r1] = records
+      assert r1.tool_use_id == "tu-3"
+      assert r1.occurrence_index == 2
+    end
+
+    test "different files do not count as rework" do
+      messages = [
+        write_msg("tu-1", "/project/lib/foo.ex"),
+        success_result("tu-1"),
+        write_msg("tu-2", "/project/lib/bar.ex"),
+        success_result("tu-2")
+      ]
+
+      records = JsonlParser.extract_session_rework_records(messages)
+      assert records == []
+    end
+
+    test "normalizes paths using session_cwd" do
+      messages = [
+        write_msg("tu-1", "/home/user/project/lib/foo.ex"),
+        success_result("tu-1"),
+        edit_msg("tu-2", "/home/user/project/lib/foo.ex"),
+        success_result("tu-2")
+      ]
+
+      records =
+        JsonlParser.extract_session_rework_records(messages,
+          session_cwd: "/home/user/project"
+        )
+
+      assert length(records) == 1
+      [r1] = records
+      assert r1.file_path == "/home/user/project/lib/foo.ex"
+      assert r1.relative_path == "lib/foo.ex"
+    end
+
+    test "returns empty list for single modification per file" do
+      messages = [
+        write_msg("tu-1", "/project/lib/foo.ex"),
+        success_result("tu-1")
+      ]
+
+      assert JsonlParser.extract_session_rework_records(messages) == []
+    end
+
+    test "sets detection_source to :transcript_sync" do
+      messages = [
+        write_msg("tu-1", "/project/lib/foo.ex"),
+        success_result("tu-1"),
+        edit_msg("tu-2", "/project/lib/foo.ex"),
+        success_result("tu-2")
+      ]
+
+      [record] = JsonlParser.extract_session_rework_records(messages)
+      assert record.detection_source == :transcript_sync
+    end
+  end
 end

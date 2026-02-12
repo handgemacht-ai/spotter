@@ -5,7 +5,7 @@ defmodule SpotterWeb.SessionLiveTest do
   import Phoenix.LiveViewTest
 
   alias Ecto.Adapters.SQL.Sandbox
-  alias Spotter.Transcripts.{Message, Project, Session}
+  alias Spotter.Transcripts.{Message, Project, Session, SessionRework}
 
   @endpoint SpotterWeb.Endpoint
 
@@ -259,6 +259,65 @@ defmodule SpotterWeb.SessionLiveTest do
 
       assert html =~ "transcript-empty"
       assert html =~ "No transcript available"
+    end
+  end
+
+  describe "rework panel" do
+    test "renders rework panel when rework records exist", %{
+      session: session,
+      session_id: session_id
+    } do
+      Ash.create!(SessionRework, %{
+        tool_use_id: "tu-002",
+        file_path: "/home/user/project/lib/foo.ex",
+        relative_path: "lib/foo.ex",
+        occurrence_index: 2,
+        first_tool_use_id: "tu-001",
+        session_id: session.id
+      })
+
+      Ash.create!(SessionRework, %{
+        tool_use_id: "tu-003",
+        file_path: "/home/user/project/lib/foo.ex",
+        relative_path: "lib/foo.ex",
+        occurrence_index: 3,
+        first_tool_use_id: "tu-001",
+        session_id: session.id
+      })
+
+      {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}")
+
+      assert html =~ "Rework (2)"
+      assert html =~ "transcript-rework-panel"
+      assert html =~ "lib/foo.ex"
+      assert html =~ "jump_to_rework"
+      assert html =~ "tu-002"
+      assert html =~ "tu-003"
+    end
+
+    test "each rework item has phx-click and correct tool_use_id", %{
+      session: session,
+      session_id: session_id
+    } do
+      Ash.create!(SessionRework, %{
+        tool_use_id: "tu-click-test",
+        file_path: "lib/bar.ex",
+        occurrence_index: 2,
+        first_tool_use_id: "tu-001",
+        session_id: session.id
+      })
+
+      {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}")
+
+      assert html =~ ~s(phx-click="jump_to_rework")
+      assert html =~ ~s(phx-value-tool-use-id="tu-click-test")
+    end
+
+    test "rework panel is hidden when no rework records", %{session_id: session_id} do
+      {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}")
+
+      refute html =~ "transcript-rework-panel"
+      refute html =~ "Rework"
     end
   end
 

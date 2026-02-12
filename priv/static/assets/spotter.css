@@ -540,6 +540,7 @@ input::placeholder, textarea::placeholder {
 .text-xs { font-size: var(--text-xs); }
 .text-sm { font-size: var(--text-sm); }
 .text-error { color: var(--accent-red); }
+.text-warning { color: var(--accent-amber); }
 .text-secondary { color: var(--text-secondary); }
 .text-center { text-align: center; }
 .mt-2 { margin-top: var(--space-2); }
@@ -1081,6 +1082,55 @@ input::placeholder, textarea::placeholder {
 .transcript-error-item .error-content {
   color: var(--text-secondary);
   margin-left: 0.5rem;
+}
+
+/* Rework panel in transcript */
+.transcript-rework-panel {
+  margin-bottom: 1rem;
+  background: rgba(229, 168, 75, 0.08);
+  border: 1px solid rgba(229, 168, 75, 0.25);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+}
+
+.transcript-rework-panel .rework-title {
+  color: var(--accent-amber);
+  font-size: 0.85em;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.transcript-rework-item {
+  padding: 4px 6px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-size: 0.8em;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.transcript-rework-item:hover {
+  background: rgba(229, 168, 75, 0.1);
+}
+
+.transcript-rework-item .rework-file {
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.transcript-rework-item .rework-occurrence {
+  color: var(--accent-amber);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Jump highlight */
+.transcript-row.is-jump-highlight {
+  background: rgba(229, 168, 75, 0.18);
+  border-left-color: var(--accent-amber);
+  transition: background 0.3s ease;
 }
 
 /* Empty state */
