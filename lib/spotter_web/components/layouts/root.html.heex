@@ -25,6 +25,14 @@
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>
             Dashboard
           </a>
+          <% review_count = Spotter.Services.ReviewCounts.total_open_count() %>
+          <a href="/reviews" class="sidebar-link" data-nav-path="/reviews">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h10v8H7l-3 3v-3H3z"/></svg>
+            Reviews
+            <%= if review_count > 0 do %>
+              <span class="sidebar-badge"><%= review_count %></span>
+            <% end %>
+          </a>
           <a href="/history" class="sidebar-link" data-nav-path="/history">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><polyline points="8,4 8,8 11,10"/></svg>
             History

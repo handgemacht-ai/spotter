@@ -2,7 +2,7 @@
   "mcpServers": {
     "tidewave": {
       "type": "http",
-      "url": "http://100.105.15.12:1100/tidewave/mcp"
+      "url": "http://100.105.15.12:1104/tidewave/mcp"
     },
     "chrome-devtools": {
       "command": "npx",
@@ -10,7 +10,6 @@
         "-y",
         "chrome-devtools-mcp@latest",
         "--headless",
-        "--isolated",
         "--chromeArg=--no-sandbox",
         "--chromeArg=--disable-setuid-sandbox"
       ]

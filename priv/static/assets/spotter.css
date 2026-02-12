@@ -183,6 +183,17 @@ code, pre {
   color: var(--accent-blue);
 }
 
+.sidebar-badge {
+  margin-left: auto;
+  background: var(--accent-blue);
+  color: var(--surface-0);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 9999px;
+}
+
 .main-content {
   flex: 1;
   min-width: 0;

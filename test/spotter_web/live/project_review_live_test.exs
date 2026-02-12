@@ -33,8 +33,22 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
     {project, session}
   end
 
+  defp reviews_path(project) do
+    "/reviews?project_id=#{project.id}"
+  end
+
+  describe "legacy redirect" do
+    test "redirects /projects/:project_id/review to /reviews?project_id=..." do
+      {project, _session} = create_project_with_session()
+
+      conn = build_conn() |> get("/projects/#{project.id}/review")
+
+      assert redirected_to(conn) == "/reviews?project_id=#{project.id}"
+    end
+  end
+
   describe "mount" do
-    test "renders project review page with open annotations" do
+    test "renders reviews page with open annotations" do
       {project, session} = create_project_with_session()
 
       Ash.create!(Annotation, %{
@@ -49,9 +63,9 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
       })
 
       conn = build_conn()
-      {:ok, _view, html} = live(conn, "/projects/#{project.id}/review")
+      {:ok, _view, html} = live(conn, reviews_path(project))
 
-      assert html =~ "Review: #{project.name}"
+      assert html =~ "Reviews"
       assert html =~ "important code"
       assert html =~ "needs review"
       assert html =~ "Terminal"
@@ -85,7 +99,7 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
       })
 
       conn = build_conn()
-      {:ok, _view, html} = live(conn, "/projects/#{project.id}/review")
+      {:ok, _view, html} = live(conn, reviews_path(project))
 
       assert html =~ "Transcript"
       assert html =~ "1 messages"
@@ -96,17 +110,18 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
       {project, _session} = create_project_with_session()
 
       conn = build_conn()
-      {:ok, _view, html} = live(conn, "/projects/#{project.id}/review")
+      {:ok, _view, html} = live(conn, reviews_path(project))
 
-      assert html =~ "No open annotations for this project."
+      assert html =~ "No open annotations for the selected scope."
     end
 
     test "handles invalid project id gracefully" do
       conn = build_conn()
-      {:ok, _view, html} = live(conn, "/projects/#{Ash.UUID.generate()}/review")
+      {:ok, _view, html} = live(conn, "/reviews?project_id=#{Ash.UUID.generate()}")
 
-      assert html =~ "Project not found"
-      assert html =~ "does not exist"
+      # Invalid project falls back to all-projects mode
+      assert html =~ "Reviews"
+      assert html =~ "No open annotations for the selected scope."
     end
 
     test "excludes closed annotations" do
@@ -128,7 +143,7 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
       })
 
       conn = build_conn()
-      {:ok, _view, html} = live(conn, "/projects/#{project.id}/review")
+      {:ok, _view, html} = live(conn, reviews_path(project))
 
       assert html =~ "still open"
       refute html =~ "closed one"
@@ -152,19 +167,19 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
       })
 
       conn = build_conn()
-      {:ok, view, _html} = live(conn, "/projects/#{project.id}/review")
+      {:ok, view, _html} = live(conn, reviews_path(project))
 
       html = render_click(view, "close_review_session")
 
       assert html =~ "Closed 2 annotations"
-      assert html =~ "No open annotations for this project."
+      assert html =~ "No open annotations for the selected scope."
     end
 
     test "shows zero count when no open annotations exist" do
       {project, _session} = create_project_with_session()
 
       conn = build_conn()
-      {:ok, view, _html} = live(conn, "/projects/#{project.id}/review")
+      {:ok, view, _html} = live(conn, reviews_path(project))
 
       html = render_click(view, "close_review_session")
 
@@ -190,7 +205,7 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
       })
 
       conn = build_conn()
-      {:ok, view, _html} = live(conn, "/projects/#{project.id}/review")
+      {:ok, view, _html} = live(conn, reviews_path(project))
 
       html = render_click(view, "close_review_session")
 
@@ -209,7 +224,7 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
       })
 
       conn = build_conn()
-      {:ok, view, _html} = live(conn, "/projects/#{project.id}/review")
+      {:ok, view, _html} = live(conn, reviews_path(project))
 
       html = render_click(view, "open_conversation")
 
@@ -250,7 +265,7 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
       project = create_project_with_annotation()
 
       conn = build_conn()
-      {:ok, view, _html} = live(conn, "/projects/#{project.id}/review")
+      {:ok, view, _html} = live(conn, reviews_path(project))
 
       html = render_click(view, "open_conversation")
 
@@ -266,7 +281,7 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
       project = create_project_with_annotation()
 
       conn = build_conn()
-      {:ok, view, _html} = live(conn, "/projects/#{project.id}/review")
+      {:ok, view, _html} = live(conn, reviews_path(project))
       render_click(view, "open_conversation")
 
       [{_, ts_before}] = :ets.lookup(@table, session_name)
@@ -288,7 +303,7 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
       project = create_project_with_annotation()
 
       conn = build_conn()
-      {:ok, view, _html} = live(conn, "/projects/#{project.id}/review")
+      {:ok, view, _html} = live(conn, reviews_path(project))
       render_click(view, "open_conversation")
 
       assert [{^session_name, _}] = :ets.lookup(@table, session_name)
@@ -304,7 +319,7 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
       project = create_project_with_annotation()
 
       conn = build_conn()
-      {:ok, view, _html} = live(conn, "/projects/#{project.id}/review")
+      {:ok, view, _html} = live(conn, reviews_path(project))
 
       html = render_click(view, "open_conversation")
 
