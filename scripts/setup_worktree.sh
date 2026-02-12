@@ -4,6 +4,7 @@ set -euo pipefail
 # Configuration
 BASE_PORT=1100
 PORT_STEP=2
+DEPS_COMPILE_PARTITIONS=8
 
 # Determine the worktree root
 WORKTREE_ROOT="$(git rev-parse --show-toplevel)"
@@ -102,6 +103,9 @@ if [ "$this_path" != "$main_path" ] && [ -d "$main_path/deps" ]; then
 fi
 
 # Fetch deps and set up database
+export MIX_OS_DEPS_COMPILE_PARTITION_COUNT="$DEPS_COMPILE_PARTITIONS"
+echo "==> MIX_OS_DEPS_COMPILE_PARTITION_COUNT=${MIX_OS_DEPS_COMPILE_PARTITION_COUNT}"
+
 echo "==> Fetching dev dependencies..."
 mix deps.get
 echo "==> Fetching test dependencies..."
