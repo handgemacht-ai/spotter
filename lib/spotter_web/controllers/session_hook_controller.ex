@@ -3,6 +3,7 @@ defmodule SpotterWeb.SessionHookController do
   use Phoenix.Controller, formats: [:json]
 
   alias Spotter.Services.SessionRegistry
+  alias Spotter.Services.WaitingSummary
   alias Spotter.Transcripts.Sessions
   alias SpotterWeb.OtelTraceHelpers
 
@@ -44,6 +45,57 @@ defmodule SpotterWeb.SessionHookController do
       |> put_status(:bad_request)
       |> OtelTraceHelpers.put_trace_response_header()
       |> json(%{error: "session_id and pane_id are required"})
+    end
+  end
+
+  def waiting_summary(
+        conn,
+        %{"session_id" => session_id, "transcript_path" => transcript_path} = params
+      )
+      when is_binary(session_id) and is_binary(transcript_path) do
+    OtelTraceHelpers.with_span "spotter.hook.waiting_summary", %{
+      "spotter.session_id" => session_id
+    } do
+      opts =
+        case params["token_budget"] do
+          budget when is_integer(budget) and budget > 0 -> [token_budget: budget]
+          _ -> []
+        end
+
+      case WaitingSummary.generate(transcript_path, opts) do
+        {:ok, result} ->
+          conn
+          |> OtelTraceHelpers.put_trace_response_header()
+          |> json(%{
+            ok: true,
+            summary: result.summary,
+            input_chars: result.input_chars,
+            source_window: result.source_window
+          })
+
+        {:error, _reason} ->
+          fallback = WaitingSummary.build_fallback_summary(session_id, [])
+
+          conn
+          |> OtelTraceHelpers.put_trace_response_header()
+          |> json(%{
+            ok: true,
+            summary: fallback,
+            input_chars: 0,
+            source_window: %{head_messages: 0, tail_messages: 0}
+          })
+      end
+    end
+  end
+
+  def waiting_summary(conn, _params) do
+    OtelTraceHelpers.with_span "spotter.hook.waiting_summary", %{} do
+      OtelTraceHelpers.set_error("invalid_params", %{"http.status_code" => 400})
+
+      conn
+      |> put_status(:bad_request)
+      |> OtelTraceHelpers.put_trace_response_header()
+      |> json(%{error: "session_id and transcript_path are required"})
     end
   end
 end
