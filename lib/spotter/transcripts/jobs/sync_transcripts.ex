@@ -19,31 +19,46 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
 
   @doc """
   Enqueues sync jobs for all configured projects.
+
+  Returns `{:ok, %{run_id: String.t(), projects_total: integer()}}`.
   """
   def sync_all do
     config = Config.read!()
+    run_id = Ash.UUID.generate()
+    project_entries = Enum.to_list(config.projects)
+    projects_total = length(project_entries)
+    project_names = Enum.map(project_entries, fn {name, _} -> name end)
 
-    Enum.each(config.projects, fn {name, %{pattern: pattern}} ->
+    broadcast(
+      {:ingest_enqueued,
+       %{run_id: run_id, projects_total: projects_total, projects: project_names}}
+    )
+
+    Enum.each(project_entries, fn {name, %{pattern: pattern}} ->
       %{
         project_name: name,
         pattern: Regex.source(pattern),
-        transcripts_dir: config.transcripts_dir
+        transcripts_dir: config.transcripts_dir,
+        run_id: run_id
       }
       |> __MODULE__.new()
       |> Oban.insert!()
     end)
+
+    {:ok, %{run_id: run_id, projects_total: projects_total}}
   end
 
   @impl Oban.Worker
   def perform(%Oban.Job{
-        args: %{
-          "project_name" => name,
-          "pattern" => pattern_str,
-          "transcripts_dir" => transcripts_dir
-        }
+        args:
+          %{
+            "project_name" => name,
+            "pattern" => pattern_str,
+            "transcripts_dir" => transcripts_dir
+          } = args
       }) do
+    run_id = args["run_id"]
     start_time = System.monotonic_time(:millisecond)
-    broadcast({:sync_started, %{project: name}})
 
     try do
       pattern = Regex.compile!(pattern_str)
@@ -53,11 +68,42 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
 
       # Find matching transcript directories
       dirs = list_matching_dirs(transcripts_dir, pattern)
-      Logger.info("Syncing project #{name}: found #{length(dirs)} matching directories")
+      dirs_total = length(dirs)
 
-      sessions_synced =
-        Enum.reduce(dirs, 0, fn dir, acc ->
-          acc + sync_directory(project, dir)
+      # Count total sessions across all dirs (capped per dir)
+      sessions_total = count_sessions_total(dirs)
+
+      Logger.info("Syncing project #{name}: found #{dirs_total} matching directories")
+
+      broadcast(
+        {:sync_started,
+         %{
+           run_id: run_id,
+           project: name,
+           dirs_total: dirs_total,
+           sessions_total: sessions_total
+         }}
+      )
+
+      {_dirs_done, sessions_synced} =
+        Enum.reduce(dirs, {0, 0}, fn dir, {dirs_done, sessions_acc} ->
+          synced = sync_directory(project, dir)
+          new_dirs_done = dirs_done + 1
+          new_sessions_done = sessions_acc + synced
+
+          broadcast(
+            {:sync_progress,
+             %{
+               run_id: run_id,
+               project: name,
+               dirs_done: new_dirs_done,
+               dirs_total: dirs_total,
+               sessions_done: new_sessions_done,
+               sessions_total: sessions_total
+             }}
+          )
+
+          {new_dirs_done, new_sessions_done}
         end)
 
       enqueue_heatmap(project)
@@ -67,8 +113,9 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
       broadcast(
         {:sync_completed,
          %{
+           run_id: run_id,
            project: name,
-           dirs_synced: length(dirs),
+           dirs_synced: dirs_total,
            sessions_synced: sessions_synced,
            duration_ms: duration_ms
          }}
@@ -77,7 +124,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
       :ok
     rescue
       e ->
-        broadcast({:sync_error, %{project: name, error: Exception.message(e)}})
+        broadcast({:sync_error, %{run_id: run_id, project: name, error: Exception.message(e)}})
         reraise e, __STACKTRACE__
     end
   end
@@ -100,6 +147,18 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
       [] ->
         Ash.create!(Spotter.Transcripts.Project, %{name: name, pattern: pattern})
     end
+  end
+
+  defp count_sessions_total(dirs) do
+    Enum.reduce(dirs, 0, fn dir, acc ->
+      count =
+        dir
+        |> Path.join("*.jsonl")
+        |> Path.wildcard()
+        |> length()
+
+      acc + min(count, @max_sessions_per_sync)
+    end)
   end
 
   defp list_matching_dirs(transcripts_dir, pattern) do

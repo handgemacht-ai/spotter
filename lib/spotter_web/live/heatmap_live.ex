@@ -2,26 +2,55 @@ defmodule SpotterWeb.HeatmapLive do
   use Phoenix.LiveView
 
   alias Spotter.Transcripts.{FileHeatmap, Project}
+  alias SpotterWeb.IngestProgress
 
   require Ash.Query
 
   @max_rows 100
 
   @impl true
-  def mount(%{"project_id" => project_id}, _session, socket) do
-    case Ash.get(Project, project_id) do
-      {:ok, project} ->
-        {:ok,
-         socket
-         |> assign(project: project, min_score: 0, sort_by: :heat_score)
-         |> load_heatmap()}
+  def mount(_params, _session, socket) do
+    if connected?(socket), do: IngestProgress.subscribe()
 
-      _ ->
-        {:ok, assign(socket, project: nil, heatmap_entries: [])}
-    end
+    projects =
+      try do
+        Project |> Ash.read!()
+      rescue
+        _ -> []
+      end
+
+    {:ok,
+     socket
+     |> assign(
+       projects: projects,
+       selected_project_id: nil,
+       min_score: 0,
+       sort_by: :heat_score,
+       heatmap_entries: []
+     )
+     |> IngestProgress.init_ingest()}
   end
 
   @impl true
+  def handle_params(params, _uri, socket) do
+    project_id = parse_project_id(params["project_id"])
+
+    socket =
+      socket
+      |> assign(selected_project_id: project_id)
+      |> load_heatmap()
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("filter_project", %{"project-id" => raw_id}, socket) do
+    project_id = parse_project_id(raw_id)
+    path = if project_id, do: "/heatmap?project_id=#{project_id}", else: "/heatmap"
+
+    {:noreply, push_patch(socket, to: path)}
+  end
+
   def handle_event("filter_min_score", %{"min_score" => raw}, socket) do
     min_score = parse_min_score(raw)
 
@@ -29,6 +58,11 @@ defmodule SpotterWeb.HeatmapLive do
      socket
      |> assign(min_score: min_score)
      |> load_heatmap()}
+  end
+
+  def handle_event("ingest", _params, socket) do
+    socket = IngestProgress.start_ingest(socket)
+    {:noreply, socket}
   end
 
   def handle_event("sort_by", %{"field" => field}, socket) do
@@ -40,18 +74,57 @@ defmodule SpotterWeb.HeatmapLive do
      |> load_heatmap()}
   end
 
-  defp load_heatmap(socket) do
-    %{project: project, min_score: min_score, sort_by: sort_by} = socket.assigns
+  @impl true
+  def handle_info(msg, socket)
+      when elem(msg, 0) in [
+             :ingest_enqueued,
+             :sync_started,
+             :sync_progress,
+             :sync_completed,
+             :sync_error
+           ] do
+    case IngestProgress.handle_progress(msg, socket) do
+      {:ok, socket} ->
+        socket =
+          if elem(msg, 0) == :sync_completed, do: load_heatmap(socket), else: socket
 
-    entries =
+        {:noreply, socket}
+
+      :ignore ->
+        {:noreply, socket}
+    end
+  end
+
+  defp load_heatmap(socket) do
+    %{selected_project_id: project_id, min_score: min_score, sort_by: sort_by} = socket.assigns
+
+    query =
       FileHeatmap
-      |> Ash.Query.filter(project_id == ^project.id and heat_score >= ^min_score)
+      |> Ash.Query.filter(heat_score >= ^min_score)
       |> Ash.Query.sort([{sort_by, :desc}])
       |> Ash.Query.limit(@max_rows)
-      |> Ash.read!()
+
+    query =
+      if project_id do
+        Ash.Query.filter(query, project_id == ^project_id)
+      else
+        query
+      end
+
+    entries =
+      try do
+        Ash.read!(query)
+      rescue
+        _ -> []
+      end
 
     assign(socket, heatmap_entries: entries)
   end
+
+  defp parse_project_id("all"), do: nil
+  defp parse_project_id(nil), do: nil
+  defp parse_project_id(""), do: nil
+  defp parse_project_id(id), do: id
 
   defp parse_min_score(raw) when is_binary(raw) do
     case Integer.parse(raw) do
@@ -87,84 +160,114 @@ defmodule SpotterWeb.HeatmapLive do
   def render(assigns) do
     ~H"""
     <div class="container">
-      <%= if @project == nil do %>
+      <div class="page-header">
+        <h1>File heat map</h1>
+        <div class="page-header-actions">
+          <button class="btn" phx-click="ingest" disabled={@ingest_running}>
+            <%= if @ingest_running, do: "Ingesting...", else: "Ingest" %>
+          </button>
+        </div>
+      </div>
+
+      <div :if={@ingest_projects != %{}} class="ingest-progress mb-4">
+        <%= if @ingest_running do %>
+          <span class="sync-syncing">
+            Ingesting {Enum.count(@ingest_projects, fn {_, p} -> p.status in [:completed, :error] end)}/{map_size(@ingest_projects)} projects
+          </span>
+        <% else %>
+          <span class="sync-completed">
+            Ingested {Enum.count(@ingest_projects, fn {_, p} -> p.status in [:completed, :error] end)}/{map_size(@ingest_projects)} projects
+          </span>
+        <% end %>
+      </div>
+
+      <div class="filter-section">
+        <div>
+          <label class="filter-label">Project</label>
+          <div class="filter-bar">
+            <button
+              phx-click="filter_project"
+              phx-value-project-id="all"
+              class={"filter-btn#{if @selected_project_id == nil, do: " is-active"}"}
+            >
+              All
+            </button>
+            <button
+              :for={project <- @projects}
+              phx-click="filter_project"
+              phx-value-project-id={project.id}
+              class={"filter-btn#{if @selected_project_id == project.id, do: " is-active"}"}
+            >
+              {project.name}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="filter-label">Min score</label>
+          <div class="filter-bar">
+            <button
+              :for={threshold <- [0, 15, 40, 70]}
+              phx-click="filter_min_score"
+              phx-value-min_score={threshold}
+              class={"filter-btn#{if @min_score == threshold, do: " is-active"}"}
+            >
+              {threshold}+
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="filter-label">Sort by</label>
+          <div class="filter-bar">
+            <button
+              phx-click="sort_by"
+              phx-value-field="heat_score"
+              class={"filter-btn#{if @sort_by == :heat_score, do: " is-active"}"}
+            >
+              Heat score
+            </button>
+            <button
+              phx-click="sort_by"
+              phx-value-field="change_count_30d"
+              class={"filter-btn#{if @sort_by == :change_count_30d, do: " is-active"}"}
+            >
+              Change count
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <%= if @heatmap_entries == [] do %>
         <div class="empty-state">
-          <p>Project not found.</p>
-          <a href="/" class="btn">Back to dashboard</a>
+          <p>No file activity data yet.</p>
+          <p>Click Ingest to import transcripts and compute this heat map.</p>
         </div>
       <% else %>
-        <div class="page-header">
-          <h1>File Heatmap &mdash; {@project.name}</h1>
-          <a href="/" class="btn btn-ghost">Back</a>
-        </div>
-
-        <div class="filter-section">
-          <div>
-            <label class="filter-label">Min score</label>
-            <div class="filter-bar">
-              <button
-                :for={threshold <- [0, 15, 40, 70]}
-                phx-click="filter_min_score"
-                phx-value-min_score={threshold}
-                class={"filter-btn#{if @min_score == threshold, do: " is-active"}"}
-              >
-                {threshold}+
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label class="filter-label">Sort by</label>
-            <div class="filter-bar">
-              <button
-                phx-click="sort_by"
-                phx-value-field="heat_score"
-                class={"filter-btn#{if @sort_by == :heat_score, do: " is-active"}"}
-              >
-                Heat score
-              </button>
-              <button
-                phx-click="sort_by"
-                phx-value-field="change_count_30d"
-                class={"filter-btn#{if @sort_by == :change_count_30d, do: " is-active"}"}
-              >
-                Change count
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <%= if @heatmap_entries == [] do %>
-          <div class="empty-state">
-            No file activity data for this project yet.
-            Heatmap data is computed automatically when file snapshots and commits are ingested.
-          </div>
-        <% else %>
-          <table>
-            <thead>
-              <tr>
-                <th>File</th>
-                <th>Heat</th>
-                <th>Changes (30d)</th>
-                <th>Last changed</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={entry <- @heatmap_entries}>
-                <td title={entry.relative_path}>
-                  {entry.relative_path}
-                </td>
-                <td>
-                  <span class={heat_badge_class(entry.heat_score)}>
-                    {Float.round(entry.heat_score, 1)}
-                  </span>
-                </td>
-                <td>{entry.change_count_30d} changes</td>
-                <td>{relative_time(entry.last_changed_at)}</td>
-              </tr>
-            </tbody>
-          </table>
-        <% end %>
+        <table>
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Heat</th>
+              <th>Changes (30d)</th>
+              <th>Last changed</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={entry <- @heatmap_entries}>
+              <td title={entry.relative_path}>
+                {entry.relative_path}
+              </td>
+              <td>
+                <span class={heat_badge_class(entry.heat_score)}>
+                  {Float.round(entry.heat_score, 1)}
+                </span>
+              </td>
+              <td>{entry.change_count_30d} changes</td>
+              <td>{relative_time(entry.last_changed_at)}</td>
+            </tr>
+          </tbody>
+        </table>
       <% end %>
     </div>
 

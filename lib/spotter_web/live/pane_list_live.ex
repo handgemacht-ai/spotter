@@ -4,8 +4,8 @@ defmodule SpotterWeb.PaneListLive do
 
   alias Spotter.Services.SessionRegistry
   alias Spotter.Services.Tmux
-  alias Spotter.Transcripts.Jobs.SyncTranscripts
   alias Spotter.Transcripts.{Session, SessionPresenter, SessionRework, Subagent, ToolCall}
+  alias SpotterWeb.IngestProgress
 
   require Ash.Query
 
@@ -100,14 +100,12 @@ defmodule SpotterWeb.PaneListLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(Spotter.PubSub, "sync:progress")
-    end
+    if connected?(socket), do: IngestProgress.subscribe()
 
     {:ok,
      socket
      |> assign(panes: [], claude_panes: [], loading: true)
-     |> assign(sync_status: %{}, sync_stats: %{})
+     |> IngestProgress.init_ingest()
      |> assign(hidden_expanded: %{})
      |> assign(expanded_subagents: %{})
      |> assign(subagents_by_session: %{})
@@ -160,35 +158,27 @@ defmodule SpotterWeb.PaneListLive do
     {:noreply, append_session_page(socket, project_id, visibility)}
   end
 
-  def handle_event("sync_transcripts", _params, socket) do
-    SyncTranscripts.sync_all()
-
-    project_names = Enum.map(socket.assigns.session_data_projects, & &1.name)
-
-    sync_status =
-      Map.new(project_names, fn name -> {name, :syncing} end)
-
-    {:noreply, assign(socket, sync_status: sync_status)}
+  def handle_event("ingest", _params, socket) do
+    {:noreply, IngestProgress.start_ingest(socket)}
   end
 
   @impl true
-  def handle_info({:sync_started, %{project: name}}, socket) do
-    {:noreply, assign(socket, sync_status: Map.put(socket.assigns.sync_status, name, :syncing))}
-  end
+  def handle_info(msg, socket)
+      when elem(msg, 0) in [
+             :ingest_enqueued,
+             :sync_started,
+             :sync_progress,
+             :sync_completed,
+             :sync_error
+           ] do
+    case IngestProgress.handle_progress(msg, socket) do
+      {:ok, socket} ->
+        socket = if elem(msg, 0) == :sync_completed, do: load_session_data(socket), else: socket
+        {:noreply, socket}
 
-  def handle_info({:sync_completed, %{project: name} = data}, socket) do
-    {:noreply,
-     socket
-     |> assign(sync_status: Map.put(socket.assigns.sync_status, name, :completed))
-     |> assign(sync_stats: Map.put(socket.assigns.sync_stats, name, data))
-     |> load_session_data()}
-  end
-
-  def handle_info({:sync_error, %{project: name} = data}, socket) do
-    {:noreply,
-     socket
-     |> assign(sync_status: Map.put(socket.assigns.sync_status, name, :error))
-     |> assign(sync_stats: Map.put(socket.assigns.sync_stats, name, data))}
+      :ignore ->
+        {:noreply, socket}
+    end
   end
 
   defp lookup_session_cwd(session_id) do
@@ -358,8 +348,16 @@ defmodule SpotterWeb.PaneListLive do
       <div class="mb-4">
         <div class="page-header">
           <h2 class="section-heading">Session Transcripts</h2>
-          <button class="btn" phx-click="sync_transcripts">Sync</button>
+          <button class="btn" phx-click="ingest" disabled={@ingest_running}>
+            <%= if @ingest_running, do: "Ingesting...", else: "Ingest" %>
+          </button>
         </div>
+
+        <.ingest_status
+          :if={@ingest_projects != %{}}
+          projects={@ingest_projects}
+          running={@ingest_running}
+        />
 
         <%= if @session_data_projects == [] do %>
           <div class="empty-state">
@@ -396,10 +394,7 @@ defmodule SpotterWeb.PaneListLive do
                   ({length(project.visible_sessions)} sessions)
                 </span>
               </h3>
-              <a href={"/projects/#{project.id}/heatmap"} class="btn btn-ghost text-xs">
-                Heatmap
-              </a>
-              <.sync_indicator status={Map.get(@sync_status, project.name)} stats={Map.get(@sync_stats, project.name)} />
+              <.project_ingest_status project_name={project.name} ingest_projects={@ingest_projects} />
             </div>
 
             <%= if project.visible_sessions == [] and project.hidden_sessions == [] do %>
@@ -644,30 +639,42 @@ defmodule SpotterWeb.PaneListLive do
     """
   end
 
-  defp sync_indicator(%{status: nil} = assigns), do: ~H""
-  defp sync_indicator(%{status: :idle} = assigns), do: ~H""
+  defp ingest_status(assigns) do
+    done =
+      assigns.projects
+      |> Map.values()
+      |> Enum.count(&(&1.status in [:completed, :error]))
 
-  defp sync_indicator(%{status: :syncing} = assigns) do
+    total = map_size(assigns.projects)
+    assigns = assign(assigns, done: done, total: total)
+
     ~H"""
-    <span class="sync-syncing">syncing...</span>
+    <div class="ingest-progress">
+      <%= if @running do %>
+        <span class="sync-syncing">Ingesting {@done}/{@total} projects</span>
+      <% else %>
+        <span class="sync-completed">Ingested {@done}/{@total} projects</span>
+      <% end %>
+    </div>
     """
   end
 
-  defp sync_indicator(%{status: :completed, stats: stats} = assigns) do
-    assigns = assign(assigns, :stats, stats)
+  defp project_ingest_status(assigns) do
+    proj = Map.get(assigns.ingest_projects, assigns.project_name)
+    assigns = assign(assigns, :proj, proj)
 
     ~H"""
-    <span class="sync-completed">
-      ✓ {@stats.dirs_synced} dirs, {@stats.sessions_synced} sessions in {@stats.duration_ms}ms
-    </span>
-    """
-  end
-
-  defp sync_indicator(%{status: :error, stats: stats} = assigns) do
-    assigns = assign(assigns, :stats, stats)
-
-    ~H"""
-    <span class="sync-error">✗ {@stats.error}</span>
+    <%= case @proj do %>
+      <% %{status: :syncing} = p -> %>
+        <span class="sync-syncing">{p.sessions_done}/{p.sessions_total} sessions</span>
+      <% %{status: :completed} = p -> %>
+        <span class="sync-completed">✓ {p.sessions_total} sessions in {p.duration_ms}ms</span>
+      <% %{status: :error} = p -> %>
+        <span class="sync-error">✗ {p.error}</span>
+      <% %{status: :queued} -> %>
+        <span class="sync-syncing">queued</span>
+      <% _ -> %>
+    <% end %>
     """
   end
 

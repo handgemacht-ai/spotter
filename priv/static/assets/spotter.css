@@ -513,6 +513,19 @@ input::placeholder, textarea::placeholder {
   margin-left: var(--space-1);
 }
 
+/* --- Disabled buttons --- */
+.btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* --- Ingest progress --- */
+.ingest-progress {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+}
+
 /* --- Sync indicators --- */
 .sync-syncing {
   color: var(--accent-amber);

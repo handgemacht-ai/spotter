@@ -35,7 +35,7 @@ defmodule SpotterWeb.Router do
     live("/reviews", ReviewsLive)
     live("/sessions/:session_id", SessionLive)
     live("/sessions/:session_id/agents/:agent_id", SubagentLive)
+    live("/heatmap", HeatmapLive)
     get("/projects/:project_id/review", ReviewsRedirectController, :show)
-    live("/projects/:project_id/heatmap", HeatmapLive)
   end
 end
