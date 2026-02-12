@@ -25,7 +25,17 @@ ELIXIR_IP="{${IP_PARTS[0]}, ${IP_PARTS[1]}, ${IP_PARTS[2]}, ${IP_PARTS[3]}}"
 
 # Determine worktree index for port calculation
 this_path="$(realpath "$WORKTREE_ROOT")"
-main_path="$(git worktree list --porcelain | head -1 | sed 's/^worktree //')"
+main_path="$(
+  git worktree list --porcelain | awk '
+    $1 == "worktree" { worktree = substr($0, 10) }
+    $1 == "branch" && $2 == "refs/heads/main" { print worktree; exit }
+  '
+)"
+
+if [ -z "$main_path" ]; then
+  main_path="$(git worktree list --porcelain | head -1 | sed 's/^worktree //')"
+fi
+
 main_path="$(realpath "$main_path")"
 
 if [ "$this_path" = "$main_path" ]; then
@@ -79,6 +89,18 @@ cat > .mcp.json << JSON_EOF
 JSON_EOF
 echo "==> Generated .mcp.json (url: http://${TS_IP}:${PORT}/tidewave/mcp)"
 
+if [ "$this_path" != "$main_path" ] && [ -d "$main_path/deps" ]; then
+  echo "==> Copying deps from main worktree: $main_path/deps"
+  mkdir -p deps
+
+  if command -v rsync &>/dev/null; then
+    rsync -a --delete "$main_path/deps/" "$WORKTREE_ROOT/deps/"
+  else
+    rm -rf "$WORKTREE_ROOT/deps"
+    cp -a "$main_path/deps" "$WORKTREE_ROOT/deps"
+  fi
+fi
+
 # Fetch deps and set up database
 echo "==> Fetching dev dependencies..."
 mix deps.get
@@ -86,6 +108,8 @@ echo "==> Fetching test dependencies..."
 MIX_ENV=test mix deps.get
 echo "==> Installing JS dependencies..."
 npm install --prefix assets
+echo "==> Compiling project..."
+mix compile --no-check-cwd
 echo "==> Running migrations..."
 mix ecto.migrate
 
