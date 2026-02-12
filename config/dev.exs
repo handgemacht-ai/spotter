@@ -4,7 +4,7 @@ import Config
 # Use stdout exporter and full sampling for local debugging
 config :opentelemetry,
   span_processor: :batch,
-  traces_exporter: :stdout
+  traces_exporter: {:otel_exporter_stdout, %{}}
 
 config :spotter, Spotter.Repo,
   database: "../path/to/your.db",

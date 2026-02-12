@@ -3,7 +3,7 @@ import Config
 # OpenTelemetry configuration
 config :opentelemetry,
   text_map_propagators: [:trace_context, :baggage],
-  traces_exporter: :stdout
+  traces_exporter: {:otel_exporter_stdout, %{}}
 
 # Configure Ash to use OpenTelemetry
 config :ash,

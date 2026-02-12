@@ -10,9 +10,9 @@ defmodule Spotter.Config.EnvParser do
 
   @valid_exporters %{
     "otlp" => :otlp,
-    "stdout" => :stdout,
+    "stdout" => {:otel_exporter_stdout, %{}},
     "none" => :none,
-    "console" => :console
+    "console" => {:otel_exporter_stdout, %{}}
   }
 
   @doc """
@@ -39,7 +39,8 @@ defmodule Spotter.Config.EnvParser do
   @doc """
   Parses an OTEL exporter name from an env var value.
   Accepts (case-insensitive): otlp, stdout, none, console.
-  Returns `:otlp` for missing or unrecognized values.
+  Returns a value valid for `:opentelemetry` `:traces_exporter`.
+  Falls back to `:otlp` for missing or unrecognized values.
   """
   def parse_otel_exporter(nil), do: :otlp
   def parse_otel_exporter(""), do: :otlp
@@ -48,8 +49,8 @@ defmodule Spotter.Config.EnvParser do
     key = value |> String.trim() |> String.downcase()
 
     case Map.fetch(@valid_exporters, key) do
-      {:ok, atom} ->
-        atom
+      {:ok, exporter} ->
+        exporter
 
       :error ->
         Logger.warning("Invalid OTEL_EXPORTER #{inspect(value)}, falling back to :otlp")

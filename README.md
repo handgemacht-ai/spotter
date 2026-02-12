@@ -128,11 +128,40 @@ Plugin hooks → traceparent header → Phoenix controllers → Ash actions → 
 
 ### Local mode (console exporter)
 
-By default in dev, spans are printed to stdout via the console exporter. No external collector required.
+By default in dev, spans are printed to stdout. No external collector required.
 
 ```bash
 mix phx.server
 # Spans will appear in the terminal output
+```
+
+### Local mode (OTLP collector for Claude/Codex inspection)
+
+This mode is recommended when you want machine-readable traces for agents.
+
+1. Start collector + Jaeger:
+
+```bash
+scripts/otel/start.sh
+```
+
+2. Point Spotter to OTLP:
+
+```bash
+export OTEL_EXPORTER=otlp
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+mix phx.server
+```
+
+3. Inspect traces:
+
+- JSON trace file: `tmp/otel/spotter-traces.json`
+- Jaeger UI: `http://localhost:16686`
+
+4. Stop the stack when done:
+
+```bash
+scripts/otel/stop.sh
 ```
 
 ### Disabling tracing
@@ -158,7 +187,8 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| No spans in console | `SPOTTER_OTEL_ENABLED=false` or test env | Check env var, ensure `traces_exporter: :stdout` in dev config |
+| No spans in console | `SPOTTER_OTEL_ENABLED=false` or test env | Check env var, ensure `traces_exporter: {:otel_exporter_stdout, %{}}` in dev config |
+| Startup error `Transforming configuration value failed ... OTEL_TRACES_EXPORTER ... stdout` | Unsupported exporter value for this OTEL version | Unset `OTEL_TRACES_EXPORTER` or set it to `otlp`/`none`; use `OTEL_EXPORTER=otlp` for Spotter |
 | Missing `x-spotter-trace-id` response header | No active span context | Verify plugin sends `traceparent` header |
 | Malformed `traceparent` from plugin | `openssl` unavailable in hook environment | Install openssl or check `/proc/sys/kernel/random/uuid` |
 | Exporter connection errors | OTLP endpoint unreachable | Verify `OTEL_EXPORTER_OTLP_ENDPOINT` is correct |

@@ -60,13 +60,13 @@ defmodule Spotter.Config.EnvParserTest do
 
     test "valid values parse correctly" do
       assert EnvParser.parse_otel_exporter("otlp") == :otlp
-      assert EnvParser.parse_otel_exporter("stdout") == :stdout
+      assert EnvParser.parse_otel_exporter("stdout") == {:otel_exporter_stdout, %{}}
       assert EnvParser.parse_otel_exporter("none") == :none
-      assert EnvParser.parse_otel_exporter("console") == :console
+      assert EnvParser.parse_otel_exporter("console") == {:otel_exporter_stdout, %{}}
     end
 
     test "mixed case values parse correctly" do
-      assert EnvParser.parse_otel_exporter("STDOUT") == :stdout
+      assert EnvParser.parse_otel_exporter("STDOUT") == {:otel_exporter_stdout, %{}}
       assert EnvParser.parse_otel_exporter("Otlp") == :otlp
       assert EnvParser.parse_otel_exporter("NONE") == :none
     end
