@@ -1,8 +1,8 @@
 defmodule Spotter.Transcripts.Jobs.ComputePromptPatternsTest do
   use Spotter.DataCase
 
-  alias Spotter.Transcripts.{Message, PromptPattern, PromptPatternRun, Project, Session}
   alias Spotter.Transcripts.Jobs.ComputePromptPatterns
+  alias Spotter.Transcripts.{Message, Project, PromptPattern, PromptPatternRun, Session}
 
   require Ash.Query
 

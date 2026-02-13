@@ -1,9 +1,9 @@
 defmodule Spotter.Services.PromptCollector do
   @moduledoc "Collects user prompts from transcripts for pattern analysis."
 
+  alias Spotter.Services.TranscriptRenderer
   alias Spotter.Transcripts.Message
   alias Spotter.Transcripts.Session
-  alias Spotter.Services.TranscriptRenderer
 
   require Ash.Query
 

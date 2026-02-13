@@ -60,11 +60,7 @@ defmodule Spotter.Transcripts.PromptPatternRun do
       project_id = Ash.Changeset.get_attribute(changeset, :project_id)
 
       if scope == :project && is_nil(project_id) do
-        {:error,
-         Ash.Error.Changes.InvalidAttribute.exception(
-           field: :project_id,
-           message: "must be present when scope is :project"
-         )}
+        {:error, field: :project_id, message: "must be present when scope is :project"}
       else
         :ok
       end
