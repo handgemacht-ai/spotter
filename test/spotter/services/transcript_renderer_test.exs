@@ -1290,6 +1290,78 @@ defmodule Spotter.Services.TranscriptRendererTest do
     end
   end
 
+  describe "token delta metadata" do
+    test "first message has nil delta, second message has computed delta" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{"blocks" => [%{"type" => "text", "text" => "first"}]},
+          raw_payload: %{
+            "message" => %{
+              "usage" => %{
+                "input_tokens" => 10,
+                "output_tokens" => 3,
+                "cache_creation_input_tokens" => 0,
+                "cache_read_input_tokens" => 0
+              }
+            }
+          }
+        },
+        %{
+          type: :assistant,
+          uuid: "msg-2",
+          content: %{"blocks" => [%{"type" => "text", "text" => "second"}]},
+          raw_payload: %{
+            "message" => %{
+              "usage" => %{
+                "input_tokens" => 15,
+                "output_tokens" => 5,
+                "cache_creation_input_tokens" => 0,
+                "cache_read_input_tokens" => 0
+              }
+            }
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      first = Enum.find(result, &(&1.line == "first"))
+      second = Enum.find(result, &(&1.line == "second"))
+
+      assert first.token_count_total == 13
+      assert first.token_count_delta == nil
+
+      assert second.token_count_total == 20
+      assert second.token_count_delta == 7
+    end
+
+    test "non-first lines of a message have nil delta" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{"blocks" => [%{"type" => "text", "text" => "line1\nline2"}]},
+          raw_payload: %{
+            "message" => %{
+              "usage" => %{
+                "input_tokens" => 10,
+                "output_tokens" => 5,
+                "cache_creation_input_tokens" => 0,
+                "cache_read_input_tokens" => 0
+              }
+            }
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      second_line = Enum.at(result, 1)
+
+      assert second_line.token_count_delta == nil
+    end
+  end
+
   describe "Bash command_status enrichment" do
     test "Bash tool_use line has command_status :success when result is not error" do
       messages = [

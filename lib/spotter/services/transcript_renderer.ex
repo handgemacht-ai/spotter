@@ -75,6 +75,7 @@ defmodule Spotter.Services.TranscriptRenderer do
       end)
     end)
     |> annotate_tool_result_groups()
+    |> annotate_token_deltas()
     |> Enum.with_index(1)
     |> Enum.map(fn {entry, idx} -> Map.put(entry, :line_number, idx) end)
   end
@@ -251,7 +252,9 @@ defmodule Spotter.Services.TranscriptRenderer do
   defp extract_usage(_), do: nil
 
   defp put_token_usage(line_meta, nil, _line_idx) do
-    Map.put(line_meta, :token_count_total, nil)
+    line_meta
+    |> Map.put(:token_count_total, nil)
+    |> Map.put(:token_count_delta, nil)
   end
 
   defp put_token_usage(line_meta, usage, line_idx) do
@@ -266,10 +269,33 @@ defmodule Spotter.Services.TranscriptRenderer do
       |> Enum.sum()
 
     if line_idx == 0 and token_count_total > 0 do
-      Map.put(line_meta, :token_count_total, token_count_total)
+      line_meta
+      |> Map.put(:token_count_total, token_count_total)
+      |> Map.put(:token_count_delta, nil)
     else
-      Map.put(line_meta, :token_count_total, nil)
+      line_meta
+      |> Map.put(:token_count_total, nil)
+      |> Map.put(:token_count_delta, nil)
     end
+  end
+
+  defp annotate_token_deltas(lines) do
+    {annotated, _prev} =
+      Enum.map_reduce(lines, nil, &compute_token_delta/2)
+
+    annotated
+  end
+
+  defp compute_token_delta(%{token_count_total: nil} = line, prev_total) do
+    {line, prev_total}
+  end
+
+  defp compute_token_delta(%{token_count_total: current_total} = line, nil) do
+    {line, current_total}
+  end
+
+  defp compute_token_delta(%{token_count_total: current_total} = line, prev_total) do
+    {Map.put(line, :token_count_delta, current_total - prev_total), current_total}
   end
 
   # ── Enriched rendering (used by render/2) ──────────────────────────

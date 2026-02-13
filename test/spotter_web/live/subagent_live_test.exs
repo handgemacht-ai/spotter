@@ -211,6 +211,44 @@ defmodule SpotterWeb.SubagentLiveTest do
       assert html =~ "20 tok"
       assert length(Regex.scan(~r/20 tok/, html)) == 1
     end
+
+    test "shows token delta for second message", %{
+      subagent: subagent,
+      session_id: session_id,
+      agent_id: agent_id
+    } do
+      create_message(subagent, %{
+        content: %{"blocks" => [%{"type" => "text", "text" => "first"}]},
+        raw_payload: %{
+          "message" => %{
+            "usage" => %{
+              "input_tokens" => 10,
+              "output_tokens" => 3,
+              "cache_creation_input_tokens" => 0,
+              "cache_read_input_tokens" => 0
+            }
+          }
+        }
+      })
+
+      create_message(subagent, %{
+        content: %{"blocks" => [%{"type" => "text", "text" => "second"}]},
+        raw_payload: %{
+          "message" => %{
+            "usage" => %{
+              "input_tokens" => 15,
+              "output_tokens" => 5,
+              "cache_creation_input_tokens" => 0,
+              "cache_read_input_tokens" => 0
+            }
+          }
+        }
+      })
+
+      {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}/agents/#{agent_id}")
+
+      assert html =~ "20 tok (+7)"
+    end
   end
 
   describe "empty state" do

@@ -121,7 +121,7 @@ defmodule SpotterWeb.TranscriptComponents do
             data-render-markdown={if markdown_line?(@line), do: "true", else: "false"}
           ><%= @line.line %></span>
         <% end %>
-        <span :if={@line[:token_count_total]} class="row-token-count">{@line[:token_count_total]} tok</span>
+        <span :if={@line[:token_count_total]} class="row-token-count">{@line[:token_count_total]} tok{format_token_delta(@line[:token_count_delta])}</span>
       </div>
     </div>
     """
@@ -189,6 +189,11 @@ defmodule SpotterWeb.TranscriptComponents do
       _ -> nil
     end
   end
+
+  defp format_token_delta(nil), do: ""
+  defp format_token_delta(0), do: " (0)"
+  defp format_token_delta(delta) when delta > 0, do: " (+#{delta})"
+  defp format_token_delta(delta), do: " (#{delta})"
 
   defp expand_button_text(%{is_expanded: true}), do: "Show less"
 
