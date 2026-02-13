@@ -199,6 +199,47 @@ defmodule Spotter.Services.CoChangeCalculatorTest do
       assert stat_rows == stat_rows_after
     end
 
+    test "spotterignore excludes matching paths from co-change groups" do
+      tmp_dir = Path.join(System.tmp_dir!(), "co_change_ignore_#{System.unique_integer()}")
+      File.mkdir_p!(tmp_dir)
+
+      System.cmd("git", ["-C", tmp_dir, "init"])
+      System.cmd("git", ["-C", tmp_dir, "config", "user.name", "Test"])
+      System.cmd("git", ["-C", tmp_dir, "config", "user.email", "test@test.com"])
+
+      # Commit 1: lib/a.ex + lib/b.ex + .beads/issues.jsonl
+      File.mkdir_p!(Path.join(tmp_dir, "lib"))
+      File.mkdir_p!(Path.join(tmp_dir, ".beads"))
+      File.write!(Path.join(tmp_dir, "lib/a.ex"), "defmodule A, do: :ok")
+      File.write!(Path.join(tmp_dir, "lib/b.ex"), "defmodule B, do: :ok")
+      File.write!(Path.join(tmp_dir, ".beads/issues.jsonl"), "{}")
+      System.cmd("git", ["-C", tmp_dir, "add", "."])
+      System.cmd("git", ["-C", tmp_dir, "commit", "-m", "commit 1"])
+
+      # Commit 2: touch same files again
+      File.write!(Path.join(tmp_dir, "lib/a.ex"), "defmodule A, do: :ok2")
+      File.write!(Path.join(tmp_dir, "lib/b.ex"), "defmodule B, do: :ok2")
+      File.write!(Path.join(tmp_dir, ".beads/issues.jsonl"), "{\"v\":2}")
+      System.cmd("git", ["-C", tmp_dir, "add", "."])
+      System.cmd("git", ["-C", tmp_dir, "commit", "-m", "commit 2"])
+
+      # Write .spotterignore
+      File.write!(Path.join(tmp_dir, ".spotterignore"), ".beads/\n")
+
+      project = create_project("calc-spotterignore-#{System.unique_integer([:positive])}")
+      create_session(project, cwd: tmp_dir)
+
+      assert :ok = CoChangeCalculator.compute(project.id)
+
+      file_groups = read_groups(project.id, :file)
+      all_members = Enum.flat_map(file_groups, & &1.members)
+
+      refute ".beads/issues.jsonl" in all_members
+      assert "lib/a.ex" in all_members or "lib/b.ex" in all_members
+
+      File.rm_rf!(tmp_dir)
+    end
+
     test "deletes stale rows when repo is accessible" do
       project = create_project("calc-stale-cleanup")
       create_session(project, cwd: File.cwd!())

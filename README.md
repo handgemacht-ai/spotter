@@ -202,6 +202,22 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 | Duplicate telemetry handlers after code reload | Handler re-attachment | `LiveviewOtel.setup/0` detaches before re-attaching |
 | Ash action spans missing | Tracer not configured | Verify `config :ash, tracer: [OpentelemetryAsh]` in config |
 
+## `.spotterignore` (co-change filtering)
+
+Co-change computation reads all file paths from `git log --name-only`. To exclude generated or operational files (e.g. issue trackers stored in-tree), create a `.spotterignore` file in the repo root with gitignore-style patterns:
+
+```
+.beads/
+tmp/
+*.jsonl
+```
+
+When this file is present, co-change groups will not include matching paths. Matching is delegated to `git check-ignore` so all gitignore syntax (globs, directory rules, comments, negation) is supported.
+
+If the file is missing or empty, all paths are included (existing behavior).
+
+Note: `.spotterignore` currently applies only to co-change analysis. Heatmap computation is not affected.
+
 ## Landing page (Astro + GitHub Pages)
 
 ### Local development

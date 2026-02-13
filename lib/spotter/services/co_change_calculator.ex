@@ -77,7 +77,10 @@ defmodule Spotter.Services.CoChangeCalculator do
   end
 
   defp read_commits(repo_path, project_id, window_days) do
-    case GitLogReader.changed_files_by_commit(repo_path, since_days: window_days) do
+    case GitLogReader.changed_files_by_commit(repo_path,
+           since_days: window_days,
+           filter_spotterignore: true
+         ) do
       {:ok, commits} ->
         {:ok, commits}
 
