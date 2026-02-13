@@ -5,6 +5,7 @@ defmodule SpotterWeb.FileDetailLive do
   import SpotterWeb.TranscriptComponents
   import SpotterWeb.AnnotationComponents
 
+  alias Spotter.Services.FileDetail
   alias Spotter.Transcripts.{Annotation, AnnotationFileRef}
 
   attach_computer(SpotterWeb.Live.FileDetailComputers, :file_detail)
@@ -137,7 +138,7 @@ defmodule SpotterWeb.FileDetailLive do
   defp refresh_annotations(socket) do
     project_id = socket.assigns.file_detail_project_id
     path = socket.assigns.file_detail_relative_path
-    annotations = Spotter.Services.FileDetail.load_file_annotations(project_id, path)
+    annotations = FileDetail.load_file_annotations(project_id, path)
     assign(socket, file_detail_annotation_rows: annotations)
   end
 

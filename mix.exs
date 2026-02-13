@@ -12,8 +12,7 @@ defmodule Spotter.MixProject do
       aliases: aliases(),
       elixirc_paths: elixirc_paths(Mix.env()),
       usage_rules: usage_rules(),
-      listeners: [Phoenix.CodeReloader],
-      dialyzer: [plt_add_apps: [:mix]]
+      listeners: [Phoenix.CodeReloader]
     ]
   end
 
@@ -46,7 +45,6 @@ defmodule Spotter.MixProject do
       {:igniter, "~> 0.6", only: [:dev, :test]},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
       {:toml, "~> 0.7"},
       {:opentelemetry_api, "~> 1.5"},
@@ -97,8 +95,10 @@ defmodule Spotter.MixProject do
         "cmd --cd assets node build.js",
         "phx.digest"
       ],
-      test: ["ash.setup --quiet", "test"],
-      quality: ["credo", "dialyzer", "deps.audit"]
+      test: ["ash.setup --quiet", "test --exclude slow"],
+      "test.all": ["ash.setup --quiet", "test"],
+      "test.slow": ["ash.setup --quiet", "test --only slow"],
+      quality: ["credo", "deps.audit"]
     ]
   end
 

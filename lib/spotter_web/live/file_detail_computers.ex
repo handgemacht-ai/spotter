@@ -5,6 +5,7 @@ defmodule SpotterWeb.Live.FileDetailComputers do
   Provides reactive pipelines for file content, commits, linked sessions,
   annotations, and transcript rendering.
   """
+  # credo:disable-for-this-file Credo.Check.Design.AliasUsage
   use AshComputer
 
   computer :file_detail do

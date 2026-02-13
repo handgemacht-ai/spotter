@@ -10,6 +10,7 @@ defmodule Spotter.Services.WaitingSummary do
   alias LangChain.Chains.LLMChain
   alias LangChain.ChatModels.ChatAnthropic
   alias LangChain.Message, as: LangMessage
+  alias Spotter.Config.Runtime
   alias Spotter.Services.LlmCredentials
   alias Spotter.Services.WaitingSummary.SliceBuilder
   alias Spotter.Transcripts.JsonlParser
@@ -182,12 +183,12 @@ defmodule Spotter.Services.WaitingSummary do
   end
 
   defp configured_model do
-    {model, _source} = Spotter.Config.Runtime.summary_model()
+    {model, _source} = Runtime.summary_model()
     model
   end
 
   defp configured_budget do
-    {budget, _source} = Spotter.Config.Runtime.summary_token_budget()
+    {budget, _source} = Runtime.summary_token_budget()
     budget
   end
 end

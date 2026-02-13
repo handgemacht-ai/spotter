@@ -11,6 +11,7 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
 
   alias Spotter.Services.GitCommitReader
   alias Spotter.Transcripts.{Commit, ProjectIngestState, ReviewItem, Session}
+  alias Spotter.Transcripts.Jobs.AnalyzeCommitHotspots
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"project_id" => project_id} = args}) do
@@ -94,7 +95,7 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
   defp maybe_enqueue_analyze(project_id, commit) do
     if commit.hotspots_status == :pending do
       %{project_id: project_id, commit_hash: commit.commit_hash}
-      |> Spotter.Transcripts.Jobs.AnalyzeCommitHotspots.new()
+      |> AnalyzeCommitHotspots.new()
       |> Oban.insert()
     end
   end

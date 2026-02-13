@@ -7,11 +7,6 @@ defmodule Spotter.Services.WaitingSummary.SliceBuilder do
   duplicate overlap when the transcript is short.
   """
 
-  # MapSet is opaque by design; dialyzer warns about passing it through recursive calls
-  @dialyzer {:nowarn_function, interleave_indices: 7}
-  @dialyzer {:nowarn_function, pick_next: 2}
-  @dialyzer {:nowarn_function, do_build: 2}
-
   @default_budget 4000
 
   @doc """

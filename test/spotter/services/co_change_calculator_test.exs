@@ -1,12 +1,10 @@
 defmodule Spotter.Services.CoChangeCalculatorTest do
   use ExUnit.Case, async: false
 
-  # Real git history can produce many groups; 60s default is too tight for two compute runs.
-  @moduletag timeout: 180_000
-
   alias Ecto.Adapters.SQL.Sandbox
   alias Spotter.Repo
   alias Spotter.Services.CoChangeCalculator
+  alias Spotter.TestSupport.GitRepoHelper
 
   alias Spotter.Transcripts.{
     CoChangeGroup,
@@ -54,9 +52,11 @@ defmodule Spotter.Services.CoChangeCalculatorTest do
     end
 
     test "returns :ok and persists groups with provenance for valid repo" do
+      repo_path = GitRepoHelper.create_repo_with_history!()
+      on_exit(fn -> File.rm_rf!(repo_path) end)
+
       project = create_project("calc-real-repo")
-      # Use the current repo as the cwd - it has real git history
-      create_session(project, cwd: File.cwd!())
+      create_session(project, cwd: repo_path)
 
       assert :ok = CoChangeCalculator.compute(project.id)
 
@@ -102,8 +102,11 @@ defmodule Spotter.Services.CoChangeCalculatorTest do
     end
 
     test "compute is idempotent for provenance rows" do
+      repo_path = GitRepoHelper.create_repo_with_history!()
+      on_exit(fn -> File.rm_rf!(repo_path) end)
+
       project = create_project("calc-idempotent")
-      create_session(project, cwd: File.cwd!())
+      create_session(project, cwd: repo_path)
 
       assert :ok = CoChangeCalculator.compute(project.id)
       commits_after_first = Ash.read!(CoChangeGroupCommit)
@@ -119,8 +122,11 @@ defmodule Spotter.Services.CoChangeCalculatorTest do
     end
 
     test "provenance writes are batched (fewer inserts than rows)" do
+      repo_path = GitRepoHelper.create_repo_with_history!()
+      on_exit(fn -> File.rm_rf!(repo_path) end)
+
       project = create_project("calc-batched")
-      create_session(project, cwd: File.cwd!())
+      create_session(project, cwd: repo_path)
 
       # Attach telemetry handler to count INSERT statements per table
       insert_counts = :counters.new(2, [:atomics])
@@ -241,8 +247,11 @@ defmodule Spotter.Services.CoChangeCalculatorTest do
     end
 
     test "deletes stale rows when repo is accessible" do
+      repo_path = GitRepoHelper.create_repo_with_history!()
+      on_exit(fn -> File.rm_rf!(repo_path) end)
+
       project = create_project("calc-stale-cleanup")
-      create_session(project, cwd: File.cwd!())
+      create_session(project, cwd: repo_path)
 
       # Insert a stale co-change group with a key that won't exist in real data
       Ash.create!(CoChangeGroup, %{

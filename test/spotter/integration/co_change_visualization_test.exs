@@ -10,6 +10,8 @@ defmodule Spotter.Integration.CoChangeVisualizationTest do
   alias Spotter.Repo
   alias Spotter.Services.CoChangeCalculator
 
+  alias Spotter.TestSupport.GitRepoHelper
+
   alias Spotter.Transcripts.{
     CoChangeGroup,
     Project,
@@ -23,10 +25,15 @@ defmodule Spotter.Integration.CoChangeVisualizationTest do
   setup do
     :ok = Sandbox.checkout(Repo)
     Sandbox.mode(Repo, {:shared, self()})
+    repo_path = GitRepoHelper.create_repo_with_history!()
+    on_exit(fn -> File.rm_rf!(repo_path) end)
+    %{repo_path: repo_path}
   end
 
   @tag timeout: 120_000
-  test "LiveView renders groups with provenance data from persisted tables" do
+  test "LiveView renders groups with provenance data from persisted tables", %{
+    repo_path: repo_path
+  } do
     project =
       Ash.create!(Project, %{
         name: "viz-test-#{System.unique_integer([:positive])}",
@@ -37,7 +44,7 @@ defmodule Spotter.Integration.CoChangeVisualizationTest do
       session_id: Ash.UUID.generate(),
       transcript_dir: "test-dir",
       project_id: project.id,
-      cwd: File.cwd!()
+      cwd: repo_path
     })
 
     # Compute groups with provenance

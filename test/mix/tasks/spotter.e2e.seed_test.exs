@@ -41,6 +41,7 @@ defmodule Mix.Tasks.Spotter.E2e.SeedTest do
     :ok
   end
 
+  @tag :slow
   test "copies fixtures and stays idempotent for session/message/tool_call counts" do
     Mix.Task.reenable("spotter.e2e.seed")
 

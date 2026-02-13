@@ -1,6 +1,8 @@
 defmodule Spotter.Services.FileDetail do
   @moduledoc "Data service for the file detail page."
 
+  alias Spotter.Services.CommitDetail
+
   alias Spotter.Transcripts.{
     Annotation,
     AnnotationFileRef,
@@ -120,7 +122,7 @@ defmodule Spotter.Services.FileDetail do
   Loads messages for a given session (for transcript display).
   """
   def load_session_messages(session_id) do
-    Spotter.Services.CommitDetail.load_session_messages(session_id)
+    CommitDetail.load_session_messages(session_id)
   end
 
   @doc """

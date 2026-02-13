@@ -72,7 +72,8 @@ defmodule Mix.Tasks.Spotter.E2e.Seed do
             "project_name" => project_name,
             "pattern" => Regex.source(pattern),
             "transcripts_dir" => config.transcripts_dir,
-            "run_id" => run_id
+            "run_id" => run_id,
+            "enqueue_downstream_jobs" => false
           }
         )
 

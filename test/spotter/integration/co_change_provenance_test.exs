@@ -6,6 +6,7 @@ defmodule Spotter.Integration.CoChangeProvenanceTest do
   alias Ecto.Adapters.SQL.Sandbox
   alias Spotter.Repo
   alias Spotter.Services.CoChangeCalculator
+  alias Spotter.TestSupport.GitRepoHelper
 
   alias Spotter.Transcripts.{
     CoChangeGroup,
@@ -19,9 +20,12 @@ defmodule Spotter.Integration.CoChangeProvenanceTest do
 
   setup do
     Sandbox.checkout(Repo)
+    repo_path = GitRepoHelper.create_repo_with_history!()
+    on_exit(fn -> File.rm_rf!(repo_path) end)
+    %{repo_path: repo_path}
   end
 
-  defp setup_project_with_repo do
+  defp setup_project_with_repo(repo_path) do
     project =
       Ash.create!(Project, %{
         name: "prov-test-#{System.unique_integer([:positive])}",
@@ -32,16 +36,15 @@ defmodule Spotter.Integration.CoChangeProvenanceTest do
       session_id: Ash.UUID.generate(),
       transcript_dir: "test-dir",
       project_id: project.id,
-      cwd: File.cwd!()
+      cwd: repo_path
     })
 
     project
   end
 
   describe "compute persists provenance" do
-    @tag timeout: 120_000
-    test "groups have linked commits and member stats after compute" do
-      project = setup_project_with_repo()
+    test "groups have linked commits and member stats after compute", %{repo_path: repo_path} do
+      project = setup_project_with_repo(repo_path)
 
       assert :ok = CoChangeCalculator.compute(project.id)
 
@@ -90,9 +93,8 @@ defmodule Spotter.Integration.CoChangeProvenanceTest do
   end
 
   describe "backfill_provenance" do
-    @tag timeout: 180_000
-    test "is idempotent - stable row counts on repeated runs" do
-      project = setup_project_with_repo()
+    test "is idempotent - stable row counts on repeated runs", %{repo_path: repo_path} do
+      project = setup_project_with_repo(repo_path)
 
       # First compute to create groups
       assert :ok = CoChangeCalculator.compute(project.id)
@@ -136,16 +138,17 @@ defmodule Spotter.Integration.CoChangeProvenanceTest do
   end
 
   describe "failure tolerance" do
-    @tag timeout: 120_000
-    test "pipeline completes even when member snapshot cannot be resolved" do
-      project = setup_project_with_repo()
+    test "pipeline completes even when member snapshot cannot be resolved", %{
+      repo_path: repo_path
+    } do
+      project = setup_project_with_repo(repo_path)
 
       # Compute normally first
       assert :ok = CoChangeCalculator.compute(project.id)
 
       # read_file_metrics with a non-existent path returns {nil, nil}
       assert {nil, nil} =
-               CoChangeCalculator.read_file_metrics(File.cwd!(), "HEAD", "nonexistent/path.ex")
+               CoChangeCalculator.read_file_metrics(repo_path, "HEAD", "nonexistent/path.ex")
 
       # The overall compute still returns :ok (no crash)
       assert :ok = CoChangeCalculator.compute(project.id)

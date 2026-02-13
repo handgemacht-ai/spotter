@@ -19,12 +19,15 @@ defmodule Spotter.Config.Setting.Validations.AllowedKey do
         if key in allowed do
           :ok
         else
-          {:error,
-           Ash.Error.Changes.InvalidAttribute.exception(
-             field: :key,
-             message: "must be one of: #{Enum.join(allowed, ", ")}",
-             vars: %{key: key}
-           )}
+          {
+            :error,
+            # credo:disable-for-next-line Credo.Check.Design.AliasUsage
+            Ash.Error.Changes.InvalidAttribute.exception(
+              field: :key,
+              message: "must be one of: #{Enum.join(allowed, ", ")}",
+              vars: %{key: key}
+            )
+          }
         end
     end
   end

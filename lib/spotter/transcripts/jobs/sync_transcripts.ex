@@ -177,7 +177,9 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
           {new_dirs_done, new_sessions_done}
         end)
 
-      enqueue_heatmap(project)
+      if Map.get(args, "enqueue_downstream_jobs", true) do
+        enqueue_heatmap(project)
+      end
 
       duration_ms = System.monotonic_time(:millisecond) - start_time
 

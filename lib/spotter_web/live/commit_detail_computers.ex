@@ -5,6 +5,7 @@ defmodule SpotterWeb.Live.CommitDetailComputers do
   Provides reactive pipelines for commit data, linked sessions,
   co-change overlaps, diff text, and transcript rendering.
   """
+  # credo:disable-for-this-file Credo.Check.Design.AliasUsage
   use AshComputer
 
   computer :commit_detail do
