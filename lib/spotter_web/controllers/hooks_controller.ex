@@ -2,6 +2,7 @@ defmodule SpotterWeb.HooksController do
   @moduledoc false
   use Phoenix.Controller, formats: [:json]
 
+  alias Spotter.ProductSpec.Jobs.UpdateRollingSpec
   alias Spotter.Services.ActiveSessionRegistry
   alias Spotter.Transcripts.Commit
   alias Spotter.Transcripts.FileSnapshot
@@ -41,6 +42,7 @@ defmodule SpotterWeb.HooksController do
         enqueue_enrichment(hashes, session)
         enqueue_heatmap(session)
         enqueue_analyze_hotspots(hashes, session)
+        enqueue_rolling_spec(hashes, session)
 
         conn
         |> put_status(:created)
@@ -219,6 +221,20 @@ defmodule SpotterWeb.HooksController do
   end
 
   defp enqueue_analyze_hotspots(_, _), do: :ok
+
+  defp enqueue_rolling_spec(hashes, session) when hashes != [] do
+    if Spotter.ProductSpec.enabled?() do
+      Enum.each(hashes, fn hash ->
+        args =
+          %{project_id: session.project_id, commit_hash: hash, git_cwd: session.cwd || "."}
+          |> maybe_add_trace_id()
+
+        args |> UpdateRollingSpec.new() |> Oban.insert()
+      end)
+    end
+  end
+
+  defp enqueue_rolling_spec(_, _), do: :ok
 
   defp enqueue_enrichment(hashes, session) when hashes != [] do
     args =

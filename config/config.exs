@@ -17,7 +17,7 @@ config :ash_oban, pro?: false
 config :spotter, Oban,
   engine: Oban.Engines.Lite,
   notifier: Oban.Notifiers.PG,
-  queues: [default: 10],
+  queues: [default: 10, spec: 1],
   repo: Spotter.Repo,
   plugins: [{Oban.Plugins.Cron, []}]
 
