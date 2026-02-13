@@ -11,6 +11,8 @@ defmodule Spotter.ProductSpec.Agent.Runner do
   require OpenTelemetry.Tracer, as: Tracer
 
   alias Spotter.Config.Runtime
+  alias Spotter.Observability.ClaudeAgentFlow
+  alias Spotter.Observability.FlowKeys
   alias Spotter.ProductSpec.Agent.Prompt
   alias Spotter.ProductSpec.Agent.ToolHelpers
   alias Spotter.ProductSpec.Agent.Tools
@@ -50,11 +52,17 @@ defmodule Spotter.ProductSpec.Agent.Runner do
       {system_prompt_template, _source} = Runtime.product_spec_system_prompt()
       system_prompt = Prompt.build_system_prompt(input, system_prompt_template)
 
-      opts = %ClaudeAgentSDK.Options{
+      base_opts = %ClaudeAgentSDK.Options{
         mcp_servers: %{"spec-tools" => server},
         allowed_tools: allowed_tools,
         max_turns: @max_turns
       }
+
+      opts = ClaudeAgentFlow.build_opts(base_opts)
+
+      flow_keys =
+        [FlowKeys.project(to_string(input[:project_id] || "unknown"))] ++
+          if(input[:commit_hash], do: [FlowKeys.commit(input.commit_hash)], else: [])
 
       tool_calls = []
       changed_count = 0
@@ -63,6 +71,7 @@ defmodule Spotter.ProductSpec.Agent.Runner do
         {tool_calls, changed_count} =
           system_prompt
           |> ClaudeAgentSDK.query(opts)
+          |> ClaudeAgentFlow.wrap_stream(flow_keys: flow_keys)
           |> Enum.reduce({tool_calls, changed_count}, &collect_tool_calls/2)
 
         output = %{
