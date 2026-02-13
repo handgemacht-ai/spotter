@@ -22,22 +22,75 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
   alias Spotter.Services.CommitDiffExtractor
   alias Spotter.Services.CommitHotspotFilters
   alias Spotter.Services.CommitPatchExtractor
-  alias Spotter.Transcripts.{Commit, Session, SessionCommitLink}
+  alias Spotter.Transcripts.{Commit, Project, Session, SessionCommitLink}
 
   @max_error_chars 8_000
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"project_id" => project_id, "commit_hash" => commit_hash} = args}) do
     Tracer.with_span "spotter.product_spec.update_rolling_spec.perform" do
-      Tracer.set_attribute("spotter.project_id", project_id)
       Tracer.set_attribute("spotter.commit_hash", commit_hash)
 
       if args["otel_trace_id"] do
         Tracer.set_attribute("spotter.parent_trace_id", args["otel_trace_id"])
       end
 
-      do_perform(args)
+      case normalize_project_id(project_id) do
+        {:ok, normalized_project_id} ->
+          Tracer.set_attribute("spotter.project_id", normalized_project_id)
+          args = Map.put(args, "project_id", normalized_project_id)
+          do_perform(args)
+
+        {:error, reason} ->
+          Logger.warning("UpdateRollingSpec: invalid project_id #{inspect(project_id)}: #{reason}")
+          Tracer.set_status(:error, reason)
+          :ok
+      end
     end
+  end
+
+  defp normalize_project_id(project_id) when is_binary(project_id) do
+    project_id = String.trim(project_id)
+
+    cond do
+      project_id == "" ->
+        {:error, "project_id is blank"}
+
+      uuid_like?(project_id) ->
+        {:ok, project_id}
+
+      true ->
+        resolve_project_id_by_name(project_id)
+    end
+  end
+
+  defp normalize_project_id(_project_id), do: {:error, "project_id must be a string"}
+
+  defp resolve_project_id_by_name(project_id) do
+    case Project |> Ash.Query.filter(name == ^project_id) |> Ash.read_one() do
+      {:ok, %Project{id: resolved_id}} ->
+        {:ok, resolved_id}
+
+      {:ok, nil} ->
+        fallback_unknown_project_id()
+
+      {:error, _} ->
+        fallback_unknown_project_id()
+    end
+  end
+
+  defp fallback_unknown_project_id do
+    case Project |> Ash.Query.filter(name == ^"Unknown") |> Ash.read_one() do
+      {:ok, %Project{id: resolved_id}} -> {:ok, resolved_id}
+      _ -> {:error, "project lookup failed"}
+    end
+  end
+
+  defp uuid_like?(project_id) do
+    Regex.match?(
+      ~r/\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\z/,
+      project_id
+    )
   end
 
   defp do_perform(%{"project_id" => project_id, "commit_hash" => commit_hash} = args) do
