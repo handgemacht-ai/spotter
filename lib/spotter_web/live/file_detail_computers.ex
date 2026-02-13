@@ -21,6 +21,10 @@ defmodule SpotterWeb.Live.FileDetailComputers do
       initial nil
     end
 
+    input :view_mode do
+      initial :blame
+    end
+
     val :project do
       compute(fn
         %{project_id: nil} ->
@@ -36,22 +40,108 @@ defmodule SpotterWeb.Live.FileDetailComputers do
       depends_on([:project_id])
     end
 
+    val :repo_root do
+      compute(fn
+        %{project: nil} ->
+          nil
+
+        %{project_id: project_id} ->
+          case Spotter.Services.FileDetail.resolve_repo_root(project_id) do
+            {:ok, root} -> root
+            _ -> nil
+          end
+      end)
+
+      depends_on([:project, :project_id])
+    end
+
     val :file_content do
       compute(fn
         %{project: nil} ->
           nil
 
-        %{project_id: project_id, relative_path: nil} when not is_nil(project_id) ->
+        %{project_id: _project_id, relative_path: nil} ->
           nil
 
-        %{project_id: project_id, relative_path: relative_path} ->
-          case Spotter.Services.FileDetail.load_file_content(project_id, relative_path) do
+        %{repo_root: nil} ->
+          nil
+
+        %{repo_root: repo_root, relative_path: relative_path} ->
+          case File.read(Path.join(repo_root, relative_path)) do
             {:ok, content} -> content
             _ -> nil
           end
       end)
 
-      depends_on([:project, :project_id, :relative_path])
+      depends_on([:project, :project_id, :relative_path, :repo_root])
+    end
+
+    val :blame_rows do
+      compute(fn
+        %{repo_root: nil} ->
+          nil
+
+        %{relative_path: nil} ->
+          nil
+
+        %{repo_root: repo_root, relative_path: relative_path} ->
+          case Spotter.Services.FileBlame.load_blame(repo_root, relative_path) do
+            {:ok, rows} -> rows
+            _ -> nil
+          end
+      end)
+
+      depends_on([:repo_root, :relative_path])
+    end
+
+    val :blame_error do
+      compute(fn
+        %{repo_root: nil} ->
+          nil
+
+        %{relative_path: nil} ->
+          nil
+
+        %{blame_rows: nil, repo_root: repo_root, relative_path: relative_path} ->
+          case Spotter.Services.FileBlame.load_blame(repo_root, relative_path) do
+            {:error, reason} -> reason
+            _ -> nil
+          end
+
+        _ ->
+          nil
+      end)
+
+      depends_on([:repo_root, :relative_path, :blame_rows])
+    end
+
+    val :file_error do
+      compute(fn
+        %{project: nil} ->
+          nil
+
+        %{relative_path: nil} ->
+          nil
+
+        %{project_id: project_id, repo_root: nil} ->
+          case Spotter.Services.FileDetail.resolve_repo_root(project_id) do
+            {:error, reason} -> reason
+            _ -> nil
+          end
+
+        %{repo_root: repo_root, relative_path: relative_path, file_content: nil} ->
+          full_path = Path.join(repo_root, relative_path)
+
+          case File.read(full_path) do
+            {:error, reason} -> {:file_read_failed, reason, full_path}
+            _ -> nil
+          end
+
+        _ ->
+          nil
+      end)
+
+      depends_on([:project, :project_id, :relative_path, :repo_root, :file_content])
     end
 
     val :language_class do

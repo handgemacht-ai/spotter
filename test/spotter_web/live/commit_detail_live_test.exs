@@ -7,6 +7,7 @@ defmodule SpotterWeb.CommitDetailLiveTest do
   alias Ecto.Adapters.SQL.Sandbox
 
   alias Spotter.Transcripts.{
+    CoChangeGroup,
     Commit,
     Message,
     Project,
@@ -195,6 +196,42 @@ defmodule SpotterWeb.CommitDetailLiveTest do
 
       assert html =~ ~s(href="/history")
       assert html =~ "History"
+    end
+  end
+
+  describe "file links" do
+    test "changed files render as links when linked session exists", %{
+      project: project,
+      commit: commit
+    } do
+      {:ok, _view, html} = live(build_conn(), "/history/commits/#{commit.id}")
+
+      assert html =~ "/projects/#{project.id}/files/lib/foo.ex"
+      assert html =~ "/projects/#{project.id}/files/lib/bar.ex"
+    end
+
+    test "co-change members render as links when linked session exists", %{
+      project: project,
+      commit: commit
+    } do
+      Ash.create!(CoChangeGroup, %{
+        scope: :file,
+        group_key: "lib/foo.ex+lib/baz.ex",
+        members: ["lib/foo.ex", "lib/baz.ex"],
+        frequency_30d: 5,
+        project_id: project.id
+      })
+
+      {:ok, _view, html} = live(build_conn(), "/history/commits/#{commit.id}")
+
+      assert html =~ "/projects/#{project.id}/files/lib/foo.ex"
+      assert html =~ "/projects/#{project.id}/files/lib/baz.ex"
+    end
+
+    test "diff container has DiffHighlighter hook", %{commit: commit} do
+      {:ok, _view, html} = live(build_conn(), "/history/commits/#{commit.id}")
+
+      assert html =~ ~s(phx-hook="DiffHighlighter")
     end
   end
 end

@@ -97,6 +97,18 @@ defmodule SpotterWeb.HeatmapLiveTest do
       assert html =~ "lib/b.ex"
     end
 
+    test "All shows file links scoped to each entry's project" do
+      p1 = create_project("heatmap-links-a")
+      p2 = create_project("heatmap-links-b")
+      create_heatmap(p1, "lib/a.ex", score: 50.0)
+      create_heatmap(p2, "lib/b.ex", score: 50.0)
+
+      {:ok, _view, html} = live(build_conn(), "/heatmap")
+
+      assert html =~ "/projects/#{p1.id}/files/lib/a.ex"
+      assert html =~ "/projects/#{p2.id}/files/lib/b.ex"
+    end
+
     test "filter_project event navigates via push_patch" do
       project = create_project("heatmap-filter-proj")
       create_heatmap(project, "lib/only.ex", score: 60.0)

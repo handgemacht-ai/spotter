@@ -93,5 +93,41 @@ defmodule SpotterWeb.FileDetailLiveTest do
 
       assert html =~ "elixir"
     end
+
+    test "renders blame toggle with blame as default", %{project: project} do
+      {:ok, _view, html} =
+        live(build_conn(), "/projects/#{project.id}/files/lib/foo.ex")
+
+      assert html =~ ~s(data-testid="view-mode-toggle")
+      assert html =~ "Blame"
+      assert html =~ "Raw"
+    end
+
+    test "blame is default view mode", %{project: project} do
+      {:ok, _view, html} =
+        live(build_conn(), "/projects/#{project.id}/files/lib/foo.ex")
+
+      # Blame is selected by default - either shows blame view or blame error
+      assert html =~ ~s(data-testid="blame-view") or html =~ ~s(data-testid="blame-error")
+    end
+
+    test "blame error shown when blame unavailable in test env", %{project: project} do
+      {:ok, _view, html} =
+        live(build_conn(), "/projects/#{project.id}/files/nonexistent/path.ex")
+
+      # In test env, blame won't be available since there's no real git repo
+      # Should show an error, not crash
+      assert html =~ "file-detail-root"
+    end
+
+    test "switching to raw mode shows file content or error", %{project: project} do
+      {:ok, view, _html} =
+        live(build_conn(), "/projects/#{project.id}/files/lib/foo.ex")
+
+      html = render_click(view, "toggle_view_mode", %{"mode" => "raw"})
+
+      # In raw mode, either file content or file error is shown
+      assert html =~ ~s(data-testid="file-content") or html =~ ~s(data-testid="file-error")
+    end
   end
 end

@@ -257,13 +257,13 @@ defmodule SpotterWeb.HeatmapLive do
             <tr :for={entry <- @heatmap_entries}>
               <td title={entry.relative_path}>
                 <a
-                  :if={@selected_project_id}
-                  href={"/projects/#{@selected_project_id}/files/#{entry.relative_path}"}
+                  :if={entry.project_id}
+                  href={"/projects/#{entry.project_id}/files/#{entry.relative_path}"}
                   class="file-link"
                 >
                   {entry.relative_path}
                 </a>
-                <span :if={!@selected_project_id}>{entry.relative_path}</span>
+                <span :if={!entry.project_id}>{entry.relative_path}</span>
               </td>
               <td>
                 <span class={heat_badge_class(entry.heat_score)}>

@@ -33,6 +33,11 @@ defmodule SpotterWeb.FileDetailLive do
     {:noreply, update_computer_inputs(socket, :file_detail, %{selected_session_id: session_id})}
   end
 
+  def handle_event("toggle_view_mode", %{"mode" => mode}, socket) do
+    view_mode = if mode == "raw", do: :raw, else: :blame
+    {:noreply, update_computer_inputs(socket, :file_detail, %{view_mode: view_mode})}
+  end
+
   def handle_event("file_text_selected", params, socket) do
     {:noreply,
      assign(socket,
@@ -160,6 +165,16 @@ defmodule SpotterWeb.FileDetailLive do
   defp change_type_class(:renamed), do: "badge badge-renamed"
   defp change_type_class(_), do: "badge badge-modified"
 
+  defp format_blame_error(:git_blame_failed), do: "git blame command failed."
+  defp format_blame_error(other), do: inspect(other)
+
+  defp format_file_error(:no_accessible_cwd),
+    do: "No accessible working directory found for this project."
+
+  defp format_file_error(:git_root_failed), do: "Could not resolve git repository root."
+  defp format_file_error({:file_read_failed, reason, path}), do: "#{inspect(reason)} — #{path}"
+  defp format_file_error(other), do: inspect(other)
+
   defp format_timestamp(nil), do: "\u2014"
 
   defp format_timestamp(dt) do
@@ -203,19 +218,91 @@ defmodule SpotterWeb.FileDetailLive do
               <span class="text-muted text-xs">
                 {@file_detail_language_class}
               </span>
+              <div class="filter-bar ml-auto" data-testid="view-mode-toggle">
+                <button
+                  phx-click="toggle_view_mode"
+                  phx-value-mode="blame"
+                  class={"filter-btn#{if @file_detail_view_mode == :blame, do: " is-active"}"}
+                >
+                  Blame
+                </button>
+                <button
+                  phx-click="toggle_view_mode"
+                  phx-value-mode="raw"
+                  class={"filter-btn#{if @file_detail_view_mode == :raw, do: " is-active"}"}
+                >
+                  Raw
+                </button>
+              </div>
             </div>
 
-            <%= if @file_detail_file_content do %>
-              <div
-                id="file-content-container"
-                phx-hook="FileHighlighter"
-                class="file-detail-content"
-                data-testid="file-content"
-              >
-                <pre><code class={"language-#{@file_detail_language_class}"}>{@file_detail_file_content}</code></pre>
-              </div>
+            <%= if @file_detail_view_mode == :blame do %>
+              <%= if @file_detail_blame_rows do %>
+                <div class="file-detail-blame" data-testid="blame-view">
+                  <table class="blame-table">
+                    <tbody>
+                      <tr :for={row <- @file_detail_blame_rows} class="blame-row">
+                        <td class="blame-gutter">
+                          <a
+                            :if={row.commit_id}
+                            href={"/history/commits/#{row.commit_id}"}
+                            class="blame-hash"
+                            title={row.summary}
+                          >
+                            {String.slice(row.commit_hash, 0, 8)}
+                          </a>
+                          <a
+                            :if={row.session_link}
+                            href={"/sessions/#{row.session_link.session_id}"}
+                            class="blame-session-link"
+                            title="Linked session"
+                          >
+                            S
+                          </a>
+                          <span :if={row.author} class="blame-author" title={row.author}>
+                            {String.slice(row.author, 0, 12)}
+                          </span>
+                        </td>
+                        <td class="blame-line-no">{row.line_no}</td>
+                        <td class="blame-code"><pre>{row.text}</pre></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              <% else %>
+                <div class="empty-state" data-testid="blame-error">
+                  <p>Blame not available.</p>
+                  <p :if={@file_detail_blame_error} class="text-muted text-sm">
+                    {format_blame_error(@file_detail_blame_error)}
+                  </p>
+                </div>
+              <% end %>
             <% else %>
-              <div class="empty-state">File content not available.</div>
+              <%= if @file_detail_file_content do %>
+                <div
+                  id="file-content-container"
+                  phx-hook="FileHighlighter"
+                  class="file-detail-content"
+                  data-testid="file-content"
+                >
+                  <pre><code class={"language-#{@file_detail_language_class}"}>{@file_detail_file_content}</code></pre>
+                </div>
+              <% else %>
+                <div class="empty-state" data-testid="file-error">
+                  <p>File content not available.</p>
+                  <div :if={@file_detail_file_error} class="text-muted text-sm mt-2">
+                    <p>
+                      <strong>Reason:</strong> {format_file_error(@file_detail_file_error)}
+                    </p>
+                    <p :if={@file_detail_repo_root}>
+                      <strong>Repo root:</strong> {@file_detail_repo_root}
+                    </p>
+                    <p>
+                      <strong>Requested path:</strong> {@file_detail_relative_path}
+                    </p>
+                  </div>
+                </div>
+              <% end %>
             <% end %>
 
             <%!-- Commits touching this file --%>

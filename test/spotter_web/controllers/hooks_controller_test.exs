@@ -4,6 +4,8 @@ defmodule SpotterWeb.HooksControllerTest do
   alias Ecto.Adapters.SQL.Sandbox
   alias Spotter.Transcripts.{Commit, Project, Session, SessionCommitLink}
 
+  require Ash.Query
+
   @endpoint SpotterWeb.Endpoint
 
   setup do
@@ -126,6 +128,89 @@ defmodule SpotterWeb.HooksControllerTest do
 
       assert status == 201
       assert body["ok"] == true
+    end
+  end
+
+  describe "file_snapshot relative_path derivation" do
+    test "derives relative_path from absolute file_path using session cwd", %{session: _session} do
+      project = Ash.create!(Project, %{name: "test-derive", pattern: "^derive"})
+
+      session_with_cwd =
+        Ash.create!(Session, %{
+          session_id: Ash.UUID.generate(),
+          transcript_dir: "test-dir",
+          cwd: "/repo",
+          project_id: project.id
+        })
+
+      {status, body, _conn} =
+        post_snapshot(%{
+          "session_id" => session_with_cwd.session_id,
+          "tool_use_id" => "tool_derive",
+          "file_path" => "/repo/lib/a.ex",
+          "content_after" => "defmodule A do\nend",
+          "change_type" => "created",
+          "source" => "write",
+          "timestamp" => DateTime.to_iso8601(DateTime.utc_now())
+        })
+
+      assert status == 201
+      assert body["ok"] == true
+
+      snapshot =
+        Spotter.Transcripts.FileSnapshot
+        |> Ash.Query.filter(tool_use_id == "tool_derive")
+        |> Ash.read!()
+        |> List.first()
+
+      assert snapshot.relative_path == "lib/a.ex"
+    end
+
+    test "keeps explicit relative_path when provided", %{session: session} do
+      {status, _body, _conn} =
+        post_snapshot(%{
+          "session_id" => session.session_id,
+          "tool_use_id" => "tool_explicit",
+          "file_path" => "/repo/lib/a.ex",
+          "relative_path" => "custom/path.ex",
+          "content_after" => "defmodule A do\nend",
+          "change_type" => "created",
+          "source" => "write",
+          "timestamp" => DateTime.to_iso8601(DateTime.utc_now())
+        })
+
+      assert status == 201
+
+      snapshot =
+        Spotter.Transcripts.FileSnapshot
+        |> Ash.Query.filter(tool_use_id == "tool_explicit")
+        |> Ash.read!()
+        |> List.first()
+
+      assert snapshot.relative_path == "custom/path.ex"
+    end
+
+    test "uses file_path directly when it is relative", %{session: session} do
+      {status, _body, _conn} =
+        post_snapshot(%{
+          "session_id" => session.session_id,
+          "tool_use_id" => "tool_relative",
+          "file_path" => "lib/b.ex",
+          "content_after" => "defmodule B do\nend",
+          "change_type" => "created",
+          "source" => "write",
+          "timestamp" => DateTime.to_iso8601(DateTime.utc_now())
+        })
+
+      assert status == 201
+
+      snapshot =
+        Spotter.Transcripts.FileSnapshot
+        |> Ash.Query.filter(tool_use_id == "tool_relative")
+        |> Ash.read!()
+        |> List.first()
+
+      assert snapshot.relative_path == "lib/b.ex"
     end
   end
 

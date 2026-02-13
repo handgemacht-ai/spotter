@@ -147,12 +147,24 @@ defmodule SpotterWeb.CommitDetailLive do
                 <div :if={@commit_detail_commit.changed_files != []} class="commit-detail-files">
                   <div class="commit-detail-section-title">Changed Files</div>
                   <div :for={file <- @commit_detail_commit.changed_files} class="commit-detail-file">
-                    {file}
+                    <a
+                      :if={@commit_detail_project}
+                      href={"/projects/#{@commit_detail_project.id}/files/#{file}"}
+                      class="file-link"
+                    >
+                      {file}
+                    </a>
+                    <span :if={!@commit_detail_project}>{file}</span>
                   </div>
                 </div>
 
                 <%!-- Diff content --%>
-                <div class="commit-detail-diff-content" data-testid="diff-content">
+                <div
+                  class="commit-detail-diff-content"
+                  data-testid="diff-content"
+                  id="diff-highlighter"
+                  phx-hook="DiffHighlighter"
+                >
                   <div class="commit-detail-section-title">Diff</div>
                   <pre><code class="language-diff">{@commit_detail_diff_text}</code></pre>
                 </div>
@@ -169,9 +181,18 @@ defmodule SpotterWeb.CommitDetailLive do
                     <span class="text-muted text-xs">
                       {group.frequency_30d}x/30d
                     </span>
-                    <span :for={member <- group.members} class="commit-detail-cochange-member">
-                      {member}
-                    </span>
+                    <%= for member <- group.members do %>
+                      <a
+                        :if={@commit_detail_project}
+                        href={"/projects/#{@commit_detail_project.id}/files/#{member}"}
+                        class="commit-detail-cochange-member file-link"
+                      >
+                        {member}
+                      </a>
+                      <span :if={!@commit_detail_project} class="commit-detail-cochange-member">
+                        {member}
+                      </span>
+                    <% end %>
                   </div>
                 </div>
               </div>

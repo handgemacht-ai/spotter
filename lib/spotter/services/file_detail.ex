@@ -8,12 +8,12 @@ defmodule Spotter.Services.FileDetail do
     AnnotationFileRef,
     Commit,
     CommitFile,
-    FileSnapshot,
     Session,
     SessionCommitLink
   }
 
   require Ash.Query
+  require OpenTelemetry.Tracer
 
   @doc """
   Resolves a project by ID. Returns `{:ok, project}` or `{:error, :not_found}`.
@@ -26,24 +26,72 @@ defmodule Spotter.Services.FileDetail do
   end
 
   @doc """
-  Loads the latest file content for a relative path.
+  Resolves the git repo root for a project by finding a valid session cwd on disk.
 
-  Tries FileSnapshot.content_after first; falls back to git blob.
+  Returns `{:ok, repo_root}` or `{:error, reason}`.
+  """
+  def resolve_repo_root(project_id) do
+    OpenTelemetry.Tracer.with_span "spotter.file_detail.resolve_repo_root" do
+      sessions =
+        Session
+        |> Ash.Query.filter(project_id == ^project_id and not is_nil(cwd))
+        |> Ash.Query.sort(started_at: :desc)
+        |> Ash.Query.limit(10)
+        |> Ash.read!()
+
+      cwd =
+        sessions
+        |> Enum.map(& &1.cwd)
+        |> Enum.find(&File.dir?/1)
+
+      case cwd do
+        nil ->
+          OpenTelemetry.Tracer.set_status(:error, "no_accessible_cwd")
+          {:error, :no_accessible_cwd}
+
+        cwd ->
+          case System.cmd("git", ["-C", cwd, "rev-parse", "--show-toplevel"],
+                 stderr_to_stdout: true
+               ) do
+            {root, 0} ->
+              {:ok, String.trim(root)}
+
+            {output, _} ->
+              OpenTelemetry.Tracer.set_status(:error, "git_root_failed")
+
+              OpenTelemetry.Tracer.set_attribute("git.error", String.slice(output, 0, 200))
+
+              {:error, :git_root_failed}
+          end
+      end
+    end
+  end
+
+  @doc """
+  Loads file content by reading directly from the working tree on disk.
+
+  Returns `{:ok, content}` or `{:error, reason}`.
   """
   def load_file_content(project_id, relative_path) do
-    snapshot =
-      FileSnapshot
-      |> Ash.Query.filter(relative_path == ^relative_path)
-      |> Ash.Query.load(:session)
-      |> Ash.Query.sort(timestamp: :desc)
-      |> Ash.Query.limit(1)
-      |> Ash.read!()
-      |> List.first()
+    OpenTelemetry.Tracer.with_span "spotter.file_detail.load_file_content",
+                                   %{attributes: %{"file.relative_path" => relative_path}} do
+      case resolve_repo_root(project_id) do
+        {:ok, repo_root} ->
+          full_path = Path.join(repo_root, relative_path)
 
-    if snapshot && snapshot.content_after do
-      {:ok, snapshot.content_after}
-    else
-      fetch_git_blob(project_id, relative_path)
+          case File.read(full_path) do
+            {:ok, content} ->
+              {:ok, content}
+
+            {:error, reason} ->
+              OpenTelemetry.Tracer.set_status(:error, "file_read_failed")
+              OpenTelemetry.Tracer.set_attribute("file.error", inspect(reason))
+              {:error, {:file_read_failed, reason, full_path}}
+          end
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -191,31 +239,4 @@ defmodule Spotter.Services.FileDetail do
 
   defp ext_to_language(""), do: "plaintext"
   defp ext_to_language(ext), do: Map.get(@language_map, ext, ext)
-
-  defp fetch_git_blob(project_id, relative_path) do
-    sessions =
-      Session
-      |> Ash.Query.filter(project_id == ^project_id)
-      |> Ash.Query.sort(started_at: :desc)
-      |> Ash.Query.limit(5)
-      |> Ash.read!()
-
-    cwd =
-      sessions
-      |> Enum.map(& &1.cwd)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.find(&File.dir?/1)
-
-    if cwd do
-      case System.cmd("git", ["show", "HEAD:#{relative_path}"],
-             cd: cwd,
-             stderr_to_stdout: true
-           ) do
-        {output, 0} -> {:ok, output}
-        _ -> {:error, :not_available}
-      end
-    else
-      {:error, :not_available}
-    end
-  end
 end

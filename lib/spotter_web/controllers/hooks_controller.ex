@@ -291,12 +291,20 @@ defmodule SpotterWeb.HooksController do
     with {:ok, change_type} <- to_existing_atom(params["change_type"], "change_type"),
          {:ok, source} <- to_existing_atom(params["source"], "source"),
          {:ok, timestamp} <- parse_timestamp(params["timestamp"]) do
+      {relative_path, strategy} =
+        derive_relative_path(params["relative_path"], params["file_path"], session.cwd)
+
+      OpenTelemetry.Tracer.set_attribute(
+        "spotter.file_snapshot.relative_path.strategy",
+        strategy
+      )
+
       {:ok,
        %{
          session_id: session.id,
          tool_use_id: params["tool_use_id"],
          file_path: params["file_path"],
-         relative_path: params["relative_path"],
+         relative_path: relative_path,
          content_before: params["content_before"],
          content_after: params["content_after"],
          change_type: change_type,
@@ -305,6 +313,32 @@ defmodule SpotterWeb.HooksController do
        }}
     end
   end
+
+  defp derive_relative_path(relative_path, _file_path, _cwd) when is_binary(relative_path) do
+    {relative_path, "param"}
+  end
+
+  defp derive_relative_path(nil, file_path, cwd) when is_binary(file_path) do
+    if String.starts_with?(file_path, "/") do
+      derive_from_cwd(file_path, cwd)
+    else
+      {file_path, "relative"}
+    end
+  end
+
+  defp derive_relative_path(nil, _file_path, _cwd), do: {nil, "none"}
+
+  defp derive_from_cwd(file_path, cwd) when is_binary(cwd) do
+    prefix = String.trim_trailing(cwd, "/") <> "/"
+
+    if String.starts_with?(file_path, prefix) do
+      {Path.relative_to(file_path, cwd), "cwd_prefix"}
+    else
+      {nil, "none"}
+    end
+  end
+
+  defp derive_from_cwd(_file_path, _cwd), do: {nil, "none"}
 
   defp to_existing_atom(value, field) when is_binary(value) do
     {:ok, String.to_existing_atom(value)}

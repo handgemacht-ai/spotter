@@ -198,6 +198,32 @@ Hooks.TranscriptHighlighter = {
   },
 }
 
+Hooks.FileHighlighter = {
+  mounted() { this._highlight() },
+  updated() { this._highlight() },
+  _highlight() {
+    const blocks = this.el.querySelectorAll("pre code")
+    for (const block of blocks) {
+      if (block.dataset.hljs === "done") continue
+      hljs.highlightElement(block)
+      block.dataset.hljs = "done"
+    }
+  },
+}
+
+Hooks.DiffHighlighter = {
+  mounted() { this._highlight() },
+  updated() { this._highlight() },
+  _highlight() {
+    const blocks = this.el.querySelectorAll("code.language-diff")
+    for (const block of blocks) {
+      if (block.dataset.hljs === "done") continue
+      hljs.highlightElement(block)
+      block.dataset.hljs = "done"
+    }
+  },
+}
+
 Hooks.Terminal = {
   mounted() {
     const paneId = this.el.dataset.paneId
