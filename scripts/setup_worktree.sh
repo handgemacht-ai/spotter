@@ -39,6 +39,39 @@ fi
 
 main_path="$(realpath "$main_path")"
 
+# Best-effort: share `.envrc` across worktrees + allow direnv.
+#
+# Motivation:
+# - `.envrc` is typically untracked (local secrets) so it won't be copied into new worktrees.
+# - direnv requires `allow` per directory. Without it, `direnv exec` (and shells) won't load env.
+# - tmux-launched commands won't automatically get direnv env unless we wrap with `direnv exec`.
+#
+# Approach:
+# - If this is not the primary worktree and `.envrc` is missing, symlink it from the primary worktree.
+# - If direnv is installed and `.envrc` exists, run `direnv allow` (non-fatal).
+#
+# Note: We intentionally do not create a new `.envrc` template here because it may contain secrets.
+if [ "$this_path" != "$main_path" ]; then
+  if [ -L "$WORKTREE_ROOT/.envrc" ] && [ ! -e "$WORKTREE_ROOT/.envrc" ]; then
+    rm -f "$WORKTREE_ROOT/.envrc"
+  fi
+
+  if [ ! -e "$WORKTREE_ROOT/.envrc" ] && [ -e "$main_path/.envrc" ]; then
+    ln -s "$main_path/.envrc" "$WORKTREE_ROOT/.envrc"
+    echo "==> Linked .envrc from primary worktree: $main_path/.envrc"
+  fi
+fi
+
+DIRENV_ALLOWED=false
+if command -v direnv &>/dev/null && [ -e "$WORKTREE_ROOT/.envrc" ]; then
+  if direnv allow "$WORKTREE_ROOT" >/dev/null 2>&1; then
+    DIRENV_ALLOWED=true
+    echo "==> direnv allow: ok"
+  else
+    echo "WARNING: direnv allow failed for $WORKTREE_ROOT (continuing)"
+  fi
+fi
+
 if [ "$this_path" = "$main_path" ]; then
   INDEX=0
 else
@@ -132,6 +165,11 @@ if command -v tmux &>/dev/null; then
     if command -v bd &>/dev/null && bd show "$BRANCH" --short >/dev/null 2>&1; then
       CLAUDE_CMD="$CLAUDE_CMD \"Work on bead $BRANCH. Run bd show $BRANCH to see the issue details and bd ready to find available subtasks. Start with the first ready task.\""
       echo "==> Bead detected: $BRANCH (Claude will auto-start)"
+    fi
+
+    # Make sure `claude` sees `.envrc` vars (e.g., ANTHROPIC_API_KEY) even when started via tmux.
+    if [ "$DIRENV_ALLOWED" = true ]; then
+      CLAUDE_CMD="direnv exec \"$WORKTREE_ROOT\" $CLAUDE_CMD"
     fi
 
     tmux new-session -d -s "$SESSION_NAME" -c "$WORKTREE_ROOT" "$CLAUDE_CMD"

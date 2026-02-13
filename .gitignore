@@ -9,6 +9,9 @@ erl_crash.dump
 /config/*.secret.exs
 .elixir_ls/
 
+# Local direnv secrets (never commit)
+.envrc
+
 # Per-worktree generated files (from scripts/setup_worktree.sh)
 config/dev.local.exs
 .port
