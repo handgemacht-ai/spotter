@@ -15,6 +15,15 @@ defmodule Spotter.ProductSpec.Agent.ToolHelpers do
 
   def commit_hash, do: Process.get(:spec_agent_commit_hash, "")
 
+  @doc "Sets the git working directory for repo inspection tools."
+  @spec set_git_cwd(String.t() | nil) :: :ok
+  def set_git_cwd(cwd) do
+    Process.put(:spec_agent_git_cwd, cwd)
+    :ok
+  end
+
+  def git_cwd, do: Process.get(:spec_agent_git_cwd)
+
   def text_result(data) do
     {:ok, %{"content" => [%{"type" => "text", "text" => Jason.encode!(data)}]}}
   end
@@ -55,4 +64,23 @@ defmodule Spotter.ProductSpec.Agent.ToolHelpers do
   def dolt_query!(sql, params \\ []) do
     SQL.query!(Repo, sql, params)
   end
+
+  @doc "Validates a list of evidence file paths. Returns :ok or {:error, reason}."
+  @spec validate_evidence_files([term()]) :: :ok | {:error, String.t()}
+  def validate_evidence_files(files) when is_list(files) do
+    invalid =
+      Enum.reject(files, fn f ->
+        is_binary(f) and f != "" and
+          not String.starts_with?(f, "/") and
+          not String.contains?(f, "..") and
+          not String.contains?(f, "\\")
+      end)
+
+    case invalid do
+      [] -> :ok
+      _ -> {:error, "invalid evidence file paths: #{inspect(invalid)}"}
+    end
+  end
+
+  def validate_evidence_files(_), do: {:error, "evidence_files must be a list of strings"}
 end

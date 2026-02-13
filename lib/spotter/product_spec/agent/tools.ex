@@ -318,7 +318,7 @@ defmodule Spotter.ProductSpec.Agent.Tools do
         H.dolt_query!(
           """
           SELECT id, project_id, feature_id, spec_key, statement, rationale,
-                 acceptance_criteria, priority, updated_by_git_commit
+                 acceptance_criteria, priority, evidence_files, updated_by_git_commit
           FROM product_requirements WHERE #{Enum.join(where, " AND ")} ORDER BY spec_key
           """,
           params
@@ -346,7 +346,12 @@ defmodule Spotter.ProductSpec.Agent.Tools do
                 items: %{type: "string"},
                 description: "List of acceptance criteria"
               },
-              priority: %{type: "string", description: "Priority level"}
+              priority: %{type: "string", description: "Priority level"},
+              evidence_files: %{
+                type: "array",
+                items: %{type: "string"},
+                description: "Repo-relative file paths that evidence this requirement"
+              }
             },
             required: ["project_id", "feature_id", "spec_key", "statement"]
           } do
@@ -360,18 +365,23 @@ defmodule Spotter.ProductSpec.Agent.Tools do
             "statement" => statement
           } = input
         ) do
+      ev_files = input["evidence_files"] || []
+
       with :ok <- H.validate_spec_key(sk),
-           :ok <- H.validate_shall(statement) do
+           :ok <- H.validate_shall(statement),
+           :ok <- H.validate_evidence_files(ev_files) do
         id = Ash.UUID.generate()
         ac_json = if input["acceptance_criteria"], do: Jason.encode!(input["acceptance_criteria"])
+        ev_json = if ev_files != [], do: Jason.encode!(ev_files)
 
         H.dolt_query!(
           """
           INSERT INTO product_requirements
-            (id, project_id, feature_id, spec_key, statement, rationale, acceptance_criteria, priority, updated_by_git_commit)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, project_id, feature_id, spec_key, statement, rationale, acceptance_criteria, priority, evidence_files, updated_by_git_commit)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE statement = VALUES(statement), rationale = VALUES(rationale),
             acceptance_criteria = VALUES(acceptance_criteria), priority = VALUES(priority),
+            evidence_files = VALUES(evidence_files),
             updated_by_git_commit = VALUES(updated_by_git_commit)
           """,
           [
@@ -383,6 +393,7 @@ defmodule Spotter.ProductSpec.Agent.Tools do
             input["rationale"],
             ac_json,
             input["priority"],
+            ev_json,
             H.commit_hash()
           ]
         )
@@ -409,15 +420,23 @@ defmodule Spotter.ProductSpec.Agent.Tools do
                 items: %{type: "string"},
                 description: "New acceptance criteria"
               },
-              priority: %{type: "string", description: "New priority"}
+              priority: %{type: "string", description: "New priority"},
+              evidence_files: %{
+                type: "array",
+                items: %{type: "string"},
+                description: "Repo-relative file paths (replaces existing evidence)"
+              }
             },
             required: ["project_id", "requirement_id"]
           } do
     alias Spotter.ProductSpec.Agent.ToolHelpers, as: H
 
     def execute(%{"project_id" => project_id, "requirement_id" => requirement_id} = input) do
+      ev_files = input["evidence_files"]
+
       with :ok <- H.maybe_validate_spec_key(input["spec_key"]),
-           :ok <- H.maybe_validate_shall(input["statement"]) do
+           :ok <- H.maybe_validate_shall(input["statement"]),
+           :ok <- if(ev_files, do: H.validate_evidence_files(ev_files), else: :ok) do
         {sets, params} =
           H.build_update_sets(input, ["spec_key", "statement", "rationale", "priority"])
 
@@ -425,6 +444,13 @@ defmodule Spotter.ProductSpec.Agent.Tools do
           if input["acceptance_criteria"] do
             {sets ++ ["acceptance_criteria = ?"],
              params ++ [Jason.encode!(input["acceptance_criteria"])]}
+          else
+            {sets, params}
+          end
+
+        {sets, params} =
+          if ev_files do
+            {sets ++ ["evidence_files = ?"], params ++ [Jason.encode!(ev_files)]}
           else
             {sets, params}
           end
@@ -468,6 +494,180 @@ defmodule Spotter.ProductSpec.Agent.Tools do
       )
 
       H.text_result(%{ok: true})
+    end
+  end
+
+  deftool :requirements_add_evidence_files,
+          "Append additional evidence files to an existing requirement (union, de-duped)",
+          %{
+            type: "object",
+            properties: %{
+              project_id: %{type: "string", description: "Project UUID"},
+              requirement_id: %{type: "string", description: "Requirement UUID"},
+              files: %{
+                type: "array",
+                items: %{type: "string"},
+                description: "Repo-relative file paths to add as evidence"
+              }
+            },
+            required: ["project_id", "requirement_id", "files"]
+          } do
+    alias Spotter.ProductSpec.Agent.ToolHelpers, as: H
+
+    def execute(%{"project_id" => pid, "requirement_id" => rid, "files" => new_files}) do
+      case H.validate_evidence_files(new_files) do
+        :ok ->
+          result =
+            H.dolt_query!(
+              "SELECT evidence_files FROM product_requirements WHERE project_id = ? AND id = ?",
+              [pid, rid]
+            )
+
+          case result.rows do
+            [[existing_json]] ->
+              existing = parse_evidence(existing_json)
+              existing_set = MapSet.new(existing)
+              merged = existing ++ Enum.reject(new_files, &MapSet.member?(existing_set, &1))
+              merged_json = Jason.encode!(merged)
+
+              H.dolt_query!(
+                "UPDATE product_requirements SET evidence_files = ?, updated_by_git_commit = ? WHERE project_id = ? AND id = ?",
+                [merged_json, H.commit_hash(), pid, rid]
+              )
+
+              H.text_result(%{ok: true, evidence_files: merged})
+
+            _ ->
+              H.text_result(%{error: "requirement not found"})
+          end
+
+        {:error, msg} ->
+          H.text_result(%{error: msg})
+      end
+    end
+
+    defp parse_evidence(nil), do: []
+
+    defp parse_evidence(json) when is_binary(json) do
+      case Jason.decode(json) do
+        {:ok, list} when is_list(list) -> Enum.filter(list, &is_binary/1)
+        _ -> []
+      end
+    end
+
+    defp parse_evidence(_), do: []
+  end
+
+  # ── Git repo inspection (read-only) ──
+
+  deftool :repo_read_file_at_commit,
+          "Read a file from the repository at a specific commit",
+          %{
+            type: "object",
+            properties: %{
+              commit_hash: %{type: "string", description: "Git commit hash"},
+              relative_path: %{type: "string", description: "Repo-relative file path"},
+              max_chars: %{
+                type: "integer",
+                description: "Maximum characters to return (default 60000)"
+              }
+            },
+            required: ["commit_hash", "relative_path"]
+          },
+          annotations: %{readOnlyHint: true} do
+    alias Spotter.ProductSpec.Agent.ToolHelpers, as: H
+
+    require OpenTelemetry.Tracer, as: Tracer
+
+    def execute(%{"commit_hash" => hash, "relative_path" => path} = input) do
+      max_chars = input["max_chars"] || 60_000
+      cwd = H.git_cwd()
+
+      Tracer.with_span "spotter.product_spec.repo_read_file" do
+        Tracer.set_attribute("spotter.commit_hash", hash)
+        Tracer.set_attribute("spotter.relative_path", path)
+
+        case git_show(cwd, hash, path) do
+          {:ok, content} ->
+            truncated = byte_size(content) > max_chars
+
+            content =
+              if truncated, do: String.slice(content, 0, max_chars), else: content
+
+            H.text_result(%{
+              ok: true,
+              relative_path: path,
+              commit_hash: hash,
+              content: content,
+              truncated: truncated
+            })
+
+          {:error, reason} ->
+            Tracer.set_status(:error, reason)
+
+            H.text_result(%{
+              ok: false,
+              relative_path: path,
+              commit_hash: hash,
+              error: reason
+            })
+        end
+      end
+    end
+
+    defp git_show(nil, _hash, _path), do: {:error, "git_cwd not available"}
+
+    defp git_show(cwd, hash, path) do
+      case System.cmd("git", ["-C", cwd, "show", "#{hash}:#{path}"], stderr_to_stdout: true) do
+        {output, 0} -> {:ok, output}
+        {output, _} -> {:error, String.trim(output)}
+      end
+    end
+  end
+
+  deftool :repo_list_files_at_commit,
+          "List files in the repository at a specific commit",
+          %{
+            type: "object",
+            properties: %{
+              commit_hash: %{type: "string", description: "Git commit hash"},
+              q: %{type: "string", description: "Substring filter on file paths"},
+              limit: %{
+                type: "integer",
+                description: "Maximum files to return (default 200)"
+              }
+            },
+            required: ["commit_hash"]
+          },
+          annotations: %{readOnlyHint: true} do
+    alias Spotter.ProductSpec.Agent.ToolHelpers, as: H
+
+    def execute(%{"commit_hash" => hash} = input) do
+      limit = input["limit"] || 200
+      q = input["q"]
+      cwd = H.git_cwd()
+
+      case git_ls_tree(cwd, hash) do
+        {:ok, files} ->
+          files = if q, do: Enum.filter(files, &String.contains?(&1, q)), else: files
+          truncated = length(files) > limit
+          files = Enum.take(files, limit)
+          H.text_result(%{ok: true, files: files, truncated: truncated})
+
+        {:error, reason} ->
+          H.text_result(%{ok: false, files: [], error: reason})
+      end
+    end
+
+    defp git_ls_tree(nil, _hash), do: {:error, "git_cwd not available"}
+
+    defp git_ls_tree(cwd, hash) do
+      case System.cmd("git", ["-C", cwd, "ls-tree", "-r", "--name-only", hash],
+             stderr_to_stdout: true
+           ) do
+        {output, 0} -> {:ok, output |> String.trim() |> String.split("\n", trim: true)}
+        {output, _} -> {:error, String.trim(output)}
+      end
     end
   end
 

@@ -21,6 +21,8 @@ defmodule Spotter.ProductSpec.Agent.Runner do
     domains_list domains_create domains_update
     features_search features_create features_update features_delete
     requirements_search requirements_create requirements_update requirements_delete
+    requirements_add_evidence_files
+    repo_read_file_at_commit repo_list_files_at_commit
   )
 
   @doc """
@@ -35,6 +37,7 @@ defmodule Spotter.ProductSpec.Agent.Runner do
   def run(input) do
     Tracer.with_span "spotter.product_spec.invoke_agent" do
       ToolHelpers.set_commit_hash(input.commit_hash)
+      ToolHelpers.set_git_cwd(Map.get(input, :git_cwd))
 
       server =
         ClaudeAgentSDK.create_sdk_mcp_server(

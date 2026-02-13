@@ -11,6 +11,23 @@ defmodule Spotter.ProductSpec do
   require Ash.Query
   require OpenTelemetry.Tracer, as: Tracer
 
+  @doc "Normalizes evidence_files from DB (nil/JSON string/list) into a list of strings."
+  def normalize_evidence_files(nil), do: []
+  def normalize_evidence_files(list) when is_list(list), do: Enum.filter(list, &is_binary/1)
+
+  def normalize_evidence_files(json) when is_binary(json) do
+    case Jason.decode(json) do
+      {:ok, list} when is_list(list) -> Enum.filter(list, &is_binary/1)
+      _ -> []
+    end
+  end
+
+  def normalize_evidence_files(_), do: []
+
+  defp normalize_requirement_evidence(%{evidence_files: raw} = req) do
+    %{req | evidence_files: normalize_evidence_files(raw)}
+  end
+
   @doc "Lists all domains for the given project, sorted by name."
   @spec list_domains(String.t()) :: [map()]
   def list_domains(project_id) do
@@ -67,12 +84,14 @@ defmodule Spotter.ProductSpec do
         rationale: r.rationale,
         acceptance_criteria: r.acceptance_criteria,
         priority: r.priority,
+        evidence_files: r.evidence_files,
         updated_by_git_commit: r.updated_by_git_commit,
         inserted_at: r.inserted_at,
         updated_at: r.updated_at
       }
     )
     |> Repo.all()
+    |> Enum.map(&normalize_requirement_evidence/1)
   end
 
   @doc """
@@ -387,12 +406,14 @@ defmodule Spotter.ProductSpec do
         rationale: r.rationale,
         acceptance_criteria: r.acceptance_criteria,
         priority: r.priority,
+        evidence_files: r.evidence_files,
         updated_by_git_commit: r.updated_by_git_commit,
         inserted_at: r.inserted_at,
         updated_at: r.updated_at
       }
     )
     |> Repo.all()
+    |> Enum.map(&normalize_requirement_evidence/1)
     |> Enum.group_by(& &1.feature_id)
   end
 end

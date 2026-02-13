@@ -164,7 +164,8 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
              diff_stats: diff_context.diff_stats,
              patch_files: diff_context.patch_files,
              context_windows: diff_context.context_windows,
-             linked_session_summaries: summaries
+             linked_session_summaries: summaries,
+             git_cwd: git_cwd
            }}
 
         {:error, _} = err ->

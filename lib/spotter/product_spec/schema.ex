@@ -25,6 +25,8 @@ defmodule Spotter.ProductSpec.Schema do
       end
     end
 
+    ensure_column!("product_requirements", "evidence_files", "JSON NULL")
+
     :ok
   end
 
@@ -61,6 +63,19 @@ defmodule Spotter.ProductSpec.Schema do
       KEY idx_features_domain (project_id, domain_id)
     )
     """
+  end
+
+  defp ensure_column!(table, column, type) do
+    case SQL.query(Repo, "SHOW COLUMNS FROM #{table} LIKE '#{column}'") do
+      {:ok, %{num_rows: 0}} ->
+        case SQL.query(Repo, "ALTER TABLE #{table} ADD COLUMN #{column} #{type}") do
+          {:ok, _} -> :ok
+          {:error, %MyXQL.Error{message: msg}} -> Logger.debug("Column ensure skipped: #{msg}")
+        end
+
+      {:ok, _} ->
+        :ok
+    end
   end
 
   defp requirements_ddl do

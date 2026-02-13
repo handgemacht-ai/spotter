@@ -71,12 +71,24 @@ defmodule Spotter.ProductSpec.Agent.Prompt do
     #{Jason.encode!(input.context_windows, pretty: true)}
     ```
     #{session_summaries_section(input)}
+    ## Evidence
+
+    Every created or updated requirement MUST include `evidence_files` — a list of repo-relative
+    file paths that support the requirement. Evidence should be minimal but sufficient.
+
+    - Files from `patch_files` are natural evidence candidates for requirements derived from the diff.
+    - You may add files beyond `patch_files` ONLY after verifying they exist by reading them at the
+      analyzed commit using `repo_read_file_at_commit`.
+    - Use `requirements_add_evidence_files` to incrementally associate additional files after investigation.
+
     ## Workflow
 
     1. First, call `domains_list` to see existing domains for this project.
     2. For each relevant domain, call `features_search` to see existing features.
-    3. Only then decide what needs to be created or updated.
-    4. If nothing product-relevant changed, simply respond with your analysis and make no tool calls.
+    3. When a feature is impacted, use `requirements_search` with `feature_id` to review the full
+       existing requirement set before deciding what to create or update.
+    4. Only then decide what needs to be created or updated.
+    5. If nothing product-relevant changed, simply respond with your analysis and make no tool calls.
     """
   end
 
