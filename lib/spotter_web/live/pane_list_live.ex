@@ -2,8 +2,6 @@ defmodule SpotterWeb.PaneListLive do
   use Phoenix.LiveView
   use AshComputer.LiveView
 
-  alias Spotter.Services.SessionRegistry
-  alias Spotter.Services.Tmux
   alias Spotter.Transcripts.{Session, SessionPresenter, SessionRework, Subagent, ToolCall}
   alias SpotterWeb.IngestProgress
 
@@ -107,25 +105,23 @@ defmodule SpotterWeb.PaneListLive do
 
     {:ok,
      socket
-     |> assign(panes: [], claude_panes: [], loading: true)
      |> assign(active_status_map: %{})
      |> IngestProgress.init_ingest()
      |> assign(hidden_expanded: %{})
      |> assign(expanded_subagents: %{})
      |> assign(subagents_by_session: %{})
      |> mount_computers()
-     |> load_panes()
      |> load_session_data()}
   end
 
   @impl true
   def handle_event("refresh", _params, socket) do
-    {:noreply, load_panes(socket)}
+    {:noreply, load_session_data(socket)}
   end
 
   def handle_event("review_session", %{"session-id" => session_id}, socket) do
     cwd = lookup_session_cwd(session_id)
-    Task.start(fn -> Tmux.launch_review_session(session_id, cwd: cwd) end)
+    Task.start(fn -> Spotter.Services.Tmux.launch_review_session(session_id, cwd: cwd) end)
     {:noreply, push_navigate(socket, to: "/sessions/#{session_id}")}
   end
 
@@ -195,28 +191,6 @@ defmodule SpotterWeb.PaneListLive do
       {:ok, %Session{cwd: cwd}} when is_binary(cwd) -> cwd
       _ -> nil
     end
-  end
-
-  defp load_panes(socket) do
-    {claude_panes, other_panes} =
-      case Tmux.list_panes() do
-        {:ok, panes} ->
-          Enum.split_with(panes, fn p ->
-            p.pane_current_command in ["claude", "claude-code"] or
-              String.contains?(p.pane_title, "claude")
-          end)
-
-        {:error, _} ->
-          {[], []}
-      end
-
-    # Only show plugin-registered panes, exclude review sessions
-    registered_panes =
-      claude_panes
-      |> Enum.reject(&String.starts_with?(&1.session_name, "spotter-review-"))
-      |> Enum.filter(&SessionRegistry.get_session_id(&1.pane_id))
-
-    assign(socket, panes: other_panes, claude_panes: registered_panes, loading: false)
   end
 
   defp load_session_data(socket) do
@@ -649,22 +623,6 @@ defmodule SpotterWeb.PaneListLive do
         <% end %>
       </div>
 
-      <%= if @claude_panes != [] do %>
-        <h2 class="section-heading">Claude Code Sessions</h2>
-        <.pane_table panes={@claude_panes} badge="agent" />
-      <% end %>
-
-      <%= if @panes != [] do %>
-        <h2 class="section-heading mt-4">Other Panes</h2>
-        <.pane_table panes={@panes} badge="terminal" />
-      <% end %>
-
-      <%= if @panes == [] and @claude_panes == [] and not @loading do %>
-        <div class="empty-state">
-          <p>No tmux panes found.</p>
-          <p class="mt-2 text-muted">Make sure tmux is running with active sessions.</p>
-        </div>
-      <% end %>
     </div>
     """
   end
@@ -728,33 +686,6 @@ defmodule SpotterWeb.PaneListLive do
 
   defp session_status_badge(assigns) do
     ~H"""
-    """
-  end
-
-  defp pane_table(assigns) do
-    ~H"""
-    <table>
-      <thead>
-        <tr>
-          <th>Pane ID</th>
-          <th>Session</th>
-          <th>Window</th>
-          <th>Command</th>
-          <th>Size</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr :for={pane <- @panes}>
-          <td><span class={"badge badge-#{@badge}"}>{pane.pane_id}</span></td>
-          <td>{pane.session_name}</td>
-          <td>{pane.window_index}:{pane.pane_index}</td>
-          <td>{pane.pane_current_command}</td>
-          <td>{pane.pane_width}x{pane.pane_height}</td>
-          <td><a href={"/sessions/#{SessionRegistry.get_session_id(pane.pane_id)}"}>Connect</a></td>
-        </tr>
-      </tbody>
-    </table>
     """
   end
 end
