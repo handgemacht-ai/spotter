@@ -83,6 +83,90 @@ defmodule Spotter.Config.RuntimeTest do
     end
   end
 
+  describe "prompt_patterns_max_prompts_per_run/0" do
+    test "DB override beats env and default" do
+      Ash.create!(Setting, %{key: "prompt_patterns_max_prompts_per_run", value: "200"})
+
+      assert {200, :db} = Runtime.prompt_patterns_max_prompts_per_run()
+    end
+
+    test "env beats default when DB absent" do
+      System.put_env("SPOTTER_PROMPT_PATTERNS_MAX_PROMPTS_PER_RUN", "300")
+      on_exit(fn -> System.delete_env("SPOTTER_PROMPT_PATTERNS_MAX_PROMPTS_PER_RUN") end)
+
+      assert {300, :env} = Runtime.prompt_patterns_max_prompts_per_run()
+    end
+
+    test "falls back to default" do
+      System.delete_env("SPOTTER_PROMPT_PATTERNS_MAX_PROMPTS_PER_RUN")
+
+      assert {500, :default} = Runtime.prompt_patterns_max_prompts_per_run()
+    end
+
+    test "invalid env value falls back to default" do
+      System.put_env("SPOTTER_PROMPT_PATTERNS_MAX_PROMPTS_PER_RUN", "abc")
+      on_exit(fn -> System.delete_env("SPOTTER_PROMPT_PATTERNS_MAX_PROMPTS_PER_RUN") end)
+
+      assert {500, :env} = Runtime.prompt_patterns_max_prompts_per_run()
+    end
+  end
+
+  describe "prompt_patterns_max_prompt_chars/0" do
+    test "DB override beats env and default" do
+      Ash.create!(Setting, %{key: "prompt_patterns_max_prompt_chars", value: "800"})
+
+      assert {800, :db} = Runtime.prompt_patterns_max_prompt_chars()
+    end
+
+    test "env beats default when DB absent" do
+      System.put_env("SPOTTER_PROMPT_PATTERNS_MAX_PROMPT_CHARS", "600")
+      on_exit(fn -> System.delete_env("SPOTTER_PROMPT_PATTERNS_MAX_PROMPT_CHARS") end)
+
+      assert {600, :env} = Runtime.prompt_patterns_max_prompt_chars()
+    end
+
+    test "falls back to default" do
+      System.delete_env("SPOTTER_PROMPT_PATTERNS_MAX_PROMPT_CHARS")
+
+      assert {400, :default} = Runtime.prompt_patterns_max_prompt_chars()
+    end
+
+    test "invalid env value falls back to default" do
+      System.put_env("SPOTTER_PROMPT_PATTERNS_MAX_PROMPT_CHARS", "-5")
+      on_exit(fn -> System.delete_env("SPOTTER_PROMPT_PATTERNS_MAX_PROMPT_CHARS") end)
+
+      assert {400, :env} = Runtime.prompt_patterns_max_prompt_chars()
+    end
+  end
+
+  describe "prompt_patterns_model/0" do
+    test "DB override beats env and default" do
+      Ash.create!(Setting, %{key: "prompt_patterns_model", value: "claude-opus-4"})
+
+      assert {"claude-opus-4", :db} = Runtime.prompt_patterns_model()
+    end
+
+    test "env beats default when DB absent" do
+      System.put_env("SPOTTER_PROMPT_PATTERNS_MODEL", "custom-model")
+      on_exit(fn -> System.delete_env("SPOTTER_PROMPT_PATTERNS_MODEL") end)
+
+      assert {"custom-model", :env} = Runtime.prompt_patterns_model()
+    end
+
+    test "falls back to default" do
+      System.delete_env("SPOTTER_PROMPT_PATTERNS_MODEL")
+
+      assert {"claude-haiku-4-5", :default} = Runtime.prompt_patterns_model()
+    end
+
+    test "blank env value falls back to default" do
+      System.put_env("SPOTTER_PROMPT_PATTERNS_MODEL", "   ")
+      on_exit(fn -> System.delete_env("SPOTTER_PROMPT_PATTERNS_MODEL") end)
+
+      assert {"claude-haiku-4-5", :default} = Runtime.prompt_patterns_model()
+    end
+  end
+
   describe "Setting resource" do
     test "creates valid setting" do
       assert {:ok, setting} = Ash.create(Setting, %{key: "summary_model", value: "test"})

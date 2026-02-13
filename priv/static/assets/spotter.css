@@ -1851,3 +1851,20 @@ input::placeholder, textarea::placeholder {
   background: var(--surface-3);
   color: var(--text-secondary);
 }
+
+/* Prompt patterns */
+.prompt-patterns-section .filter-bar.mt-1 {
+  margin-top: 0.25rem;
+}
+
+.pp-project-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+.pp-project-counts .badge {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.3rem;
+}

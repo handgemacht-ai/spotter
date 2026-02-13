@@ -81,6 +81,16 @@ defmodule Spotter.Transcripts do
         get :read
         index :read
       end
+
+      base_route "/prompt_pattern_runs", Spotter.Transcripts.PromptPatternRun do
+        get :read
+        index :read
+      end
+
+      base_route "/prompt_patterns", Spotter.Transcripts.PromptPattern do
+        get :read
+        index :read
+      end
     end
   end
 
@@ -106,5 +116,7 @@ defmodule Spotter.Transcripts do
     resource Spotter.Transcripts.CommitHotspot
     resource Spotter.Transcripts.ReviewItem
     resource Spotter.Transcripts.ProjectIngestState
+    resource Spotter.Transcripts.PromptPatternRun
+    resource Spotter.Transcripts.PromptPattern
   end
 end
