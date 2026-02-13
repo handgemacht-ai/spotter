@@ -14,6 +14,7 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
     CommitContextBuilder,
     CommitDiffExtractor,
     CommitHotspotAgent,
+    CommitHotspotFilters,
     CommitPatchExtractor
   }
 
@@ -82,18 +83,57 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
     Tracer.with_span "spotter.commit_hotspots.diff_extract" do
       with {:ok, diff_stats} <- CommitDiffExtractor.diff_stats(repo_path, commit_hash),
            {:ok, patch_files} <- CommitPatchExtractor.patch_hunks(repo_path, commit_hash) do
-        context_windows = build_context_windows(repo_path, patch_files)
+        {eligible, meta} = filter_patch_files(patch_files, diff_stats.binary_files)
+
+        Tracer.set_attribute("spotter.patch_files_total", meta.total)
+        Tracer.set_attribute("spotter.patch_files_eligible", meta.eligible)
+        Tracer.set_attribute("spotter.patch_files_skipped_binary", meta.skipped_binary)
+        Tracer.set_attribute("spotter.patch_files_skipped_blocklist", meta.skipped_blocklist)
+
+        context_windows = build_context_windows(repo_path, eligible)
 
         Tracer.set_attribute("spotter.eligible_files", map_size(context_windows))
 
         {:ok,
          %{
            diff_stats: diff_stats,
-           patch_files: patch_files,
+           patch_files: eligible,
            context_windows: context_windows
          }}
       end
     end
+  end
+
+  @doc false
+  @spec filter_patch_files([map()], [String.t()]) :: {[map()], map()}
+  def filter_patch_files(patch_files, binary_files) do
+    binary_set = MapSet.new(binary_files)
+
+    {eligible, skipped_binary, skipped_blocklist} =
+      Enum.reduce(patch_files, {[], 0, 0}, fn file, {acc, bin, bl} ->
+        cond do
+          MapSet.member?(binary_set, file.path) ->
+            {acc, bin + 1, bl}
+
+          not CommitHotspotFilters.eligible_path?(file.path) ->
+            {acc, bin, bl + 1}
+
+          true ->
+            {[file | acc], bin, bl}
+        end
+      end)
+
+    eligible = Enum.reverse(eligible)
+    total = length(patch_files)
+
+    meta = %{
+      total: total,
+      eligible: length(eligible),
+      skipped_binary: skipped_binary,
+      skipped_blocklist: skipped_blocklist
+    }
+
+    {eligible, meta}
   end
 
   defp build_context_windows(repo_path, patch_files) do

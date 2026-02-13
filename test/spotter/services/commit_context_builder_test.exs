@@ -61,4 +61,47 @@ defmodule Spotter.Services.CommitContextBuilderTest do
       assert CommitContextBuilder.build_windows(@sample_content, [], context_lines: 5) == []
     end
   end
+
+  describe "build_windows/3 splitting" do
+    @large_content Enum.map_join(1..300, "\n", fn i -> "line #{i} content" end)
+
+    test "splits oversized windows by max_window_lines" do
+      windows =
+        CommitContextBuilder.build_windows(@large_content, [{1, 200}],
+          context_lines: 0,
+          max_window_lines: 50,
+          max_window_bytes: 20_000
+        )
+
+      assert length(windows) == 4
+      assert hd(windows).line_start == 1
+      assert hd(windows).line_end == 50
+      assert List.last(windows).line_start == 151
+      assert List.last(windows).line_end == 200
+    end
+  end
+
+  describe "build_windows/3 byte truncation" do
+    test "truncates content exceeding max_window_bytes" do
+      big_line = String.duplicate("x", 30_000)
+      file_content = big_line <> "\nshort line\nanother line"
+
+      windows =
+        CommitContextBuilder.build_windows(file_content, [{1, 1}],
+          context_lines: 0,
+          max_window_bytes: 200
+        )
+
+      assert length(windows) == 1
+      window = hd(windows)
+      assert window.content =~ "... (truncated)"
+      assert byte_size(window.content) <= 200
+    end
+  end
+
+  describe "build_windows/3 empty content" do
+    test "returns no windows for empty content" do
+      assert CommitContextBuilder.build_windows("", [{1, 1}], context_lines: 0) == []
+    end
+  end
 end
