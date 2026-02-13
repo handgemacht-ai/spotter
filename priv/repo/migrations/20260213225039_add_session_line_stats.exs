@@ -9,8 +9,8 @@ defmodule Spotter.Repo.Migrations.AddSessionLineStats do
 
   def up do
     alter table(:sessions) do
-      add :lines_added, :bigint, null: false
-      add :lines_removed, :bigint, null: false
+      add :lines_added, :bigint, null: false, default: 0
+      add :lines_removed, :bigint, null: false, default: 0
     end
   end
 

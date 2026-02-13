@@ -42,7 +42,10 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
           do_perform(args)
 
         {:error, reason} ->
-          Logger.warning("UpdateRollingSpec: invalid project_id #{inspect(project_id)}: #{reason}")
+          Logger.warning(
+            "UpdateRollingSpec: invalid project_id #{inspect(project_id)}: #{reason}"
+          )
+
           Tracer.set_status(:error, reason)
           :ok
       end
