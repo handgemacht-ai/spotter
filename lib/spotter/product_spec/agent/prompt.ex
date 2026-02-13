@@ -45,7 +45,7 @@ defmodule Spotter.ProductSpec.Agent.Prompt do
     ```json
     #{Jason.encode!(input.context_windows, pretty: true)}
     ```
-
+    #{session_summaries_section(input)}
     ## Workflow
 
     1. First, call `domains_list` to see existing domains for this project.
@@ -54,4 +54,21 @@ defmodule Spotter.ProductSpec.Agent.Prompt do
     4. If nothing product-relevant changed, simply respond with your analysis and make no tool calls.
     """
   end
+
+  defp session_summaries_section(%{linked_session_summaries: [_ | _] = summaries}) do
+    """
+
+    ### Linked session summaries
+
+    The following Claude Code sessions produced this commit. Use these summaries
+    to better understand the developer's intent, but always ground spec changes
+    in the actual diff above.
+
+    ```json
+    #{Jason.encode!(summaries, pretty: true)}
+    ```
+    """
+  end
+
+  defp session_summaries_section(_), do: ""
 end

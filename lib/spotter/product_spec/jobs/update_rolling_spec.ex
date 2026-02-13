@@ -22,7 +22,7 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
   alias Spotter.Services.CommitDiffExtractor
   alias Spotter.Services.CommitHotspotFilters
   alias Spotter.Services.CommitPatchExtractor
-  alias Spotter.Transcripts.{Commit, Session}
+  alias Spotter.Transcripts.{Commit, Session, SessionCommitLink}
 
   @max_error_chars 8_000
 
@@ -97,6 +97,8 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
 
       case build_diff_context(git_cwd, commit_hash) do
         {:ok, diff_context} ->
+          summaries = load_linked_session_summaries(commit_hash)
+
           {:ok,
            %{
              project_id: project_id,
@@ -105,7 +107,8 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
              commit_body: body,
              diff_stats: diff_context.diff_stats,
              patch_files: diff_context.patch_files,
-             context_windows: diff_context.context_windows
+             context_windows: diff_context.context_windows,
+             linked_session_summaries: summaries
            }}
 
         {:error, _} = err ->
@@ -191,6 +194,39 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
   end
 
   defp invoke_agent(input), do: Runner.run(input)
+
+  @doc """
+  Loads distilled session summaries linked to the given commit hash.
+
+  Returns a list of summary maps for sessions with `:completed` or `:error`
+  distillation status.
+  """
+  def load_linked_session_summaries(commit_hash) do
+    case Commit |> Ash.Query.filter(commit_hash == ^commit_hash) |> Ash.read_one() do
+      {:ok, %Commit{id: commit_id}} ->
+        SessionCommitLink
+        |> Ash.Query.filter(commit_id == ^commit_id)
+        |> Ash.Query.load(:session)
+        |> Ash.read!()
+        |> Enum.map(& &1.session)
+        |> Enum.filter(&(&1.distilled_status in [:completed, :error]))
+        |> Enum.map(&format_session_summary/1)
+
+      _ ->
+        []
+    end
+  end
+
+  defp format_session_summary(session) do
+    %{
+      session_id: session.session_id,
+      slug: session.slug,
+      hook_ended_at: session.hook_ended_at && DateTime.to_iso8601(session.hook_ended_at),
+      distilled_status: session.distilled_status,
+      distilled_summary: session.distilled_summary,
+      distilled_at: session.distilled_at && DateTime.to_iso8601(session.distilled_at)
+    }
+  end
 
   @doc """
   Resolves a git repo path for a project from the most recent session with a cwd.
