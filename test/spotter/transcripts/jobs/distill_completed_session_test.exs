@@ -1,0 +1,103 @@
+defmodule Spotter.Transcripts.Jobs.DistillCompletedSessionTest do
+  use ExUnit.Case, async: false
+
+  alias Ecto.Adapters.SQL.Sandbox
+  alias Spotter.Repo
+
+  alias Spotter.Transcripts.{
+    Commit,
+    Project,
+    Session,
+    SessionCommitLink,
+    SessionDistillation
+  }
+
+  alias Spotter.Transcripts.Jobs.DistillCompletedSession
+
+  require Ash.Query
+
+  setup do
+    Sandbox.checkout(Repo)
+
+    previous = Application.get_env(:spotter, :session_distiller_adapter)
+
+    Application.put_env(
+      :spotter,
+      :session_distiller_adapter,
+      Spotter.Services.SessionDistiller.Stub
+    )
+
+    on_exit(fn -> Application.put_env(:spotter, :session_distiller_adapter, previous) end)
+
+    project = Ash.create!(Project, %{name: "distill-test", pattern: "^distill"})
+
+    session =
+      Ash.create!(Session, %{
+        session_id: Ash.UUID.generate(),
+        transcript_dir: "/tmp/test",
+        cwd: "/home/user/distill-project",
+        project_id: project.id,
+        hook_ended_at: DateTime.utc_now()
+      })
+
+    %{project: project, session: session}
+  end
+
+  describe "session with commit links" do
+    test "sets distilled_status to completed and stores distilled_summary", %{session: session} do
+      commit =
+        Ash.create!(Commit, %{
+          commit_hash: "abc123def456",
+          git_branch: "main",
+          subject: "feat: add timezone support"
+        })
+
+      Ash.create!(SessionCommitLink, %{
+        session_id: session.id,
+        commit_id: commit.id,
+        link_type: :observed_in_session,
+        confidence: 1.0
+      })
+
+      assert :ok =
+               DistillCompletedSession.perform(%Oban.Job{
+                 args: %{"session_id" => to_string(session.session_id)}
+               })
+
+      updated = Ash.get!(Session, session.id)
+      assert updated.distilled_status == :completed
+      assert updated.distilled_summary =~ "timezone"
+      assert updated.distilled_model_used == "stub-model"
+      assert updated.distilled_at != nil
+
+      distillation =
+        SessionDistillation
+        |> Ash.Query.filter(session_id == ^session.id)
+        |> Ash.read_one!()
+
+      assert distillation.status == :completed
+      assert distillation.summary_json["session_summary"] =~ "timezone"
+      assert distillation.commit_hashes == ["abc123def456"]
+    end
+  end
+
+  describe "session without commit links" do
+    test "sets distilled_status to skipped", %{session: session} do
+      assert :ok =
+               DistillCompletedSession.perform(%Oban.Job{
+                 args: %{"session_id" => to_string(session.session_id)}
+               })
+
+      updated = Ash.get!(Session, session.id)
+      assert updated.distilled_status == :skipped
+
+      distillation =
+        SessionDistillation
+        |> Ash.Query.filter(session_id == ^session.id)
+        |> Ash.read_one!()
+
+      assert distillation.status == :skipped
+      assert distillation.error_reason == "no_commit_links"
+    end
+  end
+end

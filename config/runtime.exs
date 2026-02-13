@@ -6,6 +6,16 @@ import Config
 # SPOTTER_WAITING_DELAY_SECONDS - delay before showing overlay (default: 300)
 # SPOTTER_OVERLAY_HEIGHT - tmux popup height in lines (default: 16)
 # ANTHROPIC_API_KEY - required for LLM-based summaries
+#
+# Session distillation configuration
+# SPOTTER_SESSION_DISTILL_MODEL - LLM model for session distillation (default: claude-3-5-haiku-latest)
+# SPOTTER_SESSION_DISTILL_INPUT_CHAR_BUDGET - char budget for transcript slice (default: 30000)
+# SPOTTER_DISTILL_TIMEOUT_MS - LLM call timeout in ms (default: 15000)
+#
+# Project rollup configuration
+# SPOTTER_PROJECT_ROLLUP_MODEL - LLM model for project rollups (default: claude-3-5-haiku-latest)
+# SPOTTER_ROLLUP_BUCKET_KIND - bucket granularity: day, week, or month (default: week)
+# SPOTTER_ROLLUP_LOOKBACK_DAYS - rolling summary lookback window in days (default: 30)
 
 # LangChain consumes :langchain, :anthropic_key for ChatAnthropic API calls
 config :langchain, :anthropic_key, System.get_env("ANTHROPIC_API_KEY")

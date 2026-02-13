@@ -46,6 +46,7 @@ defmodule Spotter.MixProject do
       {:lazy_html, ">= 0.1.0", only: :test},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
+      {:tzdata, "~> 1.1"},
       {:toml, "~> 0.7"},
       {:opentelemetry_api, "~> 1.5"},
       {:opentelemetry, "~> 1.7"},

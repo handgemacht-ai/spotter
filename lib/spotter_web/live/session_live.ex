@@ -553,6 +553,7 @@ defmodule SpotterWeb.SessionLive do
           {@session_status}
         </span>
       </div>
+      <.distilled_summary_section session_record={@session_record} />
       <div class="session-layout">
         <div class="session-terminal">
           <div class="session-terminal-inner">
@@ -716,6 +717,30 @@ defmodule SpotterWeb.SessionLive do
         </div>
       </div>
     </div>
+    </div>
+    """
+  end
+
+  defp distilled_summary_section(%{session_record: nil} = assigns) do
+    ~H""
+  end
+
+  defp distilled_summary_section(%{session_record: record} = assigns) do
+    assigns = assign(assigns, :status, record.distilled_status)
+
+    ~H"""
+    <div class="session-summary-section" data-testid="distilled-summary">
+      <%= case @status do %>
+        <% :completed -> %>
+          <pre class="session-summary">{@session_record.distilled_summary}</pre>
+        <% :pending -> %>
+          <div class="text-muted text-sm">Summary pending...</div>
+        <% :skipped -> %>
+          <div class="text-muted text-sm">No summary (no commit links)</div>
+        <% :error -> %>
+          <div class="text-error text-sm">Summary failed</div>
+        <% _ -> %>
+      <% end %>
     </div>
     """
   end

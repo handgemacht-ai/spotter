@@ -118,5 +118,8 @@ defmodule Spotter.Transcripts do
     resource Spotter.Transcripts.ProjectIngestState
     resource Spotter.Transcripts.PromptPatternRun
     resource Spotter.Transcripts.PromptPattern
+    resource Spotter.Transcripts.SessionDistillation
+    resource Spotter.Transcripts.ProjectPeriodSummary
+    resource Spotter.Transcripts.ProjectRollingSummary
   end
 end

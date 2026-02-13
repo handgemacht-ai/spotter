@@ -12,6 +12,7 @@ defmodule Spotter.Transcripts.SessionPresenter do
   """
   def primary_label(session) do
     non_empty(session.custom_title) ||
+      non_empty(Map.get(session, :distilled_summary)) ||
       non_empty(session.summary) ||
       non_empty(session.slug) ||
       truncate_prompt(session.first_prompt) ||

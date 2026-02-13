@@ -74,6 +74,8 @@ config :spark,
     ]
   ]
 
+config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
+
 config :spotter, env: config_env()
 
 import_config "#{config_env()}.exs"

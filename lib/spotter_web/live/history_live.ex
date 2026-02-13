@@ -2,6 +2,7 @@ defmodule SpotterWeb.HistoryLive do
   use Phoenix.LiveView
 
   alias Spotter.Services.CommitHistory
+  alias Spotter.Transcripts.SessionPresenter
 
   @impl true
   def mount(_params, _session, socket) do
@@ -166,6 +167,29 @@ defmodule SpotterWeb.HistoryLive do
   defp badge_class(:observed_in_session), do: "badge badge-verified"
   defp badge_class(_), do: "badge badge-inferred"
 
+  defp distilled_badge(%{status: :completed} = assigns) do
+    ~H"""
+    <span class="badge text-xs">Summary</span>
+    """
+  end
+
+  defp distilled_badge(%{status: :pending} = assigns) do
+    ~H"""
+    <span class="badge text-xs text-muted">Summary pending</span>
+    """
+  end
+
+  defp distilled_badge(%{status: :error} = assigns) do
+    ~H"""
+    <span class="badge text-xs text-error">Summary failed</span>
+    """
+  end
+
+  defp distilled_badge(assigns) do
+    ~H"""
+    """
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -252,8 +276,9 @@ defmodule SpotterWeb.HistoryLive do
           <% else %>
           <div :for={entry <- row.sessions} class="history-session-entry">
             <a href={"/sessions/#{entry.session.session_id}"} class="history-session-link">
-              {entry.session.slug || String.slice(to_string(entry.session.session_id), 0, 8)}
+              {SessionPresenter.primary_label(entry.session)}
             </a>
+            <.distilled_badge status={entry.session.distilled_status} />
             <span class="history-session-project">
               {entry.project.name}
             </span>

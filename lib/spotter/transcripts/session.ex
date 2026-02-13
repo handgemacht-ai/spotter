@@ -41,7 +41,8 @@ defmodule Spotter.Transcripts.Session do
         :summary,
         :first_prompt,
         :source_created_at,
-        :source_modified_at
+        :source_modified_at,
+        :hook_ended_at
       ]
     end
 
@@ -62,8 +63,15 @@ defmodule Spotter.Transcripts.Session do
         :summary,
         :first_prompt,
         :source_created_at,
-        :source_modified_at
+        :source_modified_at,
+        :distilled_summary,
+        :distilled_status,
+        :distilled_model_used,
+        :distilled_at,
+        :hook_ended_at
       ]
+
+      require_atomic? false
     end
 
     update :hide do
@@ -106,6 +114,16 @@ defmodule Spotter.Transcripts.Session do
     attribute :first_prompt, :string
     attribute :source_created_at, :utc_datetime_usec
     attribute :source_modified_at, :utc_datetime_usec
+
+    attribute :distilled_summary, :string
+    attribute :distilled_model_used, :string
+    attribute :distilled_at, :utc_datetime_usec
+    attribute :hook_ended_at, :utc_datetime_usec
+
+    attribute :distilled_status, :atom do
+      constraints one_of: [:pending, :skipped, :completed, :error]
+      default :pending
+    end
 
     create_timestamp :inserted_at
     update_timestamp :updated_at

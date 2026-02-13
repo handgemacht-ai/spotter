@@ -48,6 +48,49 @@ defmodule SpotterWeb.Live.CommitDetailComputers do
       depends_on([:commit])
     end
 
+    val :project do
+      compute(fn
+        %{linked_sessions: []} ->
+          nil
+
+        %{linked_sessions: [entry | _]} ->
+          try do
+            Ash.get!(Spotter.Transcripts.Project, entry.session.project_id)
+          rescue
+            _ -> nil
+          end
+      end)
+
+      depends_on([:linked_sessions])
+    end
+
+    val :rolling_summary do
+      compute(fn
+        %{project: nil} ->
+          nil
+
+        %{project: project} ->
+          SpotterWeb.Live.CommitDetailQueries.load_rolling(project)
+      end)
+
+      depends_on([:project])
+    end
+
+    val :period_summary do
+      compute(fn
+        %{project: nil} ->
+          nil
+
+        %{commit: nil} ->
+          nil
+
+        %{project: project, commit: commit} ->
+          SpotterWeb.Live.CommitDetailQueries.load_period(project, commit)
+      end)
+
+      depends_on([:project, :commit])
+    end
+
     val :co_change_rows do
       compute(fn
         %{commit: nil} ->

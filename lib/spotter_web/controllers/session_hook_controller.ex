@@ -6,8 +6,7 @@ defmodule SpotterWeb.SessionHookController do
   alias Spotter.Services.SessionRegistry
   alias Spotter.Services.TranscriptTailSupervisor
   alias Spotter.Services.WaitingSummary
-  alias Spotter.Transcripts.Jobs.IngestRecentCommits
-  alias Spotter.Transcripts.Jobs.SyncTranscripts
+  alias Spotter.Transcripts.Jobs.{DistillCompletedSession, IngestRecentCommits, SyncTranscripts}
   alias Spotter.Transcripts.Sessions
   alias SpotterWeb.OtelTraceHelpers
 
@@ -124,6 +123,22 @@ defmodule SpotterWeb.SessionHookController do
     end
   end
 
+  defp mark_ended_and_enqueue_distillation(session_id, params) do
+    case Sessions.find_or_create(session_id, cwd: params["cwd"]) do
+      {:ok, session} ->
+        Ash.update!(session, %{hook_ended_at: DateTime.utc_now()})
+
+        args = %{session_id: session_id}
+
+        args
+        |> DistillCompletedSession.new()
+        |> Oban.insert()
+
+      {:error, reason} ->
+        Logger.warning("Failed to mark session ended #{session_id}: #{inspect(reason)}")
+    end
+  end
+
   defp maybe_bootstrap_sync(session) do
     if is_nil(session.message_count) or session.message_count == 0 do
       Task.start(fn -> SyncTranscripts.sync_session_by_id(session.session_id) end)
@@ -144,6 +159,7 @@ defmodule SpotterWeb.SessionHookController do
       ActiveSessionRegistry.end_session(session_id, reason)
       TranscriptTailSupervisor.stop_worker(session_id)
       maybe_enqueue_ingest_for_session(session_id)
+      mark_ended_and_enqueue_distillation(session_id, params)
 
       conn
       |> OtelTraceHelpers.put_trace_response_header()

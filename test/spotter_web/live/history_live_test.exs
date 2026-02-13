@@ -339,6 +339,39 @@ defmodule SpotterWeb.HistoryLiveTest do
     end
   end
 
+  describe "distilled summary display" do
+    test "uses distilled_summary as session label when present" do
+      project = create_project("distilled-hist")
+
+      session =
+        Ash.create!(Session, %{
+          session_id: Ash.UUID.generate(),
+          transcript_dir: "test-dir",
+          project_id: project.id
+        })
+
+      Ash.update!(session, %{
+        distilled_status: :completed,
+        distilled_summary: "Implemented timezone support"
+      })
+
+      commit =
+        create_commit(
+          branch: nil,
+          hash: "dh-commit",
+          committed_at: ~U[2026-01-01 12:00:00Z],
+          subject: "feat: timezone"
+        )
+
+      create_link(session, commit)
+
+      {:ok, _view, html} = live(build_conn(), "/history?branch=")
+
+      assert html =~ "Implemented timezone support"
+      assert html =~ "Summary"
+    end
+  end
+
   defp count_occurrences(string, substring) do
     string
     |> String.split(substring)

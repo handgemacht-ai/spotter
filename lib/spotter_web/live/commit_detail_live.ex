@@ -2,6 +2,8 @@ defmodule SpotterWeb.CommitDetailLive do
   use Phoenix.LiveView
   use AshComputer.LiveView
 
+  alias Spotter.Transcripts.SessionPresenter
+
   import SpotterWeb.TranscriptComponents
 
   attach_computer(SpotterWeb.Live.CommitDetailComputers, :commit_detail)
@@ -32,7 +34,7 @@ defmodule SpotterWeb.CommitDetailLive do
   end
 
   defp session_label(session) do
-    session.slug || String.slice(session.session_id, 0, 8)
+    SessionPresenter.primary_label(session)
   end
 
   defp badge_text(:observed_in_session, _confidence), do: "Verified"
@@ -115,6 +117,32 @@ defmodule SpotterWeb.CommitDetailLive do
                   </div>
                 </div>
 
+                <%!-- Project rollup summary --%>
+                <div class="commit-detail-summary-section">
+                  <div class="commit-detail-section-title">Project Rollup</div>
+                  <%= if @commit_detail_rolling_summary do %>
+                    <pre class="project-rollup">{@commit_detail_rolling_summary.summary_text}</pre>
+                    <div class="text-muted text-xs">
+                      Computed: {format_timestamp(@commit_detail_rolling_summary.computed_at)}
+                    </div>
+                  <% else %>
+                    <p class="text-muted text-sm">No rolling summary computed yet.</p>
+                  <% end %>
+                </div>
+
+                <%!-- Bucket summary --%>
+                <div class="commit-detail-summary-section">
+                  <div class="commit-detail-section-title">Bucket Summary</div>
+                  <%= if @commit_detail_period_summary do %>
+                    <pre class="bucket-summary">{@commit_detail_period_summary.summary_text}</pre>
+                    <div class="text-muted text-xs">
+                      {@commit_detail_period_summary.bucket_kind} starting {@commit_detail_period_summary.bucket_start_date}
+                    </div>
+                  <% else %>
+                    <p class="text-muted text-sm">No bucket summary computed yet.</p>
+                  <% end %>
+                </div>
+
                 <%!-- Changed files list --%>
                 <div :if={@commit_detail_commit.changed_files != []} class="commit-detail-files">
                   <div class="commit-detail-section-title">Changed Files</div>
@@ -158,22 +186,26 @@ defmodule SpotterWeb.CommitDetailLive do
                   <p class="text-muted text-sm">No linked sessions.</p>
                 <% else %>
                   <div class="commit-detail-session-list">
-                    <button
-                      :for={entry <- @commit_detail_linked_sessions}
-                      phx-click="select_session"
-                      phx-value-session-id={entry.session.id}
-                      class={"commit-detail-session-btn#{if @commit_detail_selected_session_id == entry.session.id, do: " is-active"}"}
-                    >
-                      <span class="commit-detail-session-name">
-                        {session_label(entry.session)}
-                      </span>
-                      <span
-                        :for={lt <- entry.link_types}
-                        class={badge_class(lt)}
+                    <div :for={entry <- @commit_detail_linked_sessions} class="commit-detail-session-entry">
+                      <button
+                        phx-click="select_session"
+                        phx-value-session-id={entry.session.id}
+                        class={"commit-detail-session-btn#{if @commit_detail_selected_session_id == entry.session.id, do: " is-active"}"}
                       >
-                        {badge_text(lt, entry.max_confidence)}
-                      </span>
-                    </button>
+                        <span class="commit-detail-session-name">
+                          {session_label(entry.session)}
+                        </span>
+                        <span
+                          :for={lt <- entry.link_types}
+                          class={badge_class(lt)}
+                        >
+                          {badge_text(lt, entry.max_confidence)}
+                        </span>
+                      </button>
+                      <%= if entry.session.distilled_status == :completed do %>
+                        <pre class="session-distilled-summary text-sm">{entry.session.distilled_summary}</pre>
+                      <% end %>
+                    </div>
                   </div>
 
                   <%= if @commit_detail_selected_session_id do %>

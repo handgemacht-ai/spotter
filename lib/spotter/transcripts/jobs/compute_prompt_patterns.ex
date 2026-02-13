@@ -144,7 +144,9 @@ defmodule Spotter.Transcripts.Jobs.ComputePromptPatterns do
         prompts_analyzed: meta.prompts_analyzed,
         unique_prompts: meta.unique_prompts,
         model_used: model_used
-      }, action: :complete)
+      },
+      action: :complete
+    )
   end
 
   defp fail_run(run, error_msg) do

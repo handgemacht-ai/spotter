@@ -6,6 +6,7 @@ defmodule SpotterWeb.PaneListLive do
     Commit,
     CommitHotspot,
     ProjectIngestState,
+    ProjectRollingSummary,
     PromptPattern,
     PromptPatternRun,
     ReviewItem,
@@ -17,7 +18,13 @@ defmodule SpotterWeb.PaneListLive do
   }
 
   alias Spotter.Services.Tmux
-  alias Spotter.Transcripts.Jobs.{ComputePromptPatterns, IngestRecentCommits}
+
+  alias Spotter.Transcripts.Jobs.{
+    ComputePromptPatterns,
+    DistillProjectRollingSummary,
+    IngestRecentCommits
+  }
+
   alias SpotterWeb.IngestProgress
 
   require OpenTelemetry.Tracer, as: Tracer
@@ -152,6 +159,7 @@ defmodule SpotterWeb.PaneListLive do
       socket
       |> assign(active_status_map: %{})
       |> IngestProgress.init_ingest()
+      |> assign(timezone_errors: %{})
       |> assign(hidden_expanded: %{})
       |> assign(expanded_subagents: %{})
       |> assign(subagents_by_session: %{})
@@ -256,6 +264,30 @@ defmodule SpotterWeb.PaneListLive do
     {:noreply, append_session_page(socket, project_id, visibility)}
   end
 
+  def handle_event("refresh_rollup", %{"project-id" => project_id}, socket) do
+    %{project_id: project_id}
+    |> DistillProjectRollingSummary.new()
+    |> Oban.insert()
+
+    {:noreply, load_session_data(socket)}
+  end
+
+  def handle_event("update_timezone", %{"project_id" => id, "timezone" => tz}, socket) do
+    project = Ash.get!(Spotter.Transcripts.Project, id)
+
+    case Ash.update(project, %{timezone: tz}) do
+      {:ok, _} ->
+        errors = Map.delete(socket.assigns.timezone_errors, id)
+        {:noreply, socket |> assign(timezone_errors: errors) |> load_session_data()}
+
+      {:error, changeset} ->
+        msg = extract_timezone_error(changeset)
+
+        {:noreply,
+         assign(socket, timezone_errors: Map.put(socket.assigns.timezone_errors, id, msg))}
+    end
+  end
+
   def handle_event("ingest", _params, socket) do
     {:noreply, IngestProgress.start_ingest(socket)}
   end
@@ -356,6 +388,16 @@ defmodule SpotterWeb.PaneListLive do
         true
     end
   end
+
+  defp extract_timezone_error(%Ash.Error.Invalid{errors: errors}) do
+    errors
+    |> Enum.find_value(fn
+      %Ash.Error.Changes.InvalidAttribute{field: :timezone, message: msg} -> msg
+      _ -> nil
+    end) || "invalid timezone"
+  end
+
+  defp extract_timezone_error(_), do: "invalid timezone"
 
   defp advance_interval(:high, _current), do: 1
   defp advance_interval(_importance, current), do: (current || 4) * 2
@@ -522,13 +564,17 @@ defmodule SpotterWeb.PaneListLive do
         {visible, visible_meta} = load_project_sessions(project.id, :visible)
         {hidden, hidden_meta} = load_project_sessions(project.id, :hidden)
 
+        rolling = load_rolling_summary(project.id)
+
         Map.merge(project, %{
           visible_sessions: visible,
           hidden_sessions: hidden,
           visible_cursor: visible_meta.next_cursor,
           visible_has_more: visible_meta.has_more,
           hidden_cursor: hidden_meta.next_cursor,
-          hidden_has_more: hidden_meta.has_more
+          hidden_has_more: hidden_meta.has_more,
+          rolling_summary_text: rolling && rolling.summary_text,
+          rolling_computed_at: rolling && rolling.computed_at
         })
       end)
 
@@ -612,6 +658,17 @@ defmodule SpotterWeb.PaneListLive do
     projects
     |> Enum.flat_map(fn p -> p.visible_sessions ++ p.hidden_sessions end)
     |> Enum.map(& &1.id)
+  end
+
+  defp load_rolling_summary(project_id) do
+    ProjectRollingSummary
+    |> Ash.Query.filter(project_id == ^project_id)
+    |> Ash.Query.sort(computed_at: :desc)
+    |> Ash.Query.limit(1)
+    |> Ash.read!()
+    |> List.first()
+  rescue
+    _ -> nil
   end
 
   defp load_subagents_for_sessions([]), do: %{}
@@ -901,6 +958,39 @@ defmodule SpotterWeb.PaneListLive do
               <a href={"/projects/#{project.id}/co-change"} class="btn btn-ghost text-xs">
                 Co-change
               </a>
+              <form phx-submit="update_timezone" class="inline-form">
+                <input type="hidden" name="project_id" value={project.id} />
+                <input
+                  type="text"
+                  name="timezone"
+                  value={project.timezone || "Etc/UTC"}
+                  class="input input-xs"
+                  style="width: 14ch"
+                />
+                <button type="submit" class="btn btn-ghost text-xs">Save TZ</button>
+              </form>
+              <span :if={@timezone_errors[project.id]} class="text-error text-xs">
+                {@timezone_errors[project.id]}
+              </span>
+              <button
+                class="btn btn-ghost text-xs"
+                phx-click="refresh_rollup"
+                phx-value-project-id={project.id}
+              >
+                Refresh rollup
+              </button>
+            </div>
+
+            <div :if={project.rolling_summary_text} class="rolling-summary text-sm mb-2">
+              <details>
+                <summary class="text-muted">
+                  Rolling summary
+                  <span :if={project.rolling_computed_at} class="text-xs">
+                    ({relative_time(project.rolling_computed_at)})
+                  </span>
+                </summary>
+                <div class="mt-1">{project.rolling_summary_text}</div>
+              </details>
             </div>
 
             <%= if project.visible_sessions == [] and project.hidden_sessions == [] do %>

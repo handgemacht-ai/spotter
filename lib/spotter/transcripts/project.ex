@@ -19,13 +19,18 @@ defmodule Spotter.Transcripts.Project do
 
     create :create do
       primary? true
-      accept [:name, :pattern]
+      accept [:name, :pattern, :timezone]
     end
 
     update :update do
       primary? true
-      accept [:name, :pattern]
+      accept [:name, :pattern, :timezone]
+      require_atomic? false
     end
+  end
+
+  validations do
+    validate {Spotter.Transcripts.Project.TimezoneValidation, []}
   end
 
   attributes do
@@ -37,6 +42,11 @@ defmodule Spotter.Transcripts.Project do
 
     attribute :pattern, :string do
       allow_nil? false
+    end
+
+    attribute :timezone, :string do
+      allow_nil? false
+      default "Etc/UTC"
     end
 
     create_timestamp :inserted_at
