@@ -12,6 +12,7 @@ import diff from "highlight.js/lib/languages/diff"
 import plaintext from "highlight.js/lib/languages/plaintext"
 import { marked } from "marked"
 import DOMPurify from "dompurify"
+import { createFlowGraphHook } from "./flow_graph"
 
 hljs.registerLanguage("elixir", elixir)
 hljs.registerLanguage("bash", bash)
@@ -85,6 +86,8 @@ function initReviewsBadge() {
 initReviewsBadge()
 
 const Hooks = {}
+
+Hooks.FlowGraph = createFlowGraphHook()
 
 Hooks.TranscriptHighlighter = {
   mounted() {

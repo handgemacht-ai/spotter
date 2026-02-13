@@ -41,6 +41,7 @@ defmodule SpotterWeb.Router do
     live("/heatmap", HeatmapLive)
     live("/hotspots", HotspotsLive)
     live("/co-change", CoChangeLive)
+    live("/flows", FlowsLive)
     live("/product", ProductLive)
     live("/settings/config", ConfigLive)
     get("/projects/:project_id/review", ReviewsRedirectController, :show)
