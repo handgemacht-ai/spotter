@@ -8,17 +8,19 @@ defmodule Spotter.Services.GitLogReader do
   on the given branch within the time window.
 
   Options:
-    - :since_days - number of days to look back (default 30)
+    - :since - `DateTime.t()` start of window (takes priority over `:since_days`)
+    - :until - `DateTime.t()` end of window (only used with `:since`)
+    - :since_days - number of days to look back (default 30, used when `:since` not provided)
     - :branch - branch name (default: auto-detect)
     - :filter_spotterignore - when true, exclude paths matching `.spotterignore` rules (default false)
   """
   @spec changed_files_by_commit(String.t(), keyword()) :: {:ok, [map()]} | {:error, term()}
   def changed_files_by_commit(repo_path, opts \\ []) do
-    since_days = Keyword.get(opts, :since_days, 30)
+    time_opts = build_time_opts(opts)
     filter_ignore = Keyword.get(opts, :filter_spotterignore, false)
 
     with {:ok, branch} <- resolve_branch(repo_path, Keyword.get(opts, :branch)),
-         {:ok, commits} <- parse_log(repo_path, branch, since_days) do
+         {:ok, commits} <- parse_log(repo_path, branch, time_opts) do
       if filter_ignore do
         {:ok, filter_spotterignore(repo_path, commits)}
       else
@@ -65,17 +67,41 @@ defmodule Spotter.Services.GitLogReader do
     end
   end
 
-  defp parse_log(repo_path, branch, since_days) do
-    args = [
-      "-C",
-      repo_path,
-      "log",
-      "--name-only",
-      "--format=COMMIT:%H:%ct",
-      "--since=#{since_days} days ago",
-      branch,
-      "--no-merges"
-    ]
+  defp build_time_opts(opts) do
+    case Keyword.get(opts, :since) do
+      %DateTime{} = since ->
+        time_opts = [since: since]
+
+        case Keyword.get(opts, :until) do
+          %DateTime{} = until_dt -> Keyword.put(time_opts, :until, until_dt)
+          _ -> time_opts
+        end
+
+      _ ->
+        [since_days: Keyword.get(opts, :since_days, 30)]
+    end
+  end
+
+  defp time_args(time_opts) do
+    case Keyword.get(time_opts, :since) do
+      %DateTime{} = since ->
+        args = ["--since=#{DateTime.to_iso8601(since)}"]
+
+        case Keyword.get(time_opts, :until) do
+          %DateTime{} = until_dt -> args ++ ["--until=#{DateTime.to_iso8601(until_dt)}"]
+          _ -> args
+        end
+
+      _ ->
+        since_days = Keyword.get(time_opts, :since_days, 30)
+        ["--since=#{since_days} days ago"]
+    end
+  end
+
+  defp parse_log(repo_path, branch, time_opts) do
+    args =
+      ["-C", repo_path, "log", "--name-only", "--format=COMMIT:%H:%ct"] ++
+        time_args(time_opts) ++ [branch, "--no-merges"]
 
     case System.cmd("git", args, stderr_to_stdout: true) do
       {output, 0} ->

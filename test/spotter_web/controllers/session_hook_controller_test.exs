@@ -148,6 +148,7 @@ defmodule SpotterWeb.SessionHookControllerTest do
       assert is_map(body["source_window"])
     end
 
+    @tag :live_api
     test "returns 200 with summary for valid transcript" do
       path = Path.absname(Path.join(@fixtures_dir, "short.jsonl"))
 
@@ -167,6 +168,7 @@ defmodule SpotterWeb.SessionHookControllerTest do
       assert body["source_window"]["tail_messages"] >= 0
     end
 
+    @tag :live_api
     test "accepts optional token_budget parameter" do
       path = Path.absname(Path.join(@fixtures_dir, "short.jsonl"))
 

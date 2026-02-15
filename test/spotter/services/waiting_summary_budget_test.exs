@@ -1,6 +1,8 @@
 defmodule Spotter.Services.WaitingSummaryBudgetTest do
   use ExUnit.Case, async: false
 
+  @moduletag :live_api
+
   alias Spotter.Services.WaitingSummary
 
   @fixtures_dir "test/fixtures/transcripts"
