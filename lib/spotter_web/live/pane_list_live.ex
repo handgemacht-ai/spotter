@@ -77,16 +77,6 @@ defmodule SpotterWeb.PaneListLive do
 
       depends_on([])
     end
-
-    event :filter_project do
-      handle(fn _values, %{"project-id" => project_id} ->
-        if project_id == "all" do
-          %{selected_project_id: nil}
-        else
-          %{selected_project_id: project_id}
-        end
-      end)
-    end
   end
 
   computer :session_data do
@@ -219,6 +209,27 @@ defmodule SpotterWeb.PaneListLive do
      push_patch(socket,
        to: pp_path(socket.assigns.pp_project_id, value)
      )}
+  end
+
+  def handle_event("filter_project", %{"project-id" => raw_id}, socket) do
+    Tracer.with_span "spotter.pane_list_live.filter_project" do
+      parsed_id =
+        case raw_id do
+          "all" -> nil
+          nil -> nil
+          "" -> nil
+          id -> id
+        end
+
+      Tracer.set_attribute("spotter.project_id", parsed_id || "all")
+
+      socket =
+        socket
+        |> update_computer_inputs(:project_filter, %{selected_project_id: parsed_id})
+        |> refresh_study_queue()
+
+      {:noreply, socket}
+    end
   end
 
   def handle_event("refresh", _params, socket) do
@@ -927,7 +938,7 @@ defmodule SpotterWeb.PaneListLive do
         <% else %>
           <div :if={length(@session_data_projects) > 1} class="filter-bar">
             <button
-              phx-click={event(:project_filter, :filter_project)}
+              phx-click="filter_project"
               phx-value-project-id="all"
               class={"filter-btn#{if @project_filter_selected_project_id == nil, do: " is-active"}"}
             >
@@ -935,7 +946,7 @@ defmodule SpotterWeb.PaneListLive do
             </button>
             <button
               :for={project <- @session_data_projects}
-              phx-click={event(:project_filter, :filter_project)}
+              phx-click="filter_project"
               phx-value-project-id={project.id}
               class={"filter-btn#{if @project_filter_selected_project_id == project.id, do: " is-active"}"}
             >

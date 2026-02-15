@@ -74,6 +74,51 @@ defmodule SpotterWeb.PaneListLiveTest do
     end
   end
 
+  describe "project picker filtering" do
+    setup do
+      proj_a = Ash.create!(Project, %{name: "proj-alpha", pattern: "^proj-alpha"})
+      proj_b = Ash.create!(Project, %{name: "proj-beta", pattern: "^proj-beta"})
+
+      Ash.create!(Session, %{
+        session_id: Ash.UUID.generate(),
+        transcript_dir: "/tmp/test-alpha",
+        cwd: "/home/user/alpha",
+        project_id: proj_a.id
+      })
+
+      Ash.create!(Session, %{
+        session_id: Ash.UUID.generate(),
+        transcript_dir: "/tmp/test-beta",
+        cwd: "/home/user/beta",
+        project_id: proj_b.id
+      })
+
+      %{proj_a: proj_a, proj_b: proj_b}
+    end
+
+    test "filters to a single project", %{proj_a: _proj_a, proj_b: proj_b} do
+      {:ok, view, _html} = live(build_conn(), "/")
+
+      html = render_click(view, "filter_project", %{"project-id" => proj_b.id})
+
+      assert html =~ ~s(class="project-name">proj-beta</span>)
+      refute html =~ ~s(class="project-name">proj-alpha</span>)
+
+      # Also verify proj_a's filter chip is still rendered (not hidden from filter bar)
+      assert html =~ "proj-alpha"
+    end
+
+    test "resets to all projects", %{proj_a: _proj_a, proj_b: proj_b} do
+      {:ok, view, _html} = live(build_conn(), "/")
+
+      render_click(view, "filter_project", %{"project-id" => proj_b.id})
+      html = render_click(view, "filter_project", %{"project-id" => "all"})
+
+      assert html =~ ~s(class="project-name">proj-alpha</span>)
+      assert html =~ ~s(class="project-name">proj-beta</span>)
+    end
+  end
+
   describe "study queue" do
     test "always renders study queue with empty state when no items due", %{} do
       {:ok, _view, html} = live(build_conn(), "/")
