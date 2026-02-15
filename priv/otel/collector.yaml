@@ -2,7 +2,9 @@ receivers:
   otlp:
     protocols:
       grpc:
+        endpoint: 0.0.0.0:4317
       http:
+        endpoint: 0.0.0.0:4318
 
 processors:
   batch:
@@ -12,7 +14,7 @@ exporters:
     path: /var/lib/spotter-otel/spotter-traces.json
   debug:
     verbosity: basic
-  otlphttp/jaeger:
+  otlp_http/jaeger:
     endpoint: http://jaeger:4318
     tls:
       insecure: true
@@ -22,4 +24,4 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [file/traces, otlphttp/jaeger, debug]
+      exporters: [file/traces, otlp_http/jaeger, debug]

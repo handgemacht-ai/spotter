@@ -8,7 +8,7 @@ services:
       SPOTTER_SQLITE_DB: /var/lib/spotter/spotter.db
       SPOTTER_LIVE_REPO_DIR: /workspace/${SPOTTER_REPO_NAME}
       SPOTTER_LIVE_PROJECT_NAME: ${SPOTTER_REPO_NAME}
-      SPOTTER_URL: http://127.0.0.1:1100
+      SPOTTER_URL: http://${SPOTTER_HOST:-127.0.0.1}:${SPOTTER_PORT:-1100}
       SPOTTER_DISABLE_ASSET_WATCH: "1"
       OTEL_EXPORTER: otlp
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
@@ -17,10 +17,9 @@ services:
     user: "${SPOTTER_UID:-0}:${SPOTTER_GID:-0}"
     working_dir: /app
     ports:
-      - "${SPOTTER_PORT:-1100}:1100"
+      - "${SPOTTER_HOST:-127.0.0.1}:${SPOTTER_PORT:-1100}:1100"
     volumes:
       - ${SPOTTER_HOST_REPO_ROOT}:/workspace/${SPOTTER_REPO_NAME}:rw
-      - ${SPOTTER_HOST_CLAUDE_DIR}:/home/spotter/.claude:rw
       - spotter_sqlite:/var/lib/spotter
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:1100/", "-o", "/dev/null"]

@@ -57,10 +57,27 @@ compose_project_name() {
   echo "spotter-${hash}"
 }
 
+format_host_for_url() {
+  local host="$1"
+
+  if [ -z "$host" ] || [ "$host" = "0.0.0.0" ] || [ "$host" = "*" ]; then
+    echo "localhost"
+    return
+  fi
+
+  if echo "$host" | grep -q ":"; then
+    echo "[${host}]"
+  else
+    echo "$host"
+  fi
+}
+
 compose_cmd() {
   local repo_root="$1"; shift
   local project
   project="$(compose_project_name "$repo_root")"
+  local port="${OPT_PORT:-1100}"
+  local host="${OPT_HOST:-127.0.0.1}"
 
   local files=(-f "${BUNDLE}/compose.yml")
   if [ "${OPT_DEBUG_PORTS:-}" = "1" ]; then
@@ -69,10 +86,10 @@ compose_cmd() {
 
   SPOTTER_HOST_REPO_ROOT="$repo_root" \
   SPOTTER_REPO_NAME="$(basename "$repo_root")" \
-  SPOTTER_HOST_CLAUDE_DIR="${HOME}/.claude" \
   SPOTTER_UID="$(id -u)" \
   SPOTTER_GID="$(id -g)" \
-  SPOTTER_PORT="${OPT_PORT:-1100}" \
+  SPOTTER_HOST="$host" \
+  SPOTTER_PORT="$port" \
   SPOTTER_IMAGE_TAG="${SPOTTER_IMAGE_TAG:-main}" \
   docker compose -p "$project" "${files[@]}" "$@"
 }
@@ -89,7 +106,6 @@ ensure_consent() {
   echo ""
   echo "Spotter will mount the following into Docker containers:"
   echo "  - Your target repo (read-write) so Claude can edit code"
-  echo "  - ~/.claude (read-write) so Claude can write transcripts and hooks"
   echo ""
   printf "Continue? [y/N] "
   read -r answer
@@ -106,11 +122,17 @@ ensure_consent() {
 }
 
 wait_healthy() {
-  local port="${OPT_PORT:-1100}"
-  local url="http://localhost:${port}/"
+  local host="$1"
+  local port="$2"
+  local probe_host="$host"
   local max_wait=90
   local elapsed=0
 
+  if [ -z "$probe_host" ] || [ "$probe_host" = "0.0.0.0" ] || [ "$probe_host" = "*" ]; then
+    probe_host="127.0.0.1"
+  fi
+
+  local url="http://${probe_host}:${port}/"
   echo "Waiting for Spotter to start..."
   while [ "$elapsed" -lt "$max_wait" ]; do
     if curl -fsS "$url" -o /dev/null 2>/dev/null; then
@@ -126,7 +148,8 @@ wait_healthy() {
 # --- CLI Parsing ---
 
 OPT_REPO=""
-OPT_PORT=""
+OPT_PORT="${SPOTTER_PORT:-1100}"
+OPT_HOST="${SPOTTER_HOST:-127.0.0.1}"
 OPT_DEBUG_PORTS=""
 OPT_YES=""
 COMMAND=""
@@ -140,6 +163,8 @@ parse_args() {
         OPT_REPO="$2"; shift 2 ;;
       --port)
         OPT_PORT="$2"; shift 2 ;;
+      --host)
+        OPT_HOST="$2"; shift 2 ;;
       --debug-ports)
         OPT_DEBUG_PORTS="1"; shift ;;
       --yes|-y)
@@ -162,6 +187,10 @@ parse_args() {
 cmd_up() {
   local repo_root
   repo_root="$(resolve_repo)"
+  local port="${OPT_PORT:-1100}"
+  local host="${OPT_HOST:-127.0.0.1}"
+  local open_host
+  open_host="$(format_host_for_url "$host")"
 
   command -v docker >/dev/null 2>&1 || die "docker is not installed"
   docker compose version >/dev/null 2>&1 || die "docker compose plugin is not installed"
@@ -169,11 +198,10 @@ cmd_up() {
   ensure_consent
 
   echo "Starting Spotter for $(basename "$repo_root")..."
-  compose_cmd "$repo_root" up -d --remove-orphans
+  compose_cmd "$repo_root" up -d --pull always --remove-orphans
 
-  local port="${OPT_PORT:-1100}"
-  wait_healthy
-  open_browser "http://localhost:${port}"
+  wait_healthy "$host" "$port"
+  open_browser "http://${open_host}:${port}"
 }
 
 cmd_attach() {

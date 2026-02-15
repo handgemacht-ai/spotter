@@ -1,0 +1,15 @@
+services:
+  # Adds additional host bindings on your Tailscale interface, while keeping the base compose file local-only.
+  #
+  # Usage:
+  #   SPOTTER_TAILSCALE_IP="$(tailscale ip -4 | head -n1)" \
+  #     docker compose -f docker-compose.otel.yml -f docker-compose.otel.tailscale.yml up -d --force-recreate
+  otel-collector:
+    ports:
+      - "${SPOTTER_TAILSCALE_IP}:4317:4317"
+      - "${SPOTTER_TAILSCALE_IP}:4318:4318"
+
+  jaeger:
+    ports:
+      - "${SPOTTER_TAILSCALE_IP}:16686:16686"
+

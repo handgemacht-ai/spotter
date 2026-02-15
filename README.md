@@ -28,7 +28,15 @@ cd /path/to/target-repo
 spotter
 ```
 
-This starts the full stack and opens http://localhost:1100 in your browser.
+This starts the full stack and opens `http://localhost:1100` in your browser by default.
+You can override the binding with environment variables or flags:
+
+```bash
+spotter --port 1200 --host 127.0.0.1
+SPOTTER_HOST=100.64.0.1 SPOTTER_PORT=1200 spotter
+```
+
+`SPOTTER_HOST` defaults to `127.0.0.1` and is used for container port binding and the URL Spotter prints.
 
 ### Attach to Claude
 
