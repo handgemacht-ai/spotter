@@ -461,8 +461,8 @@ defmodule SpotterWeb.SessionLiveTest do
     end
   end
 
-  describe "rework panel" do
-    test "renders rework panel when rework records exist", %{
+  describe "rework sidebar tab" do
+    test "rework tab shows count and renders items when clicked", %{
       session: session,
       session_id: session_id
     } do
@@ -484,12 +484,19 @@ defmodule SpotterWeb.SessionLiveTest do
         session_id: session.id
       })
 
-      {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}")
+      {:ok, view, html} = live(build_conn(), "/sessions/#{session_id}")
 
+      # Tab button shows count
       assert html =~ "Rework (2)"
-      assert html =~ "transcript-rework-panel"
+
+      # Rework is NOT in transcript header
+      refute html =~ "transcript-rework-panel"
+
+      # Click rework tab to see content
+      html = render_click(view, "switch_sidebar_tab", %{"tab" => "rework"})
+
       assert html =~ "lib/foo.ex"
-      assert html =~ "jump_to_rework"
+      assert html =~ ~s(phx-click="jump_to_rework")
       assert html =~ "tu-002"
       assert html =~ "tu-003"
     end
@@ -506,17 +513,34 @@ defmodule SpotterWeb.SessionLiveTest do
         session_id: session.id
       })
 
-      {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}")
+      {:ok, view, _html} = live(build_conn(), "/sessions/#{session_id}")
+
+      html = render_click(view, "switch_sidebar_tab", %{"tab" => "rework"})
 
       assert html =~ ~s(phx-click="jump_to_rework")
       assert html =~ ~s(phx-value-tool-use-id="tu-click-test")
     end
 
-    test "rework panel is hidden when no rework records", %{session_id: session_id} do
+    test "rework tab shows empty state when no rework records", %{session_id: session_id} do
+      {:ok, view, html} = live(build_conn(), "/sessions/#{session_id}")
+
+      # Tab is present with zero count
+      assert html =~ "Rework (0)"
+
+      # No rework panels in transcript header
+      refute html =~ "transcript-rework-panel"
+
+      # Click rework tab shows empty message
+      html = render_click(view, "switch_sidebar_tab", %{"tab" => "rework"})
+      assert html =~ "No rework detected"
+    end
+  end
+
+  describe "errors not in transcript header" do
+    test "errors are not rendered as transcript header blocks", %{session_id: session_id} do
       {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}")
 
-      refute html =~ "transcript-rework-panel"
-      refute html =~ "Rework"
+      refute html =~ "transcript-error-panel"
     end
   end
 

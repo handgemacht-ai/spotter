@@ -638,38 +638,6 @@ defmodule SpotterWeb.SessionLive do
             </span>
           </div>
 
-          <%= if @errors != [] do %>
-            <div class="transcript-error-panel">
-              <div class="error-title">Errors ({length(@errors)})</div>
-              <div
-                :for={error <- @errors}
-                phx-click="jump_to_error"
-                phx-value-tool-use-id={error.tool_use_id}
-                class="transcript-error-item"
-              >
-                <span class="error-tool">{error.tool_name}</span>
-                <span :if={error.error_content} class="error-content">
-                  {String.slice(error.error_content, 0, 100)}
-                </span>
-              </div>
-            </div>
-          <% end %>
-
-          <%= if @rework_events != [] do %>
-            <div class="transcript-rework-panel">
-              <div class="rework-title">Rework ({length(@rework_events)})</div>
-              <div
-                :for={event <- @rework_events}
-                phx-click="jump_to_rework"
-                phx-value-tool-use-id={event.tool_use_id}
-                class="transcript-rework-item"
-              >
-                <span class="rework-file">{event.relative_path || event.file_path}</span>
-                <span class="rework-occurrence">#{event.occurrence_index}</span>
-              </div>
-            </div>
-          <% end %>
-
           <.transcript_panel
             rendered_lines={@transcript_view_visible_lines}
             all_rendered_lines={@transcript_view_rendered_lines}
@@ -703,6 +671,13 @@ defmodule SpotterWeb.SessionLive do
             phx-value-tab="errors"
           >
             Errors ({length(@errors)})
+          </button>
+          <button
+            class={"sidebar-tab#{if @active_sidebar_tab == :rework, do: " is-active"}"}
+            phx-click="switch_sidebar_tab"
+            phx-value-tab="rework"
+          >
+            Rework ({length(@rework_events)})
           </button>
         </div>
 
@@ -764,6 +739,23 @@ defmodule SpotterWeb.SessionLive do
               <span :if={error.error_content} class="error-content">
                 {String.slice(error.error_content, 0, 100)}
               </span>
+            </div>
+          <% end %>
+        </div>
+
+        <%!-- Rework tab --%>
+        <div :if={@active_sidebar_tab == :rework} class="sidebar-tab-content">
+          <%= if @rework_events == [] do %>
+            <p class="text-muted text-sm">No rework detected.</p>
+          <% else %>
+            <div
+              :for={event <- @rework_events}
+              phx-click="jump_to_rework"
+              phx-value-tool-use-id={event.tool_use_id}
+              class="transcript-rework-item"
+            >
+              <span class="rework-file">{event.relative_path || event.file_path}</span>
+              <span class="rework-occurrence">#{event.occurrence_index}</span>
             </div>
           <% end %>
         </div>

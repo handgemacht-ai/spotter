@@ -1245,21 +1245,6 @@ input::placeholder, textarea::placeholder {
 }
 
 /* Error panel in transcript */
-.transcript-error-panel {
-  margin-bottom: 1rem;
-  background: rgba(232, 84, 84, 0.08);
-  border: 1px solid rgba(232, 84, 84, 0.25);
-  border-radius: var(--radius-md);
-  padding: 0.75rem;
-}
-
-.transcript-error-panel .error-title {
-  color: var(--accent-red);
-  font-size: 0.85em;
-  font-weight: bold;
-  margin-bottom: 0.5rem;
-}
-
 .transcript-error-item {
   padding: 4px 6px;
   margin-bottom: 4px;
@@ -1280,22 +1265,6 @@ input::placeholder, textarea::placeholder {
 .transcript-error-item .error-content {
   color: var(--text-secondary);
   margin-left: 0.5rem;
-}
-
-/* Rework panel in transcript */
-.transcript-rework-panel {
-  margin-bottom: 1rem;
-  background: rgba(229, 168, 75, 0.08);
-  border: 1px solid rgba(229, 168, 75, 0.25);
-  border-radius: var(--radius-md);
-  padding: 0.75rem;
-}
-
-.transcript-rework-panel .rework-title {
-  color: var(--accent-amber);
-  font-size: 0.85em;
-  font-weight: bold;
-  margin-bottom: 0.5rem;
 }
 
 .transcript-rework-item {
