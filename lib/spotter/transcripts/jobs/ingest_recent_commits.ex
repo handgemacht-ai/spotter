@@ -122,14 +122,26 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
   end
 
   defp ensure_commit_message_review_item(project_id, commit) do
-    Ash.create(ReviewItem, %{
-      project_id: project_id,
-      target_kind: :commit_message,
-      commit_id: commit.id,
-      importance: :medium,
-      interval_days: 4,
-      next_due_on: Date.add(Date.utc_today(), 4)
-    })
+    existing =
+      ReviewItem
+      |> Ash.Query.filter(
+        project_id == ^project_id and
+          target_kind == :commit_message and
+          commit_id == ^commit.id
+      )
+      |> Ash.Query.limit(1)
+      |> Ash.read!()
+
+    if existing == [] do
+      Ash.create(ReviewItem, %{
+        project_id: project_id,
+        target_kind: :commit_message,
+        commit_id: commit.id,
+        importance: :medium,
+        interval_days: 4,
+        next_due_on: Date.utc_today()
+      })
+    end
   end
 
   defp maybe_enqueue_analyze(project_id, commit) do

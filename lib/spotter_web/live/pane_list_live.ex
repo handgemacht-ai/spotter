@@ -40,21 +40,34 @@ defmodule SpotterWeb.PaneListLive do
       initial nil
     end
 
+    input :study_include_upcoming do
+      initial false
+    end
+
+    input :browser_timezone do
+      initial "Etc/UTC"
+    end
+
     val :due_items do
-      compute(fn %{study_scope: scope, study_project_id: project_id} ->
-        load_due_items(scope, project_id)
+      compute(fn %{
+                   study_scope: scope,
+                   study_project_id: project_id,
+                   study_include_upcoming: include_upcoming,
+                   browser_timezone: tz
+                 } ->
+        load_due_items(scope, project_id, include_upcoming, tz)
       end)
     end
 
     val :due_counts do
-      compute(fn %{study_scope: _scope, study_project_id: project_id} ->
-        count_due_items(project_id)
+      compute(fn %{study_scope: _scope, study_project_id: project_id, browser_timezone: tz} ->
+        count_due_items(project_id, tz)
       end)
     end
 
     val :empty_context do
-      compute(fn %{study_project_id: project_id} ->
-        study_queue_empty_context(project_id)
+      compute(fn %{study_project_id: project_id, browser_timezone: tz} ->
+        study_queue_empty_context(project_id, tz)
       end)
     end
 
@@ -307,15 +320,26 @@ defmodule SpotterWeb.PaneListLive do
     end
   end
 
+  def handle_event("browser_timezone", %{"timezone" => tz}, socket) do
+    tz = if valid_timezone?(tz), do: tz, else: "Etc/UTC"
+    {:noreply, update_computer_inputs(socket, :study_queue, %{browser_timezone: tz})}
+  end
+
+  def handle_event("set_study_include_upcoming", %{"enabled" => enabled}, socket) do
+    include = enabled == "true"
+    {:noreply, update_computer_inputs(socket, :study_queue, %{study_include_upcoming: include})}
+  end
+
   def handle_event("mark_seen", %{"id" => id}, socket) do
     item = Ash.get!(ReviewItem, id)
+    today = browser_today(socket)
     new_interval = advance_interval(item.importance, item.interval_days || 4)
 
     Ash.update!(item, %{}, action: :mark_seen)
 
     Ash.update!(item, %{
       interval_days: new_interval,
-      next_due_on: Date.add(Date.utc_today(), new_interval)
+      next_due_on: Date.add(today, new_interval)
     })
 
     {:noreply, refresh_study_queue(socket)}
@@ -323,13 +347,14 @@ defmodule SpotterWeb.PaneListLive do
 
   def handle_event("set_importance", %{"id" => id, "importance" => importance}, socket) do
     item = Ash.get!(ReviewItem, id)
+    today = browser_today(socket)
     importance_atom = String.to_existing_atom(importance)
     {interval, offset} = schedule_for_importance(importance_atom)
 
     Ash.update!(item, %{
       importance: importance_atom,
       interval_days: interval,
-      next_due_on: Date.add(Date.utc_today(), offset)
+      next_due_on: Date.add(today, offset)
     })
 
     {:noreply, refresh_study_queue(socket)}
@@ -468,32 +493,55 @@ defmodule SpotterWeb.PaneListLive do
     update_computer_inputs(socket, :study_queue, %{study_project_id: project_id})
   end
 
-  defp load_due_items(scope, project_id) do
-    today = Date.utc_today()
+  defp load_due_items(scope, project_id, include_upcoming, tz) do
+    today = today_in_tz(tz)
+    limit = 20
 
-    query =
+    base_query =
       ReviewItem
       |> Ash.Query.filter(is_nil(suspended_at))
-      |> Ash.Query.filter(is_nil(next_due_on) or next_due_on <= ^today)
-      |> Ash.Query.sort(inserted_at: :desc)
-      |> Ash.Query.limit(20)
 
-    query = if project_id, do: Ash.Query.filter(query, project_id == ^project_id), else: query
+    base_query =
+      if project_id,
+        do: Ash.Query.filter(base_query, project_id == ^project_id),
+        else: base_query
 
-    query =
+    base_query =
       case scope do
-        "messages" -> Ash.Query.filter(query, target_kind == :commit_message)
-        "hotspots" -> Ash.Query.filter(query, target_kind == :commit_hotspot)
-        _ -> query
+        "messages" -> Ash.Query.filter(base_query, target_kind == :commit_message)
+        "hotspots" -> Ash.Query.filter(base_query, target_kind == :commit_hotspot)
+        _ -> base_query
       end
 
-    items = Ash.read!(query)
-    enrich_review_items(items)
+    due_items =
+      base_query
+      |> Ash.Query.filter(is_nil(next_due_on) or next_due_on <= ^today)
+      |> Ash.Query.sort(inserted_at: :desc)
+      |> Ash.Query.limit(limit)
+      |> Ash.read!()
+
+    items =
+      if include_upcoming and length(due_items) < limit do
+        remaining = limit - length(due_items)
+
+        upcoming_items =
+          base_query
+          |> Ash.Query.filter(next_due_on > ^today)
+          |> Ash.Query.sort(next_due_on: :asc, inserted_at: :desc)
+          |> Ash.Query.limit(remaining)
+          |> Ash.read!()
+
+        due_items ++ upcoming_items
+      else
+        due_items
+      end
+
+    enrich_review_items(items, today)
   rescue
     _ -> []
   end
 
-  defp enrich_review_items(items) do
+  defp enrich_review_items(items, today) do
     commit_ids = items |> Enum.map(& &1.commit_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
 
     hotspot_ids =
@@ -517,16 +565,20 @@ defmodule SpotterWeb.PaneListLive do
       end
 
     Enum.map(items, fn item ->
+      upcoming =
+        item.next_due_on != nil and Date.compare(item.next_due_on, today) == :gt
+
       %{
         item: item,
         commit: Map.get(commits, item.commit_id),
-        hotspot: Map.get(hotspots, item.commit_hotspot_id)
+        hotspot: Map.get(hotspots, item.commit_hotspot_id),
+        upcoming: upcoming
       }
     end)
   end
 
-  defp count_due_items(project_id) do
-    today = Date.utc_today()
+  defp count_due_items(project_id, tz) do
+    today = today_in_tz(tz)
 
     base =
       ReviewItem
@@ -548,7 +600,7 @@ defmodule SpotterWeb.PaneListLive do
     _ -> %{total: 0, messages: 0, hotspots: 0, high: 0, medium: 0, low: 0}
   end
 
-  defp study_queue_empty_context(project_id) do
+  defp study_queue_empty_context(project_id, tz) do
     projects =
       try do
         Spotter.Transcripts.Project |> Ash.read!()
@@ -559,13 +611,13 @@ defmodule SpotterWeb.PaneListLive do
     if projects == [] do
       :no_project
     else
-      classify_review_items(project_id)
+      classify_review_items(project_id, tz)
     end
   rescue
     _ -> :no_due
   end
 
-  defp classify_review_items(project_id) do
+  defp classify_review_items(project_id, tz) do
     base =
       if project_id,
         do: ReviewItem |> Ash.Query.filter(project_id == ^project_id),
@@ -575,12 +627,12 @@ defmodule SpotterWeb.PaneListLive do
 
     case all_items do
       [] -> :no_items
-      items -> classify_due_status(items)
+      items -> classify_due_status(items, tz)
     end
   end
 
-  defp classify_due_status(items) do
-    today = Date.utc_today()
+  defp classify_due_status(items, tz) do
+    today = today_in_tz(tz)
     suspended = Enum.count(items, &(not is_nil(&1.suspended_at)))
     future_items = Enum.filter(items, &future_item?(&1, today))
 
@@ -598,6 +650,26 @@ defmodule SpotterWeb.PaneListLive do
 
   defp earliest_due(items) do
     items |> Enum.min_by(& &1.next_due_on, Date, fn -> nil end) |> then(&(&1 && &1.next_due_on))
+  end
+
+  defp today_in_tz(tz) do
+    DateTime.now!(tz) |> DateTime.to_date()
+  rescue
+    _ -> Date.utc_today()
+  end
+
+  defp valid_timezone?(tz) when is_binary(tz) do
+    DateTime.now!(tz)
+    true
+  rescue
+    _ -> false
+  end
+
+  defp valid_timezone?(_), do: false
+
+  defp browser_today(socket) do
+    tz = socket.assigns[:study_queue_browser_timezone] || "Etc/UTC"
+    today_in_tz(tz)
   end
 
   defp lookup_session_cwd(session_id) do
@@ -748,7 +820,7 @@ defmodule SpotterWeb.PaneListLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="container" data-testid="dashboard-root">
+    <div class="container" data-testid="dashboard-root" id="dashboard-root" phx-hook="BrowserTimezone">
       <div class="page-header">
         <h1>Dashboard</h1>
         <div class="page-header-actions">
@@ -800,7 +872,7 @@ defmodule SpotterWeb.PaneListLive do
           </span>
         </div>
 
-        <%= if @study_queue_due_counts.total == 0 do %>
+        <%= if @study_queue_due_items == [] do %>
           <div class="empty-state" data-testid="study-queue-empty">
             <%= case @study_queue_empty_context do %>
               <% :no_project -> %>
@@ -821,6 +893,14 @@ defmodule SpotterWeb.PaneListLive do
                     &mdash; next due {Calendar.strftime(next_due, "%b %d")}.
                   <% end %>
                 </p>
+                <button
+                  class="btn btn-success mt-2"
+                  phx-click="set_study_include_upcoming"
+                  phx-value-enabled="true"
+                  data-testid="study-ahead-cta"
+                >
+                  Study ahead
+                </button>
               <% _ -> %>
                 <p>No items due today.</p>
             <% end %>
@@ -833,6 +913,9 @@ defmodule SpotterWeb.PaneListLive do
               </span>
               <span class={"badge study-importance-#{entry.item.importance}"}>
                 {entry.item.importance}
+              </span>
+              <span :if={entry.upcoming} class="badge text-muted text-xs">
+                Due: {Calendar.strftime(entry.item.next_due_on, "%b %d")}
               </span>
               <span :if={entry.item.seen_count > 0} class="text-muted text-xs">
                 seen {entry.item.seen_count}x

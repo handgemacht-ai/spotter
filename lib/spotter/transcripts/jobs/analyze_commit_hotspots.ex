@@ -194,15 +194,27 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
       |> Ash.read!()
 
     Enum.each(hotspots, fn hotspot ->
-      Ash.create(ReviewItem, %{
-        project_id: project_id,
-        target_kind: :commit_hotspot,
-        commit_id: commit.id,
-        commit_hotspot_id: hotspot.id,
-        importance: importance_from_score(hotspot.overall_score),
-        interval_days: 4,
-        next_due_on: Date.add(Date.utc_today(), 4)
-      })
+      existing =
+        ReviewItem
+        |> Ash.Query.filter(
+          project_id == ^project_id and
+            target_kind == :commit_hotspot and
+            commit_hotspot_id == ^hotspot.id
+        )
+        |> Ash.Query.limit(1)
+        |> Ash.read!()
+
+      if existing == [] do
+        Ash.create(ReviewItem, %{
+          project_id: project_id,
+          target_kind: :commit_hotspot,
+          commit_id: commit.id,
+          commit_hotspot_id: hotspot.id,
+          importance: importance_from_score(hotspot.overall_score),
+          interval_days: 4,
+          next_due_on: Date.utc_today()
+        })
+      end
     end)
   end
 

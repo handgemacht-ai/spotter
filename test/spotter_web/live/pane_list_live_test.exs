@@ -5,7 +5,7 @@ defmodule SpotterWeb.PaneListLiveTest do
   import Phoenix.LiveViewTest
 
   alias Ecto.Adapters.SQL.Sandbox
-  alias Spotter.Transcripts.{Project, Session}
+  alias Spotter.Transcripts.{Commit, Project, ReviewItem, Session}
 
   @endpoint SpotterWeb.Endpoint
 
@@ -149,6 +149,49 @@ defmodule SpotterWeb.PaneListLiveTest do
       refute html =~ "sync-to-populate"
       refute html =~ "Sync all"
       refute html =~ "sync all"
+    end
+  end
+
+  describe "study ahead" do
+    setup %{project: project} do
+      commit =
+        Ash.create!(Commit, %{
+          commit_hash: String.duplicate("b", 40),
+          subject: "Future commit for study ahead"
+        })
+
+      future_item =
+        Ash.create!(ReviewItem, %{
+          project_id: project.id,
+          target_kind: :commit_message,
+          commit_id: commit.id,
+          importance: :medium,
+          interval_days: 4,
+          next_due_on: Date.add(Date.utc_today(), 2)
+        })
+
+      %{future_item: future_item, commit: commit}
+    end
+
+    test "shows Study ahead CTA when only future items exist", %{} do
+      {:ok, _view, html} = live(build_conn(), "/")
+
+      assert html =~ ~s(data-testid="study-ahead-cta")
+      assert html =~ "Study ahead"
+    end
+
+    test "clicking Study ahead shows future items", %{future_item: future_item} do
+      {:ok, view, _html} = live(build_conn(), "/")
+
+      html = render_click(view, "set_study_include_upcoming", %{"enabled" => "true"})
+
+      assert html =~ ~s(data-testid="study-card")
+      assert html =~ "Future commit for study ahead"
+
+      # Verify the toggle did NOT mutate the ReviewItem
+      reloaded = Ash.get!(ReviewItem, future_item.id)
+      assert reloaded.next_due_on == future_item.next_due_on
+      assert reloaded.interval_days == future_item.interval_days
     end
   end
 end

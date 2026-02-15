@@ -89,6 +89,13 @@ const Hooks = {}
 
 Hooks.FlowGraph = createFlowGraphHook()
 
+Hooks.BrowserTimezone = {
+  mounted() {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    this.pushEvent("browser_timezone", { timezone: tz })
+  },
+}
+
 Hooks.PreserveScroll = {
   mounted() {
     this._lastKey = this.el.dataset.scrollKey || ""

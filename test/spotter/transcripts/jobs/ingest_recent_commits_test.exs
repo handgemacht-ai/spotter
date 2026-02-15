@@ -68,6 +68,7 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommitsTest do
       Enum.each(review_items, fn ri ->
         assert ri.target_kind == :commit_message
         assert ri.importance == :medium
+        assert ri.next_due_on == Date.utc_today()
         assert MapSet.member?(commit_ids, ri.commit_id)
       end)
     end
