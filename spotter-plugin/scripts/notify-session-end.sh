@@ -11,6 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LIB_DIR="${SCRIPT_DIR}/lib"
 [ -f "${LIB_DIR}/trace_context.sh" ] && . "${LIB_DIR}/trace_context.sh"
 [ -f "${LIB_DIR}/hook_timeouts.sh" ] && . "${LIB_DIR}/hook_timeouts.sh"
+[ -f "${LIB_DIR}/spotter_url.sh" ] && . "${LIB_DIR}/spotter_url.sh"
 
 # Read the session JSON from stdin
 INPUT="$(cat)"
@@ -35,22 +36,30 @@ else
   PORT=1100
 fi
 
-# Resolve base URL (container-safe: honours SPOTTER_URL)
-BASE_URL="${SPOTTER_URL:-http://127.0.0.1:${PORT}}"
+# Resolve base URL candidates (container-safe: honours SPOTTER_URL / tailscale / localhost)
+SPOTTER_URLS="$(spotter_resolve_urls "${PORT}")"
 
-# POST session end to Spotter (fail silently)
-CURL_ARGS=(
-  -s -o /dev/null -X POST
-  "${BASE_URL}/api/hooks/session-end"
-  -H "Content-Type: application/json"
-  -H "x-spotter-hook-event: Stop"
-  -H "x-spotter-hook-script: notify-session-end.sh"
-  -d "{\"session_id\": \"${SESSION_ID}\"}"
-  --connect-timeout "$(resolve_timeout "${SPOTTER_NOTIFY_END_CONNECT_TIMEOUT:-}" "${SPOTTER_HOOK_CONNECT_TIMEOUT:-}" "$SPOTTER_DEFAULT_CONNECT_TIMEOUT")"
-  --max-time "$(resolve_timeout "${SPOTTER_NOTIFY_END_MAX_TIME:-}" "${SPOTTER_HOOK_MAX_TIME:-}" "$SPOTTER_DEFAULT_MAX_TIME")"
-)
+send_to_spotter() {
+  local body="$1"
 
-# Add traceparent header if available
-[ -n "${TRACEPARENT:-}" ] && CURL_ARGS+=(-H "traceparent: ${TRACEPARENT}")
+  for BASE_URL in $SPOTTER_URLS; do
+    CURL_ARGS=(
+      -s -o /dev/null -X POST
+      "${BASE_URL}/api/hooks/session-end"
+      -H "Content-Type: application/json"
+      -H "x-spotter-hook-event: Stop"
+      -H "x-spotter-hook-script: notify-session-end.sh"
+      -d "$body"
+      --connect-timeout "$(resolve_timeout "${SPOTTER_NOTIFY_END_CONNECT_TIMEOUT:-}" "${SPOTTER_HOOK_CONNECT_TIMEOUT:-}" "$SPOTTER_DEFAULT_CONNECT_TIMEOUT")"
+      --max-time "$(resolve_timeout "${SPOTTER_NOTIFY_END_MAX_TIME:-}" "${SPOTTER_HOOK_MAX_TIME:-}" "$SPOTTER_DEFAULT_MAX_TIME")"
+    )
 
-curl "${CURL_ARGS[@]}" 2>/dev/null || true
+    [ -n "${TRACEPARENT:-}" ] && CURL_ARGS+=(-H "traceparent: ${TRACEPARENT}")
+
+    curl "${CURL_ARGS[@]}" 2>/dev/null && return 0
+  done
+
+  return 0
+}
+
+send_to_spotter "{\"session_id\": \"${SESSION_ID}\"}"

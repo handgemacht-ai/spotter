@@ -22,6 +22,8 @@ PID_FILE="${STATE_KEY}.pid"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
 PORT_FILE="$PLUGIN_DIR/../.port"
+LIB_DIR="${SCRIPT_DIR}/lib"
+[ -f "${LIB_DIR}/spotter_url.sh" ] && . "${LIB_DIR}/spotter_url.sh"
 
 if [ -f "$PORT_FILE" ]; then
   PORT="$(cat "$PORT_FILE")"
@@ -29,7 +31,7 @@ else
   PORT=1100
 fi
 
-SPOTTER_URL="${SPOTTER_URL:-http://127.0.0.1:${PORT}}"
+SPOTTER_URLS="$(spotter_resolve_urls "${PORT}")"
 
 # Sleep for the configured delay
 sleep "$DELAY" || true
@@ -57,13 +59,20 @@ fi
 SUMMARY_TEXT="Claude is waiting for your input."
 
 if [ -n "${TRANSCRIPT_PATH:-}" ]; then
-  RESPONSE="$(curl -s -X POST \
-    "${SPOTTER_URL}/api/hooks/waiting-summary" \
-    -H "Content-Type: application/json" \
-    -d "{\"session_id\": \"${SESSION_ID}\", \"transcript_path\": \"${TRANSCRIPT_PATH}\"}" \
-    --connect-timeout 5 \
-    --max-time 20 \
-    2>/dev/null || echo "")"
+  RESPONSE=""
+  for BASE_URL in $SPOTTER_URLS; do
+    RESPONSE="$(curl -s -X POST \
+      "${BASE_URL}/api/hooks/waiting-summary" \
+      -H "Content-Type: application/json" \
+      -d "{\"session_id\": \"${SESSION_ID}\", \"transcript_path\": \"${TRANSCRIPT_PATH}\"}" \
+      --connect-timeout 5 \
+      --max-time 20 \
+      2>/dev/null || true)"
+
+    if [ -n "$RESPONSE" ]; then
+      break
+    fi
+  done
 
   if [ -n "$RESPONSE" ]; then
     PARSED="$(echo "$RESPONSE" | jq -r '.summary // empty' 2>/dev/null || true)"
