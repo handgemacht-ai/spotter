@@ -348,12 +348,72 @@ defmodule Spotter.ProductSpec do
   end
 
   defp query_at(query, params) do
-    case SQL.query(Repo, query, params) do
-      {:ok, result} -> {:ok, result}
-      {:error, error} -> {:error, {:dolt_query_failed, inspect(error)}}
+    {query_to_run, params_to_run} = query_to_run(query, params)
+
+    case SQL.query(Repo, query_to_run, params_to_run) do
+      {:ok, result} ->
+        {:ok, result}
+
+      {:error, error} ->
+        case maybe_retry_query_with_literal_commit(query, params, error) do
+          :no_retry ->
+            {:error, {:dolt_query_failed, inspect(error)}}
+
+          {:ok, result} ->
+            {:ok, result}
+
+          {:error, retry_error} ->
+            {:error, {:dolt_query_failed, inspect(retry_error)}}
+        end
     end
   rescue
     e -> {:error, {:dolt_query_failed, Exception.message(e)}}
+  end
+
+  defp query_to_run(query, [dolt_commit_hash, project_id] = params) do
+    case query_with_literal_commit(query, dolt_commit_hash) do
+      nil ->
+        {query, params}
+
+      literal_query ->
+        {literal_query, [project_id]}
+    end
+  end
+
+  defp query_to_run(query, params), do: {query, params}
+
+  defp maybe_retry_query_with_literal_commit(_query, _params, _error), do: :no_retry
+
+  defp maybe_retry_query_with_literal_commit(query, [dolt_commit_hash, project_id], error) do
+    literal_query = query_with_literal_commit(query, dolt_commit_hash)
+
+    if literal_query && literal_query != query do
+      case SQL.query(Repo, literal_query, [project_id]) do
+        {:ok, _} = ok ->
+          ok
+
+        {:error, _} = retry_error ->
+          retry_error
+
+        _ ->
+          {:error, error}
+      end
+    else
+      :no_retry
+    end
+  end
+
+  defp query_with_literal_commit(query, dolt_commit_hash) do
+    if String.contains?(query, "AS OF ?") and valid_dolt_commit_hash?(dolt_commit_hash) do
+      String.replace(query, "AS OF ?", "AS OF '#{dolt_commit_hash}'")
+    else
+      nil
+    end
+  end
+
+  defp valid_dolt_commit_hash?(dolt_commit_hash) do
+    is_binary(dolt_commit_hash) and
+      String.match?(dolt_commit_hash, ~r/\A[0-9a-zA-Z]{6,64}\z/)
   end
 
   # -- Spec run helpers -------------------------------------------------------
