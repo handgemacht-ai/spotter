@@ -12,6 +12,7 @@ LIB_DIR="${SCRIPT_DIR}/lib"
 [ -f "${LIB_DIR}/trace_context.sh" ] && . "${LIB_DIR}/trace_context.sh"
 [ -f "${LIB_DIR}/hook_timeouts.sh" ] && . "${LIB_DIR}/hook_timeouts.sh"
 [ -f "${LIB_DIR}/spotter_url.sh" ] && . "${LIB_DIR}/spotter_url.sh"
+[ -f "${LIB_DIR}/hook_http.sh" ] && . "${LIB_DIR}/hook_http.sh"
 
 INPUT="$(cat)"
 
@@ -57,22 +58,21 @@ JSON="$(jq -n \
   '{session_id: $session_id, tool_use_id: $tool_use_id, tool_name: $tool_name, is_error: $is_error, error_content: (if $error_content == "" then null else $error_content end)}'
 )"
 
+connect_timeout="$(resolve_timeout "${SPOTTER_TOOL_CALL_CONNECT_TIMEOUT:-}" "${SPOTTER_HOOK_CONNECT_TIMEOUT:-}" "$SPOTTER_DEFAULT_CONNECT_TIMEOUT")"
+max_time="$(resolve_timeout "${SPOTTER_TOOL_CALL_MAX_TIME:-}" "${SPOTTER_HOOK_MAX_TIME:-}" "$SPOTTER_DEFAULT_MAX_TIME")"
+
 for BASE_URL in $SPOTTER_URLS; do
-  CURL_ARGS=(
-    -s -o /dev/null -X POST
-    "${BASE_URL}/api/hooks/tool-call"
-    -H "Content-Type: application/json"
-    -H "x-spotter-hook-event: ${HOOK_EVENT:-PostToolUse}"
-    -H "x-spotter-hook-script: tool-call-capture.sh"
-    -d "$JSON"
-    --connect-timeout "$(resolve_timeout "${SPOTTER_TOOL_CALL_CONNECT_TIMEOUT:-}" "${SPOTTER_HOOK_CONNECT_TIMEOUT:-}" "$SPOTTER_DEFAULT_CONNECT_TIMEOUT")"
-    --max-time "$(resolve_timeout "${SPOTTER_TOOL_CALL_MAX_TIME:-}" "${SPOTTER_HOOK_MAX_TIME:-}" "$SPOTTER_DEFAULT_MAX_TIME")"
-  )
-
-  # Add traceparent header if available
-  [ -n "${TRACEPARENT:-}" ] && CURL_ARGS+=(-H "traceparent: ${TRACEPARENT}")
-
-  curl "${CURL_ARGS[@]}" 2>/dev/null && break
+  if spotter_post_hook_json \
+    "$BASE_URL" \
+    "/api/hooks/tool-call" \
+    "$JSON" \
+    "${HOOK_EVENT:-PostToolUse}" \
+    "tool-call-capture.sh" \
+    "${TRACEPARENT:-}" \
+    "$connect_timeout" \
+    "$max_time"; then
+    break
+  fi
 done
 
 exit 0

@@ -4,7 +4,7 @@
 #   1) explicit SPOTTER_URL
 #   2) explicit SPOTTER_TAILSCALE_URL / SPOTTER_TAILSCALE_IP
 #   3) discovered Tailscale IP (when available)
-#   4) localhost
+#   4) localhost (single default to avoid duplicate loopback binds)
 
 spotter_resolve_urls() {
   local port="${1:-1100}"
@@ -35,7 +35,6 @@ spotter_resolve_urls() {
     fi
   fi
 
-  candidates+=("http://127.0.0.1:${port}")
   candidates+=("http://localhost:${port}")
 
   for candidate in "${candidates[@]}"; do

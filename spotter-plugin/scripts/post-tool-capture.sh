@@ -12,6 +12,7 @@ LIB_DIR="${SCRIPT_DIR}/lib"
 [ -f "${LIB_DIR}/trace_context.sh" ] && . "${LIB_DIR}/trace_context.sh"
 [ -f "${LIB_DIR}/hook_timeouts.sh" ] && . "${LIB_DIR}/hook_timeouts.sh"
 [ -f "${LIB_DIR}/spotter_url.sh" ] && . "${LIB_DIR}/spotter_url.sh"
+[ -f "${LIB_DIR}/hook_http.sh" ] && . "${LIB_DIR}/hook_http.sh"
 
 INPUT="$(cat)"
 
@@ -94,23 +95,27 @@ fi
 SPOTTER_URLS="$(spotter_resolve_urls "${PORT}")"
 TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%S.%6NZ)"
 
+SNAPSHOT_CONNECT_TIMEOUT="$(resolve_timeout "${SPOTTER_POST_TOOL_CONNECT_TIMEOUT:-}" "${SPOTTER_HOOK_CONNECT_TIMEOUT:-}" "$SPOTTER_DEFAULT_CONNECT_TIMEOUT")"
+SNAPSHOT_MAX_TIME="$(resolve_timeout "${SPOTTER_POST_TOOL_MAX_TIME:-}" "${SPOTTER_HOOK_MAX_TIME:-}" "$SPOTTER_DEFAULT_MAX_TIME")"
+
 post_snapshot() {
   local json="$1"
+
   for BASE_URL in $SPOTTER_URLS; do
-    local curl_args=(
-      -s -o /dev/null -X POST
-      "${BASE_URL}/api/hooks/file-snapshot"
-      -H "Content-Type: application/json"
-      -H "x-spotter-hook-event: ${HOOK_EVENT:-PostToolUse}"
-      -H "x-spotter-hook-script: post-tool-capture.sh"
-      -d "$json"
-      --connect-timeout "$(resolve_timeout "${SPOTTER_POST_TOOL_CONNECT_TIMEOUT:-}" "${SPOTTER_HOOK_CONNECT_TIMEOUT:-}" "$SPOTTER_DEFAULT_CONNECT_TIMEOUT")"
-      --max-time "$(resolve_timeout "${SPOTTER_POST_TOOL_MAX_TIME:-}" "${SPOTTER_HOOK_MAX_TIME:-}" "$SPOTTER_DEFAULT_MAX_TIME")"
-    )
-    # Add traceparent header if available
-    [ -n "${TRACEPARENT:-}" ] && curl_args+=(-H "traceparent: ${TRACEPARENT}")
-    curl "${curl_args[@]}" 2>/dev/null && break
+    if spotter_post_hook_json \
+      "$BASE_URL" \
+      "/api/hooks/file-snapshot" \
+      "$json" \
+      "${HOOK_EVENT:-PostToolUse}" \
+      "post-tool-capture.sh" \
+      "${TRACEPARENT:-}" \
+      "$SNAPSHOT_CONNECT_TIMEOUT" \
+      "$SNAPSHOT_MAX_TIME"; then
+      return 0
+    fi
   done
+
+  return 0
 }
 
 get_relative_path() {
@@ -252,20 +257,21 @@ case "$TOOL_NAME" in
         '{session_id: $session_id, tool_use_id: $tool_use_id, git_branch: $git_branch, base_head: $base_head, head: $head, new_commit_hashes: $new_commit_hashes, captured_at: $captured_at}'
       )"
 
+      COMMIT_CONNECT_TIMEOUT="$(resolve_timeout "${SPOTTER_POST_TOOL_CONNECT_TIMEOUT:-}" "${SPOTTER_HOOK_CONNECT_TIMEOUT:-}" "$SPOTTER_DEFAULT_CONNECT_TIMEOUT")"
+      COMMIT_MAX_TIME="$(resolve_timeout "${SPOTTER_POST_TOOL_MAX_TIME:-}" "${SPOTTER_HOOK_MAX_TIME:-}" "$SPOTTER_DEFAULT_MAX_TIME")"
+
       for BASE_URL in $SPOTTER_URLS; do
-        local commit_curl_args=(
-          -s -o /dev/null -X POST
-          "${BASE_URL}/api/hooks/commit-event"
-          -H "Content-Type: application/json"
-          -H "x-spotter-hook-event: ${HOOK_EVENT:-PostToolUse}"
-          -H "x-spotter-hook-script: post-tool-capture.sh"
-          -d "$COMMIT_JSON"
-          --connect-timeout "$(resolve_timeout "${SPOTTER_POST_TOOL_CONNECT_TIMEOUT:-}" "${SPOTTER_HOOK_CONNECT_TIMEOUT:-}" "$SPOTTER_DEFAULT_CONNECT_TIMEOUT")"
-          --max-time "$(resolve_timeout "${SPOTTER_POST_TOOL_MAX_TIME:-}" "${SPOTTER_HOOK_MAX_TIME:-}" "$SPOTTER_DEFAULT_MAX_TIME")"
-        )
-        # Add traceparent header if available
-        [ -n "${TRACEPARENT:-}" ] && commit_curl_args+=(-H "traceparent: ${TRACEPARENT}")
-        curl "${commit_curl_args[@]}" 2>/dev/null && break
+        if spotter_post_hook_json \
+          "$BASE_URL" \
+          "/api/hooks/commit-event" \
+          "$COMMIT_JSON" \
+          "${HOOK_EVENT:-PostToolUse}" \
+          "post-tool-capture.sh" \
+          "${TRACEPARENT:-}" \
+          "$COMMIT_CONNECT_TIMEOUT" \
+          "$COMMIT_MAX_TIME"; then
+          break
+        fi
       done
     fi
 

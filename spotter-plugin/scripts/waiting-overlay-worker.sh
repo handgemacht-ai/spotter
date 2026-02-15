@@ -59,23 +59,34 @@ fi
 SUMMARY_TEXT="Claude is waiting for your input."
 
 if [ -n "${TRANSCRIPT_PATH:-}" ]; then
-  RESPONSE=""
+  SUMMARY_RESPONSE=""
   for BASE_URL in $SPOTTER_URLS; do
-    RESPONSE="$(curl -s -X POST \
+    TMP_BODY="$(mktemp /tmp/spotter-waiting-body.XXXXXX)"
+    TMP_ERR="$(mktemp /tmp/spotter-waiting-err.XXXXXX)"
+    HTTP_CODE="$(curl -sS -o "$TMP_BODY" -w '%{http_code}' \
+      -X POST \
       "${BASE_URL}/api/hooks/waiting-summary" \
       -H "Content-Type: application/json" \
       -d "{\"session_id\": \"${SESSION_ID}\", \"transcript_path\": \"${TRANSCRIPT_PATH}\"}" \
       --connect-timeout 5 \
       --max-time 20 \
-      2>/dev/null || true)"
+      2>"$TMP_ERR")"
+    CURL_RC=$?
+    CURL_ERR="$(cat "$TMP_ERR" 2>/dev/null | tr -d '\n' || true)"
+    rm -f "$TMP_ERR"
 
-    if [ -n "$RESPONSE" ]; then
+    if [ "$CURL_RC" -eq 0 ] && [[ "$HTTP_CODE" == 2[0-9][0-9] ]]; then
+      SUMMARY_RESPONSE="$(cat "$TMP_BODY")"
+      rm -f "$TMP_BODY"
       break
     fi
+
+    echo "[spotter-hook] event=WaitingSummary script=waiting-overlay-worker.sh url=${BASE_URL}/api/hooks/waiting-summary status=${HTTP_CODE:-n/a} curl_rc=${CURL_RC} err=${CURL_ERR:-n/a}" >&2
+    rm -f "$TMP_BODY"
   done
 
-  if [ -n "$RESPONSE" ]; then
-    PARSED="$(echo "$RESPONSE" | jq -r '.summary // empty' 2>/dev/null || true)"
+  if [ -n "$SUMMARY_RESPONSE" ]; then
+    PARSED="$(echo "$SUMMARY_RESPONSE" | jq -r '.summary // empty' 2>/dev/null || true)"
     if [ -n "$PARSED" ]; then
       SUMMARY_TEXT="$PARSED"
     fi
