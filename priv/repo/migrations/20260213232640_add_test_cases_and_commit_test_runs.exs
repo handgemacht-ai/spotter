@@ -39,10 +39,10 @@ defmodule Spotter.Repo.Migrations.AddTestCasesAndCommitTestRuns do
            )
 
     alter table(:commits) do
-      add :tests_status, :text, null: false
+      add :tests_status, :text, null: false, default: "pending"
       add :tests_analyzed_at, :utc_datetime_usec
       add :tests_error, :text
-      add :tests_version, :bigint, null: false
+      add :tests_version, :bigint, null: false, default: 1
       add :tests_metadata, :map, null: false, default: %{}
     end
 
