@@ -148,6 +148,14 @@ The SDK authenticates via `SPOTTER_ANTHROPIC_API_KEY` (environment variable) or 
 
 In test mode, the SDK uses a mock server (`ClaudeAgentSDK.Mock`) so the CLI binary is not required for `mix test`.
 
+## MCP Server
+
+The Spotter MCP server is provided by the plugin via `spotter-plugin/.mcp.json`. The server name is `spotter`, so tools are exposed as `mcp__spotter__*`.
+
+The MCP server URL is controlled by the `SPOTTER_URL` environment variable (default `http://127.0.0.1:1100`). The plugin config uses `${SPOTTER_URL:-http://127.0.0.1:1100}/api/mcp`.
+
+`scripts/setup_worktree.sh` sets `SPOTTER_URL` automatically per worktree based on the assigned port and Tailscale IP, so each tmux-launched Claude session connects to the correct Spotter instance.
+
 ## Product Specification (Dolt)
 
 Spotter can maintain a rolling, versioned product specification derived from codebase changes. The spec is stored in a Dolt SQL-server (MySQL-compatible with Git-style versioning).

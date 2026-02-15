@@ -100,17 +100,13 @@ config :spotter, SpotterWeb.Endpoint,
 ELIXIR_EOF
 echo "==> Generated config/dev.local.exs (ip: $TS_IP, port: $PORT)"
 
-# Generate .mcp.json
+# Generate .mcp.json (spotter MCP server is provided by the plugin via spotter-plugin/.mcp.json)
 cat > .mcp.json << JSON_EOF
 {
   "mcpServers": {
     "tidewave": {
       "type": "http",
       "url": "http://${TS_IP}:${PORT}/tidewave/mcp"
-    },
-    "spotter": {
-      "type": "http",
-      "url": "http://${TS_IP}:${PORT}/api/mcp"
     },
     "chrome-devtools": {
       "command": "npx",
@@ -125,7 +121,7 @@ cat > .mcp.json << JSON_EOF
   }
 }
 JSON_EOF
-echo "==> Generated .mcp.json (tidewave: http://${TS_IP}:${PORT}/tidewave/mcp, spotter: http://${TS_IP}:${PORT}/api/mcp)"
+echo "==> Generated .mcp.json (tidewave: http://${TS_IP}:${PORT}/tidewave/mcp)"
 
 if [ "$this_path" != "$main_path" ] && [ -d "$main_path/deps" ]; then
   echo "==> Copying deps from main worktree: $main_path/deps"
@@ -163,7 +159,8 @@ if command -v tmux &>/dev/null; then
     echo "==> tmux session '$SESSION_NAME' already exists"
   else
     PLUGIN_DIR="$(realpath "$main_path/spotter-plugin")"
-    CLAUDE_CMD="claude --plugin-dir \"$PLUGIN_DIR\" --dangerously-skip-permissions"
+    SPOTTER_URL="http://${TS_IP}:${PORT}"
+    CLAUDE_CMD="SPOTTER_URL=\"$SPOTTER_URL\" claude --plugin-dir \"$PLUGIN_DIR\" --dangerously-skip-permissions"
 
     # Auto-instruct Claude if branch is a valid bead ID
     if command -v bd &>/dev/null && bd show "$BRANCH" --short >/dev/null 2>&1; then

@@ -2,5 +2,6 @@
   "name": "spotter",
   "version": "0.1.0",
   "description": "Track file changes and session activity during Claude Code sessions",
-  "keywords": ["session-tracking", "file-changes"]
+  "keywords": ["session-tracking", "file-changes"],
+  "mcpServers": "./.mcp.json"
 }
