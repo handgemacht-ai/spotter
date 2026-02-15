@@ -18,6 +18,8 @@ defmodule Spotter.Observability.FlowGraph do
     "agent_run" => 3
   }
 
+  @allowed_node_types MapSet.new(Map.keys(@type_priority))
+
   @doc """
   Build a DAG from a list of flow events.
 
@@ -45,6 +47,7 @@ defmodule Spotter.Observability.FlowGraph do
     |> Enum.flat_map(fn event ->
       Enum.map(event.flow_keys, fn key -> {key, event} end)
     end)
+    |> Enum.filter(fn {key, _} -> allowed_node_type?(key) end)
     |> Enum.group_by(fn {key, _} -> key end, fn {_, event} -> event end)
     |> Enum.map(fn {node_id, node_events} ->
       latest = Enum.max_by(node_events, &DateTime.to_unix(&1.inserted_at, :microsecond))
@@ -62,6 +65,10 @@ defmodule Spotter.Observability.FlowGraph do
     |> Enum.sort_by(fn node ->
       {Map.get(@type_priority, node.type, 99), DateTime.to_unix(node.inserted_at, :microsecond)}
     end)
+  end
+
+  defp allowed_node_type?(key) do
+    MapSet.member?(@allowed_node_types, node_type(key))
   end
 
   defp node_type(key) do
@@ -135,8 +142,10 @@ defmodule Spotter.Observability.FlowGraph do
   defp pairs([]), do: []
   defp pairs([_]), do: []
 
-  defp pairs([a | rest]) do
-    Enum.map(rest, fn b -> {a, b} end) ++ pairs(rest)
+  defp pairs(list) do
+    list
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.map(fn [a, b] -> {a, b} end)
   end
 
   # --- Flows ---

@@ -93,9 +93,14 @@ const style = [
   },
 ]
 
+const USER_INTERACTION_COOLDOWN_MS = 5000
+
 export function createFlowGraphHook() {
   return {
     mounted() {
+      this._userInteractedAt = 0
+      this._firstRender = true
+
       this._cy = cytoscape({
         container: this.el,
         style: style,
@@ -103,6 +108,10 @@ export function createFlowGraphHook() {
         minZoom: 0.3,
         maxZoom: 3,
         wheelSensitivity: 0.3,
+      })
+
+      this._cy.on("pan zoom", () => {
+        this._userInteractedAt = Date.now()
       })
 
       this._cy.on("tap", "node", (evt) => {
@@ -125,71 +134,93 @@ export function createFlowGraphHook() {
       const cy = this._cy
       if (!cy) return
 
-      const existingNodeIds = new Set()
-      cy.nodes().forEach((n) => existingNodeIds.add(n.id()))
-
       const newNodeIds = new Set(data.nodes.map((n) => n.id))
       const newEdgeIds = new Set(
         data.edges.map((e) => `${e.from}->${e.to}`)
       )
 
-      // Remove nodes no longer present
-      cy.nodes().forEach((n) => {
-        if (!newNodeIds.has(n.id())) n.remove()
+      let topologyChanged = false
+
+      cy.batch(() => {
+        // Remove nodes no longer present
+        cy.nodes().forEach((n) => {
+          if (!newNodeIds.has(n.id())) {
+            n.remove()
+            topologyChanged = true
+          }
+        })
+
+        // Remove edges no longer present
+        cy.edges().forEach((e) => {
+          const edgeId = `${e.source().id()}->${e.target().id()}`
+          if (!newEdgeIds.has(edgeId)) {
+            e.remove()
+            topologyChanged = true
+          }
+        })
+
+        // Add or update nodes
+        data.nodes.forEach((node) => {
+          const existing = cy.getElementById(node.id)
+          if (existing.length) {
+            existing.data("status", node.status)
+            existing.data("label", node.label)
+          } else {
+            cy.add({
+              group: "nodes",
+              data: {
+                id: node.id,
+                label: node.label,
+                type: node.type,
+                status: node.status,
+                trace_id: node.trace_id,
+              },
+            })
+            topologyChanged = true
+          }
+        })
+
+        // Add edges
+        data.edges.forEach((edge) => {
+          const edgeId = `${edge.from}->${edge.to}`
+          if (!cy.getElementById(edgeId).length) {
+            cy.add({
+              group: "edges",
+              data: {
+                id: edgeId,
+                source: edge.from,
+                target: edge.to,
+              },
+            })
+            topologyChanged = true
+          }
+        })
       })
 
-      // Remove edges no longer present
-      cy.edges().forEach((e) => {
-        const edgeId = `${e.source().id()}->${e.target().id()}`
-        if (!newEdgeIds.has(edgeId)) e.remove()
-      })
-
-      // Add or update nodes
-      data.nodes.forEach((node) => {
-        const existing = cy.getElementById(node.id)
-        if (existing.length) {
-          existing.data("status", node.status)
-          existing.data("label", node.label)
-        } else {
-          cy.add({
-            group: "nodes",
-            data: {
-              id: node.id,
-              label: node.label,
-              type: node.type,
-              status: node.status,
-              trace_id: node.trace_id,
-            },
-          })
-        }
-      })
-
-      // Add edges
-      data.edges.forEach((edge) => {
-        const edgeId = `${edge.from}->${edge.to}`
-        if (!cy.getElementById(edgeId).length) {
-          cy.add({
-            group: "edges",
-            data: {
-              id: edgeId,
-              source: edge.from,
-              target: edge.to,
-            },
-          })
-        }
-      })
-
-      // Re-layout
-      if (data.nodes.length > 0) {
+      // Only re-layout when topology changed
+      if (topologyChanged && data.nodes.length > 0) {
         cy.layout({
           name: "dagre",
           rankDir: "TB",
           nodeSep: 40,
           rankSep: 60,
           animate: false,
-          fit: true,
+          fit: false,
           padding: 30,
         }).run()
+      }
+
+      // Only fit when first render or no recent user interaction
+      const shouldFit =
+        this._firstRender ||
+        Date.now() - this._userInteractedAt > USER_INTERACTION_COOLDOWN_MS
+
+      if (shouldFit && data.nodes.length > 0) {
+        cy.fit(30)
+      }
+
+      if (this._firstRender && data.nodes.length > 0) {
+        this._firstRender = false
       }
     },
 

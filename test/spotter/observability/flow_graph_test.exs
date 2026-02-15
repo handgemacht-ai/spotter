@@ -83,6 +83,21 @@ defmodule Spotter.Observability.FlowGraphTest do
       assert oban_node.label =~ "EnrichCommits"
     end
 
+    test "filters out non-visual node types like project" do
+      events = [
+        make_event(%{
+          flow_keys: ["session:s1", "project:1", "commit:abc"]
+        })
+      ]
+
+      %{nodes: nodes} = FlowGraph.build(events)
+      node_ids = Enum.map(nodes, & &1.id)
+
+      assert "session:s1" in node_ids
+      assert "commit:abc" in node_ids
+      refute "project:1" in node_ids
+    end
+
     test "extracts trace_id from events" do
       events = [
         make_event(%{
@@ -137,6 +152,22 @@ defmodule Spotter.Observability.FlowGraphTest do
       assert {"session:s1", "commit:abc"} in edge_pairs
       assert {"commit:abc", "oban:42"} in edge_pairs
       assert {"oban:42", "agent_run:run-1"} in edge_pairs
+    end
+
+    test "creates only adjacent chain edges, not all pairs" do
+      events = [
+        make_event(%{
+          flow_keys: ["session:s1", "commit:abc", "oban:42"]
+        })
+      ]
+
+      %{edges: edges} = FlowGraph.build(events)
+      edge_pairs = Enum.map(edges, fn e -> {e.from, e.to} end)
+
+      assert {"session:s1", "commit:abc"} in edge_pairs
+      assert {"commit:abc", "oban:42"} in edge_pairs
+      refute {"session:s1", "oban:42"} in edge_pairs
+      assert length(edges) == 2
     end
 
     test "does not create duplicate edges" do

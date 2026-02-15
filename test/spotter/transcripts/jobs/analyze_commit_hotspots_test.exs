@@ -48,6 +48,7 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspotsTest do
 
   describe "perform/1 with valid repo but no API key" do
     @tag :spawns_claude
+    @tag :slow
     test "marks commit as error for missing API key" do
       project = Ash.create!(Project, %{name: "test-analyze-key", pattern: "^test"})
       cwd = File.cwd!()

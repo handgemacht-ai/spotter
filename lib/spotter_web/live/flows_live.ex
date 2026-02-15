@@ -7,6 +7,10 @@ defmodule SpotterWeb.FlowsLive do
   alias Spotter.Observability.FlowGraph
   alias Spotter.Observability.FlowHub
 
+  @refresh_debounce_ms 200
+  @max_selected_events 200
+  @max_output_bytes 64 * 1024
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -20,6 +24,9 @@ defmodule SpotterWeb.FlowsLive do
      |> assign(
        show_completed: false,
        selected_node: nil,
+       selected_events: [],
+       selected_output: nil,
+       refresh_pending: false,
        graph: graph,
        events: events
      )
@@ -28,11 +35,27 @@ defmodule SpotterWeb.FlowsLive do
 
   @impl true
   def handle_info({:flow_event, _event}, socket) do
+    if socket.assigns.refresh_pending do
+      {:noreply, socket}
+    else
+      Process.send_after(self(), :refresh_graph, @refresh_debounce_ms)
+      {:noreply, assign(socket, refresh_pending: true)}
+    end
+  end
+
+  def handle_info(:refresh_graph, socket) do
     {graph, events} = build_graph()
+
+    selected_node =
+      case socket.assigns.selected_node do
+        nil -> nil
+        prev -> Enum.find(graph.nodes, &(&1.id == prev.id))
+      end
 
     {:noreply,
      socket
-     |> assign(graph: graph, events: events)
+     |> assign(graph: graph, events: events, selected_node: selected_node, refresh_pending: false)
+     |> load_selected_details()
      |> push_graph()}
   end
 
@@ -48,11 +71,15 @@ defmodule SpotterWeb.FlowsLive do
 
   def handle_event("flow_node_selected", %{"node_id" => node_id}, socket) do
     node = Enum.find(socket.assigns.graph.nodes, &(&1.id == node_id))
-    {:noreply, assign(socket, selected_node: node)}
+
+    {:noreply,
+     socket
+     |> assign(selected_node: node)
+     |> load_selected_details()}
   end
 
   def handle_event("clear_selection", _params, socket) do
-    {:noreply, assign(socket, selected_node: nil)}
+    {:noreply, assign(socket, selected_node: nil, selected_events: [], selected_output: nil)}
   end
 
   defp build_graph do
@@ -61,6 +88,34 @@ defmodule SpotterWeb.FlowsLive do
     {graph, events}
   rescue
     _ -> {%{nodes: [], edges: [], flows: []}, []}
+  end
+
+  defp load_selected_details(%{assigns: %{selected_node: nil}} = socket) do
+    assign(socket, selected_events: [], selected_output: nil)
+  end
+
+  defp load_selected_details(%{assigns: %{selected_node: node}} = socket) do
+    node_events =
+      node.id
+      |> FlowHub.events_for()
+      |> Enum.sort_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.id})
+      |> Enum.take(-@max_selected_events)
+
+    selected_output =
+      if node.type == "agent_run" do
+        output =
+          node_events
+          |> Enum.filter(&(&1.kind == "agent.output.delta"))
+          |> Enum.map_join(fn e -> e.payload["text"] || "" end)
+
+        if byte_size(output) > @max_output_bytes do
+          binary_slice(output, byte_size(output) - @max_output_bytes, @max_output_bytes)
+        else
+          output
+        end
+      end
+
+    assign(socket, selected_events: node_events, selected_output: selected_output)
   end
 
   defp push_graph(socket) do
@@ -141,7 +196,12 @@ defmodule SpotterWeb.FlowsLive do
         <div class="flows-canvas" id="flow-graph" phx-hook="FlowGraph" phx-update="ignore">
         </div>
 
-        <div class={"flows-panel #{if @selected_node, do: "is-open", else: ""}"}>
+        <div
+          id="flows-panel"
+          class={"flows-panel #{if @selected_node, do: "is-open", else: ""}"}
+          phx-hook="PreserveScroll"
+          data-scroll-key={(@selected_node && @selected_node.id) || ""}
+        >
           <%= if @selected_node do %>
             <div class="flows-panel-header">
               <h3><%= @selected_node.label %></h3>
@@ -175,6 +235,39 @@ defmodule SpotterWeb.FlowsLive do
                   </dd>
                 <% end %>
               </dl>
+
+              <%= if @selected_output do %>
+                <div class="flows-section">
+                  <h4>Output</h4>
+                  <pre class="flows-output" phx-no-format><code><%= @selected_output %></code></pre>
+                </div>
+              <% end %>
+
+              <%= if @selected_events != [] do %>
+                <div class="flows-section">
+                  <h4>Events (<%= length(@selected_events) %>)</h4>
+                  <div class="flows-event-timeline">
+                    <div :for={event <- @selected_events} class="flows-event-item">
+                      <div class="flows-event-meta">
+                        <time class="text-muted text-xs">
+                          <%= DateTime.to_iso8601(event.inserted_at) %>
+                        </time>
+                        <span class={"flows-status flows-status--#{event.status}"}>
+                          <%= event.status %>
+                        </span>
+                      </div>
+                      <div class="flows-event-kind"><%= event.kind %></div>
+                      <div class="text-muted text-xs"><%= event.summary %></div>
+                      <%= if event.payload && event.payload != %{} do %>
+                        <details class="flows-event-payload">
+                          <summary class="text-muted text-xs">payload</summary>
+                          <pre class="text-xs"><%= inspect(event.payload, limit: 20, printable_limit: 200) %></pre>
+                        </details>
+                      <% end %>
+                    </div>
+                  </div>
+                </div>
+              <% end %>
             </div>
           <% else %>
             <div class="flows-panel-empty">

@@ -89,6 +89,37 @@ const Hooks = {}
 
 Hooks.FlowGraph = createFlowGraphHook()
 
+Hooks.PreserveScroll = {
+  mounted() {
+    this._lastKey = this.el.dataset.scrollKey || ""
+    this._scrollTop = this.el.scrollTop
+    this._wasNearBottom = false
+    this._onScroll = () => {
+      const el = this.el
+      this._scrollTop = el.scrollTop
+      this._wasNearBottom =
+        el.scrollTop + el.clientHeight >= el.scrollHeight - 24
+    }
+    this.el.addEventListener("scroll", this._onScroll)
+  },
+  updated() {
+    const newKey = this.el.dataset.scrollKey || ""
+    if (newKey !== this._lastKey) {
+      this.el.scrollTop = 0
+      this._lastKey = newKey
+      return
+    }
+    if (this._wasNearBottom) {
+      this.el.scrollTop = this.el.scrollHeight
+    } else {
+      this.el.scrollTop = this._scrollTop
+    }
+  },
+  destroyed() {
+    this.el.removeEventListener("scroll", this._onScroll)
+  },
+}
+
 Hooks.TranscriptHighlighter = {
   mounted() {
     renderTranscriptMarkdown(this.el)
