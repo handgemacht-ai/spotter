@@ -88,7 +88,7 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
 
   defp uuid_like?(project_id) do
     Regex.match?(
-      ~r/\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\z/,
+      ~r/\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\z/,
       project_id
     )
   end
