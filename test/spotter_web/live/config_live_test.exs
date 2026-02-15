@@ -117,4 +117,44 @@ defmodule SpotterWeb.ConfigLiveTest do
       refute html =~ "bad-proj"
     end
   end
+
+  describe "project_delete" do
+    test "deletes an existing project without crash" do
+      project = Ash.create!(Project, %{name: "del-proj", pattern: "^del"})
+      {:ok, view, html} = live(build_conn(), "/settings/config")
+      assert html =~ "del-proj"
+
+      view
+      |> element(~s(button[phx-click="project_confirm_delete"][phx-value-id="#{project.id}"]))
+      |> render_click()
+
+      html =
+        view
+        |> element(~s(button[phx-click="project_delete"][phx-value-id="#{project.id}"]))
+        |> render_click()
+
+      # Project is removed and page shows empty state
+      refute html =~ "del-proj"
+      assert html =~ "No projects configured"
+    end
+
+    test "repeated delete of same id does not crash" do
+      project = Ash.create!(Project, %{name: "dup-del", pattern: "^dup"})
+      {:ok, view, _html} = live(build_conn(), "/settings/config")
+
+      # First delete
+      view
+      |> element(~s(button[phx-click="project_confirm_delete"][phx-value-id="#{project.id}"]))
+      |> render_click()
+
+      view
+      |> element(~s(button[phx-click="project_delete"][phx-value-id="#{project.id}"]))
+      |> render_click()
+
+      # Second delete with same id (project already gone) - should not crash
+      html = render_click(view, "project_delete", %{"id" => project.id})
+      # View still renders without crashing
+      assert html =~ "No projects configured"
+    end
+  end
 end

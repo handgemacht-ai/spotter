@@ -223,15 +223,47 @@ defmodule SpotterWeb.ConfigLive do
   def handle_event("project_delete", %{"id" => id}, socket) do
     Tracer.with_span "spotter.config_live.project_delete" do
       Tracer.set_attribute("project.id", id)
-      project = Ash.get!(Project, id)
-      Tracer.set_attribute("project.name", project.name)
-      Ash.destroy!(project)
 
-      {:noreply,
-       socket
-       |> assign(confirming_delete: nil)
-       |> put_flash(:info, "Deleted project #{project.name}")
-       |> load_all()}
+      case Ash.get(Project, id) do
+        {:ok, nil} ->
+          Tracer.set_status(:error, "not_found")
+
+          {:noreply,
+           socket
+           |> assign(confirming_delete: nil)
+           |> put_flash(:error, "Project not found")
+           |> load_all()}
+
+        {:ok, project} ->
+          Tracer.set_attribute("project.name", project.name)
+
+          case destroy_project_by_id(id) do
+            :ok ->
+              {:noreply,
+               socket
+               |> assign(confirming_delete: nil)
+               |> put_flash(:info, "Deleted project #{project.name}")
+               |> load_all()}
+
+            {:error, reason} ->
+              Tracer.set_status(:error, "destroy_failed")
+
+              {:noreply,
+               socket
+               |> assign(confirming_delete: nil)
+               |> put_flash(:error, "Failed to delete project: #{inspect(reason)}")
+               |> load_all()}
+          end
+
+        {:error, _reason} ->
+          Tracer.set_status(:error, "not_found")
+
+          {:noreply,
+           socket
+           |> assign(confirming_delete: nil)
+           |> put_flash(:error, "Project not found")
+           |> load_all()}
+      end
     end
   end
 
@@ -337,6 +369,19 @@ defmodule SpotterWeb.ConfigLive do
       server_port: server_port,
       confirming_delete: nil
     )
+  end
+
+  # Cast-safe delete to work around SQLite UUIDv7 type mismatch where
+  # Ash.destroy generates `WHERE p0.id = ?` (zero rows) instead of using CAST.
+  defp destroy_project_by_id(id) do
+    import Ecto.Query
+
+    case Spotter.Repo.delete_all(
+           from(p in "projects", where: fragment("CAST(? AS TEXT) = CAST(? AS TEXT)", p.id, ^id))
+         ) do
+      {n, _} when n > 0 -> :ok
+      {0, _} -> {:error, :not_found}
+    end
   end
 
   defp upsert_setting(key, value) do
