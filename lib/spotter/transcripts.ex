@@ -106,7 +106,7 @@ defmodule Spotter.Transcripts do
 
     tool :list_review_annotations, Spotter.Transcripts.Annotation, :read do
       description "List review annotations (filter by state/purpose/session_id scope; includes refs)."
-      load [:subagent, :file_refs, message_refs: :message]
+      load [:subagent, :file_refs, message_refs: [:message]]
     end
 
     tool :resolve_annotation, Spotter.Transcripts.Annotation, :resolve do
