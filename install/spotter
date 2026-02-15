@@ -1,0 +1,203 @@
+#!/usr/bin/env bash
+# Spotter launcher - run Spotter + tmux + Claude Code in Docker Compose.
+set -euo pipefail
+
+BUNDLE="${HOME}/.local/share/spotter/bundle/main"
+CONSENT_FILE="${HOME}/.local/share/spotter/consent-v1"
+
+# --- Helpers ---
+
+die() { echo "ERROR: $*" >&2; exit 1; }
+
+sha1_hash() {
+  if command -v sha1sum >/dev/null 2>&1; then
+    printf '%s' "$1" | sha1sum | cut -c1-8
+  elif command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$1" | shasum -a 1 | cut -c1-8
+  else
+    die "Neither sha1sum nor shasum found. Install coreutils."
+  fi
+}
+
+open_browser() {
+  local url="$1"
+  if command -v open >/dev/null 2>&1; then
+    open "$url"
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$url"
+  else
+    echo "Open in your browser: $url"
+  fi
+}
+
+resolve_repo() {
+  local repo="${OPT_REPO:-}"
+  if [ -n "$repo" ]; then
+    echo "$repo"
+    return
+  fi
+  if git rev-parse --show-toplevel 2>/dev/null; then
+    return
+  fi
+  die "Not inside a git repo. Run inside a repo or pass --repo PATH."
+}
+
+compose_project_name() {
+  local repo_root="$1"
+  local hash
+  hash="$(sha1_hash "$repo_root")"
+  echo "spotter-${hash}"
+}
+
+compose_cmd() {
+  local repo_root="$1"; shift
+  local project
+  project="$(compose_project_name "$repo_root")"
+
+  local files=(-f "${BUNDLE}/compose.yml")
+  if [ "${OPT_DEBUG_PORTS:-}" = "1" ]; then
+    files+=(-f "${BUNDLE}/compose.debug.yml")
+  fi
+
+  SPOTTER_HOST_REPO_ROOT="$repo_root" \
+  SPOTTER_REPO_NAME="$(basename "$repo_root")" \
+  SPOTTER_HOST_CLAUDE_DIR="${HOME}/.claude" \
+  SPOTTER_UID="$(id -u)" \
+  SPOTTER_GID="$(id -g)" \
+  SPOTTER_PORT="${OPT_PORT:-1100}" \
+  SPOTTER_IMAGE_TAG="${SPOTTER_IMAGE_TAG:-main}" \
+  docker compose -p "$project" "${files[@]}" "$@"
+}
+
+ensure_consent() {
+  if [ -f "$CONSENT_FILE" ]; then
+    return
+  fi
+  if [ "${OPT_YES:-}" = "1" ]; then
+    mkdir -p "$(dirname "$CONSENT_FILE")"
+    touch "$CONSENT_FILE"
+    return
+  fi
+  echo ""
+  echo "Spotter will mount the following into Docker containers:"
+  echo "  - Your target repo (read-write) so Claude can edit code"
+  echo "  - ~/.claude (read-write) so Claude can write transcripts and hooks"
+  echo ""
+  printf "Continue? [y/N] "
+  read -r answer
+  case "$answer" in
+    [yY]|[yY][eE][sS])
+      mkdir -p "$(dirname "$CONSENT_FILE")"
+      touch "$CONSENT_FILE"
+      ;;
+    *)
+      echo "Aborted."
+      exit 0
+      ;;
+  esac
+}
+
+wait_healthy() {
+  local port="${OPT_PORT:-1100}"
+  local url="http://localhost:${port}/"
+  local max_wait=90
+  local elapsed=0
+
+  echo "Waiting for Spotter to start..."
+  while [ "$elapsed" -lt "$max_wait" ]; do
+    if curl -fsS "$url" -o /dev/null 2>/dev/null; then
+      echo "Spotter is ready!"
+      return 0
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+  die "Spotter did not become healthy within ${max_wait}s"
+}
+
+# --- CLI Parsing ---
+
+OPT_REPO=""
+OPT_PORT=""
+OPT_DEBUG_PORTS=""
+OPT_YES=""
+COMMAND=""
+
+parse_args() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      up|attach|down|logs|status)
+        COMMAND="$1"; shift ;;
+      --repo)
+        OPT_REPO="$2"; shift 2 ;;
+      --port)
+        OPT_PORT="$2"; shift 2 ;;
+      --debug-ports)
+        OPT_DEBUG_PORTS="1"; shift ;;
+      --yes|-y)
+        OPT_YES="1"; shift ;;
+      -*)
+        die "Unknown option: $1" ;;
+      *)
+        die "Unknown argument: $1" ;;
+    esac
+  done
+  # Default command
+  [ -z "$COMMAND" ] && COMMAND="up"
+}
+
+# --- Commands ---
+
+cmd_up() {
+  local repo_root
+  repo_root="$(resolve_repo)"
+
+  command -v docker >/dev/null 2>&1 || die "docker is not installed"
+  docker compose version >/dev/null 2>&1 || die "docker compose plugin is not installed"
+
+  ensure_consent
+
+  echo "Starting Spotter for $(basename "$repo_root")..."
+  compose_cmd "$repo_root" up -d --remove-orphans
+
+  local port="${OPT_PORT:-1100}"
+  wait_healthy
+  open_browser "http://localhost:${port}"
+}
+
+cmd_attach() {
+  local repo_root
+  repo_root="$(resolve_repo)"
+  compose_cmd "$repo_root" exec -it spotter tmux attach -t spotter-live
+}
+
+cmd_down() {
+  local repo_root
+  repo_root="$(resolve_repo)"
+  compose_cmd "$repo_root" down
+}
+
+cmd_logs() {
+  local repo_root
+  repo_root="$(resolve_repo)"
+  compose_cmd "$repo_root" logs -f
+}
+
+cmd_status() {
+  local repo_root
+  repo_root="$(resolve_repo)"
+  compose_cmd "$repo_root" ps
+}
+
+# --- Main ---
+
+parse_args "$@"
+
+case "$COMMAND" in
+  up)     cmd_up ;;
+  attach) cmd_attach ;;
+  down)   cmd_down ;;
+  logs)   cmd_logs ;;
+  status) cmd_status ;;
+  *)      die "Unknown command: $COMMAND" ;;
+esac

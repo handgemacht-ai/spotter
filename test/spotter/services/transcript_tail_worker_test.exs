@@ -125,14 +125,17 @@ defmodule Spotter.Services.TranscriptTailWorkerTest do
     end
   end
 
-  describe "worker init failure" do
-    test "fails gracefully for missing transcript file" do
+  describe "worker init" do
+    test "starts successfully for nonexistent file (tail -F waits for creation)" do
       session_id = Ash.UUID.generate()
 
       result =
         TranscriptTailSupervisor.ensure_worker(session_id, "/nonexistent/transcript.jsonl")
 
-      assert {:error, _} = result
+      assert :ok = result
+
+      # Clean up
+      TranscriptTailSupervisor.stop_worker(session_id)
     end
   end
 

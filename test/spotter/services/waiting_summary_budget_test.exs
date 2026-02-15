@@ -19,6 +19,7 @@ defmodule Spotter.Services.WaitingSummaryBudgetTest do
   end
 
   describe "configured_budget env parsing" do
+    @describetag :spawns_claude
     test "missing env uses default budget without crash" do
       System.delete_env(@env_key)
       path = Path.join(@fixtures_dir, "short.jsonl")

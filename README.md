@@ -2,6 +2,65 @@
 
 Spotter reviews Claude Code sessions and generated code. It links Claude sessions to Git commits using deterministic hook capture plus asynchronous enrichment so each session can be traced to concrete repository changes. The runtime stack is Phoenix/LiveView for the app, xterm.js for terminal rendering, and tmux-integrated hook scripts for session event capture.
 
+## Showcase quickstart (one command)
+
+Run Spotter + Claude Code + tmux in Docker without cloning this repo.
+
+### Prerequisites
+
+- Docker Desktop or Docker Engine with `docker compose`
+- `ANTHROPIC_API_KEY` exported
+- A local git repo to run inside (or pass `--repo`)
+
+### Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/marot/spotter/main/install/install.sh | bash
+```
+
+Ensure `~/.local/bin` is in your `PATH`.
+
+### Run
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+cd /path/to/target-repo
+spotter
+```
+
+This starts the full stack and opens http://localhost:1100 in your browser.
+
+### Attach to Claude
+
+```bash
+spotter attach
+```
+
+This connects to the running tmux session where Claude Code is active.
+
+### Stop
+
+```bash
+spotter down
+```
+
+### Ports
+
+Only `:1100` (Spotter UI) is exposed by default. For debug access:
+
+```bash
+spotter up --debug-ports
+```
+
+This additionally exposes:
+- Jaeger UI: `:16686`
+- OTLP HTTP: `:4318`
+- Dolt: `:13307`
+
+### Security note
+
+The launcher mounts your target repo (read-write) and `~/.claude` (read-write) into containers so Claude can edit code and write transcripts. The first run prompts for consent. To revoke consent, delete `~/.local/share/spotter/consent-v1`.
+
 ## Installation
 
 If [available in Hex](https://hex.pm/docs/publish), the package can be installed

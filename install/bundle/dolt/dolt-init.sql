@@ -1,0 +1,3 @@
+CREATE USER IF NOT EXISTS 'spotter'@'%' IDENTIFIED BY 'spotter';
+GRANT ALL PRIVILEGES ON *.* TO 'spotter'@'%';
+CREATE DATABASE IF NOT EXISTS spotter_product;

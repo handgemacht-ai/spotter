@@ -8,6 +8,7 @@ defmodule Spotter.Services.WaitingSummaryTest do
   @fixtures_dir "test/fixtures/transcripts"
 
   describe "generate/2 with real transcript" do
+    @tag :spawns_claude
     test "returns fallback summary for existing transcript (no API key)" do
       path = Path.join(@fixtures_dir, "short.jsonl")
 
@@ -58,6 +59,7 @@ defmodule Spotter.Services.WaitingSummaryTest do
       %{path: path}
     end
 
+    @tag :spawns_claude
     test "handles malformed lines gracefully and still produces summary", %{path: path} do
       assert {:ok, result} = WaitingSummary.generate(path)
       assert is_binary(result.summary)
@@ -66,6 +68,7 @@ defmodule Spotter.Services.WaitingSummaryTest do
   end
 
   describe "generate/2 respects token_budget option" do
+    @tag :spawns_claude
     test "uses provided budget" do
       path = Path.join(@fixtures_dir, "short.jsonl")
 

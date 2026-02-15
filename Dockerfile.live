@@ -1,0 +1,42 @@
+FROM hexpm/elixir:1.19.2-erlang-27.3.4-debian-bookworm-20260202
+
+ENV MIX_ENV=dev \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    TZ=UTC
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    file \
+    git \
+    jq \
+    nodejs \
+    npm \
+    tmux \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g @anthropic-ai/claude-code
+
+WORKDIR /app
+
+RUN mix local.hex --force && mix local.rebar --force
+
+COPY mix.exs mix.lock ./
+COPY config config
+RUN mix deps.get
+
+COPY assets/package.json assets/package-lock.json ./assets/
+RUN npm ci --prefix assets
+
+COPY . .
+RUN mix compile
+
+# Copy plugin into a well-known path
+COPY spotter-plugin /opt/spotter-plugin
+
+# Create world-writable dirs so arbitrary uid can write
+RUN mkdir -p /home/spotter /var/lib/spotter && \
+    chmod 0777 /home/spotter /var/lib/spotter
+
+ENTRYPOINT ["scripts/docker/spotter_live_entrypoint.sh"]

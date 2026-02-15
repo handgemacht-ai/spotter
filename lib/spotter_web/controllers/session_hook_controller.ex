@@ -2,6 +2,7 @@ defmodule SpotterWeb.SessionHookController do
   @moduledoc false
   use Phoenix.Controller, formats: [:json]
 
+  alias Spotter.Config.Runtime, warn: false
   alias Spotter.Observability.FlowHub
   alias Spotter.Observability.FlowKeys
   alias Spotter.Services.ActiveSessionRegistry
@@ -42,6 +43,7 @@ defmodule SpotterWeb.SessionHookController do
         {:ok, session} ->
           maybe_bootstrap_sync(session)
           enqueue_ingest(session.project_id)
+          maybe_start_tail_worker(session_id, params["cwd"])
 
         {:error, reason} ->
           Logger.warning("Failed to create session #{session_id}: #{inspect(reason)}")
@@ -227,6 +229,23 @@ defmodule SpotterWeb.SessionHookController do
       {:error, reason} ->
         Logger.warning("Failed to mark session ended #{session_id}: #{inspect(reason)}")
     end
+  end
+
+  defp maybe_start_tail_worker(session_id, cwd) when is_binary(cwd) do
+    transcript_path = live_transcript_path(cwd, session_id)
+    TranscriptTailSupervisor.ensure_worker(session_id, transcript_path)
+  rescue
+    error ->
+      Logger.debug("Failed to start tail worker for #{session_id}: #{inspect(error)}")
+      :ok
+  end
+
+  defp maybe_start_tail_worker(_session_id, _cwd), do: :ok
+
+  defp live_transcript_path(cwd, session_id) do
+    {transcripts_dir, _source} = Runtime.transcripts_dir()
+    dir_name = String.replace(cwd, "/", "-")
+    Path.join([transcripts_dir, dir_name, "#{session_id}.jsonl"])
   end
 
   defp maybe_bootstrap_sync(session) do

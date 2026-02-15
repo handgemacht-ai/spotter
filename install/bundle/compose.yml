@@ -1,0 +1,57 @@
+services:
+  spotter:
+    image: ghcr.io/marot/spotter-live:${SPOTTER_IMAGE_TAG:-main}
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY must be set}
+      HOME: /home/spotter
+      SPOTTER_SQLITE_DB: /var/lib/spotter/spotter.db
+      SPOTTER_LIVE_REPO_DIR: /workspace/${SPOTTER_REPO_NAME}
+      SPOTTER_LIVE_PROJECT_NAME: ${SPOTTER_REPO_NAME}
+      SPOTTER_URL: http://127.0.0.1:1100
+      SPOTTER_DISABLE_ASSET_WATCH: "1"
+      OTEL_EXPORTER: otlp
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      SPOTTER_DOLT_HOST: dolt
+      SPOTTER_DOLT_PORT: "3306"
+    user: "${SPOTTER_UID:-0}:${SPOTTER_GID:-0}"
+    working_dir: /app
+    ports:
+      - "${SPOTTER_PORT:-1100}:1100"
+    volumes:
+      - ${SPOTTER_HOST_REPO_ROOT}:/workspace/${SPOTTER_REPO_NAME}:rw
+      - ${SPOTTER_HOST_CLAUDE_DIR}:/home/spotter/.claude:rw
+      - spotter_sqlite:/var/lib/spotter
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:1100/", "-o", "/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+      start_period: 20s
+    depends_on:
+      - dolt
+      - otel-collector
+
+  dolt:
+    image: dolthub/dolt-sql-server:1.5.0
+    volumes:
+      - spotter_dolt_data:/var/lib/dolt
+      - ./dolt/dolt-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    environment:
+      DOLT_ROOT_PASSWORD: spotter
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    depends_on:
+      - jaeger
+    volumes:
+      - ./otel/collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+volumes:
+  spotter_sqlite:
+  spotter_dolt_data:

@@ -1,0 +1,12 @@
+services:
+  jaeger:
+    ports:
+      - "16686:16686"
+
+  otel-collector:
+    ports:
+      - "4318:4318"
+
+  dolt:
+    ports:
+      - "13307:3306"
