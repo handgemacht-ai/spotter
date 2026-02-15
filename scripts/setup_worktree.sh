@@ -160,7 +160,7 @@ if command -v tmux &>/dev/null; then
   else
     PLUGIN_DIR="$(realpath "$main_path/spotter-plugin")"
     SPOTTER_URL="http://${TS_IP}:${PORT}"
-    CLAUDE_CMD="SPOTTER_URL=\"$SPOTTER_URL\" claude --plugin-dir \"$PLUGIN_DIR\" --dangerously-skip-permissions"
+    CLAUDE_CMD="unset CLAUDECODE; SPOTTER_URL=\"$SPOTTER_URL\" claude --plugin-dir \"$PLUGIN_DIR\" --dangerously-skip-permissions"
 
     # Auto-instruct Claude if branch is a valid bead ID
     if command -v bd &>/dev/null && bd show "$BRANCH" --short >/dev/null 2>&1; then
