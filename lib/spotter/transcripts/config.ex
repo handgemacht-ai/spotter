@@ -54,10 +54,18 @@ defmodule Spotter.Transcripts.Config do
   end
 
   defp db_projects_to_map(projects) do
-    Map.new(projects, fn %Project{name: name, pattern: pattern} ->
+    projects
+    |> Enum.reject(&legacy_fallback_pattern?/1)
+    |> Map.new(fn %Project{name: name, pattern: pattern} ->
       {name, %{pattern: Regex.compile!(pattern)}}
     end)
   end
+
+  defp legacy_fallback_pattern?(%Project{pattern: pattern}) do
+    String.trim(pattern) in [".*", "^.*$", "(?:.*)", "(?:^.*$)", ".*$"]
+  end
+
+  defp legacy_fallback_pattern?(_), do: false
 
   defp parse_toml_project_regexes do
     parse_toml_projects()

@@ -79,17 +79,10 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
         {:ok, resolved_id}
 
       {:ok, nil} ->
-        fallback_unknown_project_id()
+        {:error, "project #{inspect(project_id)} not found"}
 
       {:error, _} ->
-        fallback_unknown_project_id()
-    end
-  end
-
-  defp fallback_unknown_project_id do
-    case Project |> Ash.Query.filter(name == ^"Unknown") |> Ash.read_one() do
-      {:ok, %Project{id: resolved_id}} -> {:ok, resolved_id}
-      _ -> {:error, "project lookup failed"}
+        {:error, "project #{inspect(project_id)} not found"}
     end
   end
 
