@@ -428,6 +428,18 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscriptsTest do
     end
   end
 
+  describe "sync_all/0 deprecation" do
+    test "logs a deprecation warning when called" do
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          # credo:disable-for-next-line Credo.Check.Refactor.Apply
+          apply(SyncTranscripts, :sync_all, [])
+        end)
+
+      assert log =~ "deprecated"
+    end
+  end
+
   defp persist_rework!(session, messages) do
     rework_records =
       JsonlParser.extract_session_rework_records(messages,

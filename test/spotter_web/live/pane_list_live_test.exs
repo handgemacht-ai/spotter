@@ -66,6 +66,14 @@ defmodule SpotterWeb.PaneListLiveTest do
       refute html =~ "No tmux panes found"
     end
 
+    test "does not contain ingest button or sync text", %{} do
+      {:ok, _view, html} = live(build_conn(), "/")
+
+      refute html =~ "Ingest"
+      refute html =~ ~s(data-testid="sync-transcripts-button")
+      refute html =~ "No projects synced yet"
+    end
+
     test "renders line stats for session with lines", %{session: _session} do
       {:ok, _view, html} = live(build_conn(), "/")
 

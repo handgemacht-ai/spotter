@@ -30,7 +30,9 @@ defmodule SpotterWeb.IngestProgress do
   Triggers ingestion and returns the updated socket.
   """
   def start_ingest(socket) do
-    case SyncTranscripts.sync_all() do
+    # Intentional legacy caller — suppress deprecation warning
+    # credo:disable-for-next-line Credo.Check.Refactor.Apply
+    case apply(SyncTranscripts, :sync_all, []) do
       {:ok, %{run_id: run_id, projects_total: _}} ->
         assign(socket,
           ingest_running: true,

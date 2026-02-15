@@ -25,8 +25,6 @@ defmodule SpotterWeb.PaneListLive do
     IngestRecentCommits
   }
 
-  alias SpotterWeb.IngestProgress
-
   require OpenTelemetry.Tracer, as: Tracer
 
   require Ash.Query
@@ -141,14 +139,12 @@ defmodule SpotterWeb.PaneListLive do
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      IngestProgress.subscribe()
       Phoenix.PubSub.subscribe(Spotter.PubSub, "session_activity")
     end
 
     socket =
       socket
       |> assign(active_status_map: %{})
-      |> IngestProgress.init_ingest()
       |> assign(timezone_errors: %{})
       |> assign(hidden_expanded: %{})
       |> assign(expanded_subagents: %{})
@@ -299,10 +295,6 @@ defmodule SpotterWeb.PaneListLive do
     end
   end
 
-  def handle_event("ingest", _params, socket) do
-    {:noreply, IngestProgress.start_ingest(socket)}
-  end
-
   def handle_event("mark_seen", %{"id" => id}, socket) do
     item = Ash.get!(ReviewItem, id)
     new_interval = advance_interval(item.importance, item.interval_days || 4)
@@ -335,24 +327,6 @@ defmodule SpotterWeb.PaneListLive do
   def handle_info({:session_activity, %{session_id: session_id, status: status}}, socket) do
     active_status_map = Map.put(socket.assigns.active_status_map, session_id, status)
     {:noreply, assign(socket, active_status_map: active_status_map)}
-  end
-
-  def handle_info(msg, socket)
-      when elem(msg, 0) in [
-             :ingest_enqueued,
-             :sync_started,
-             :sync_progress,
-             :sync_completed,
-             :sync_error
-           ] do
-    case IngestProgress.handle_progress(msg, socket) do
-      {:ok, socket} ->
-        socket = if elem(msg, 0) == :sync_completed, do: load_session_data(socket), else: socket
-        {:noreply, socket}
-
-      :ignore ->
-        {:noreply, socket}
-    end
   end
 
   @ingest_cooldown_seconds 600
@@ -915,25 +889,11 @@ defmodule SpotterWeb.PaneListLive do
       <div class="mb-4">
         <div class="page-header">
           <h2 class="section-heading">Session Transcripts</h2>
-          <button
-            class="btn"
-            phx-click="ingest"
-            disabled={@ingest_running}
-            data-testid="sync-transcripts-button"
-          >
-            <%= if @ingest_running, do: "Ingesting...", else: "Ingest" %>
-          </button>
         </div>
-
-        <.ingest_status
-          :if={@ingest_projects != %{}}
-          projects={@ingest_projects}
-          running={@ingest_running}
-        />
 
         <%= if @session_data_projects == [] do %>
           <div class="empty-state">
-            No projects synced yet. Click Sync to start.
+            No sessions yet.
           </div>
         <% else %>
           <div :if={length(@session_data_projects) > 1} class="filter-bar">
@@ -966,7 +926,6 @@ defmodule SpotterWeb.PaneListLive do
                   ({length(project.visible_sessions)} sessions)
                 </span>
               </h3>
-              <.project_ingest_status project_name={project.name} ingest_projects={@ingest_projects} />
               <a href={"/projects/#{project.id}/heatmap"} class="btn btn-ghost text-xs">
                 Heatmap
               </a>
@@ -1251,45 +1210,6 @@ defmodule SpotterWeb.PaneListLive do
       </div>
 
     </div>
-    """
-  end
-
-  defp ingest_status(assigns) do
-    done =
-      assigns.projects
-      |> Map.values()
-      |> Enum.count(&(&1.status in [:completed, :error]))
-
-    total = map_size(assigns.projects)
-    assigns = assign(assigns, done: done, total: total)
-
-    ~H"""
-    <div class="ingest-progress">
-      <%= if @running do %>
-        <span class="sync-syncing">Ingesting {@done}/{@total} projects</span>
-      <% else %>
-        <span class="sync-completed">Ingested {@done}/{@total} projects</span>
-      <% end %>
-    </div>
-    """
-  end
-
-  defp project_ingest_status(assigns) do
-    proj = Map.get(assigns.ingest_projects, assigns.project_name)
-    assigns = assign(assigns, :proj, proj)
-
-    ~H"""
-    <%= case @proj do %>
-      <% %{status: :syncing} = p -> %>
-        <span class="sync-syncing">{p.sessions_done}/{p.sessions_total} sessions</span>
-      <% %{status: :completed} = p -> %>
-        <span class="sync-completed">✓ {p.sessions_total} sessions in {p.duration_ms}ms</span>
-      <% %{status: :error} = p -> %>
-        <span class="sync-error">✗ {p.error}</span>
-      <% %{status: :queued} -> %>
-        <span class="sync-syncing">queued</span>
-      <% _ -> %>
-    <% end %>
     """
   end
 

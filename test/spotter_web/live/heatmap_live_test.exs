@@ -154,60 +154,18 @@ defmodule SpotterWeb.HeatmapLiveTest do
     end
   end
 
-  describe "ingest button" do
-    test "renders Ingest button on heatmap page" do
+  describe "no ingest UI" do
+    test "does not render Ingest button on heatmap page" do
       {:ok, _view, html} = live(build_conn(), "/heatmap")
 
-      assert html =~ "Ingest"
+      refute html =~ "Ingest"
     end
 
-    test "ingest progress events update UI" do
-      {:ok, view, _html} = live(build_conn(), "/heatmap")
+    test "does not render sync progress state" do
+      {:ok, _view, html} = live(build_conn(), "/heatmap")
 
-      run_id = Ash.UUID.generate()
-
-      send(view.pid, {:ingest_enqueued, %{run_id: run_id, projects_total: 1, projects: ["test"]}})
-      html = render(view)
-      assert html =~ "Ingesting"
-      assert html =~ "disabled"
-
-      send(
-        view.pid,
-        {:sync_started, %{run_id: run_id, project: "test", dirs_total: 1, sessions_total: 2}}
-      )
-
-      html = render(view)
-      assert html =~ "Ingesting"
-
-      send(
-        view.pid,
-        {:sync_completed,
-         %{run_id: run_id, project: "test", dirs_synced: 1, sessions_synced: 2, duration_ms: 100}}
-      )
-
-      html = render(view)
-      assert html =~ "Ingested"
-      refute html =~ "disabled"
-    end
-
-    test "ignores stale run_id events" do
-      {:ok, view, _html} = live(build_conn(), "/heatmap")
-
-      run_id = Ash.UUID.generate()
-      stale_id = Ash.UUID.generate()
-
-      send(view.pid, {:ingest_enqueued, %{run_id: run_id, projects_total: 1, projects: ["test"]}})
-
-      send(
-        view.pid,
-        {:sync_completed,
-         %{run_id: stale_id, project: "test", dirs_synced: 1, sessions_synced: 1, duration_ms: 50}}
-      )
-
-      html = render(view)
-
-      # Should still be running since the completed event had a stale run_id
-      assert html =~ "Ingesting"
+      refute html =~ "Ingesting"
+      refute html =~ "ingest-progress"
     end
   end
 
@@ -216,7 +174,7 @@ defmodule SpotterWeb.HeatmapLiveTest do
       {:ok, _view, html} = live(build_conn(), "/heatmap")
 
       assert html =~ "No file activity data yet."
-      assert html =~ "Click Ingest to import transcripts and compute this heat map."
+      refute html =~ "Click Ingest"
     end
 
     test "renders empty message for project with no data" do

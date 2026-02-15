@@ -93,7 +93,9 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
 
   Returns `{:ok, %{run_id: String.t(), projects_total: integer()}}`.
   """
+  @deprecated "Use hook-based or per-session sync instead of bulk sync_all"
   def sync_all do
+    Logger.warning("SyncTranscripts.sync_all/0 is deprecated; use hook-based or per-session sync")
     config = Config.read!()
     run_id = Ash.UUID.generate()
     project_entries = Enum.to_list(config.projects)

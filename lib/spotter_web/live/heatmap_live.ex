@@ -2,7 +2,6 @@ defmodule SpotterWeb.HeatmapLive do
   use Phoenix.LiveView
 
   alias Spotter.Transcripts.{FileHeatmap, Project}
-  alias SpotterWeb.IngestProgress
 
   require Ash.Query
 
@@ -10,8 +9,6 @@ defmodule SpotterWeb.HeatmapLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: IngestProgress.subscribe()
-
     projects =
       try do
         Project |> Ash.read!()
@@ -20,15 +17,13 @@ defmodule SpotterWeb.HeatmapLive do
       end
 
     {:ok,
-     socket
-     |> assign(
+     assign(socket,
        projects: projects,
        selected_project_id: nil,
        min_score: 0,
        sort_by: :heat_score,
        heatmap_entries: []
-     )
-     |> IngestProgress.init_ingest()}
+     )}
   end
 
   @impl true
@@ -60,11 +55,6 @@ defmodule SpotterWeb.HeatmapLive do
      |> load_heatmap()}
   end
 
-  def handle_event("ingest", _params, socket) do
-    socket = IngestProgress.start_ingest(socket)
-    {:noreply, socket}
-  end
-
   def handle_event("sort_by", %{"field" => field}, socket) do
     sort_by = parse_sort_by(field)
 
@@ -72,27 +62,6 @@ defmodule SpotterWeb.HeatmapLive do
      socket
      |> assign(sort_by: sort_by)
      |> load_heatmap()}
-  end
-
-  @impl true
-  def handle_info(msg, socket)
-      when elem(msg, 0) in [
-             :ingest_enqueued,
-             :sync_started,
-             :sync_progress,
-             :sync_completed,
-             :sync_error
-           ] do
-    case IngestProgress.handle_progress(msg, socket) do
-      {:ok, socket} ->
-        socket =
-          if elem(msg, 0) == :sync_completed, do: load_heatmap(socket), else: socket
-
-        {:noreply, socket}
-
-      :ignore ->
-        {:noreply, socket}
-    end
   end
 
   defp load_heatmap(socket) do
@@ -162,23 +131,6 @@ defmodule SpotterWeb.HeatmapLive do
     <div class="container">
       <div class="page-header">
         <h1>File heat map</h1>
-        <div class="page-header-actions">
-          <button class="btn" phx-click="ingest" disabled={@ingest_running}>
-            <%= if @ingest_running, do: "Ingesting...", else: "Ingest" %>
-          </button>
-        </div>
-      </div>
-
-      <div :if={@ingest_projects != %{}} class="ingest-progress mb-4">
-        <%= if @ingest_running do %>
-          <span class="sync-syncing">
-            Ingesting {Enum.count(@ingest_projects, fn {_, p} -> p.status in [:completed, :error] end)}/{map_size(@ingest_projects)} projects
-          </span>
-        <% else %>
-          <span class="sync-completed">
-            Ingested {Enum.count(@ingest_projects, fn {_, p} -> p.status in [:completed, :error] end)}/{map_size(@ingest_projects)} projects
-          </span>
-        <% end %>
       </div>
 
       <div class="filter-section">
@@ -241,7 +193,6 @@ defmodule SpotterWeb.HeatmapLive do
       <%= if @heatmap_entries == [] do %>
         <div class="empty-state">
           <p>No file activity data yet.</p>
-          <p>Click Ingest to import transcripts and compute this heat map.</p>
         </div>
       <% else %>
         <table>
