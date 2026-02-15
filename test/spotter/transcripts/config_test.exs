@@ -31,7 +31,6 @@ defmodule Spotter.Transcripts.ConfigTest do
     test "returns TOML projects when DB is empty" do
       config = Config.read!()
 
-      # TOML has spotter and aufgabenschmiede projects
       assert map_size(config.projects) > 0
 
       Enum.each(config.projects, fn {_name, %{pattern: pattern}} ->
@@ -51,12 +50,18 @@ defmodule Spotter.Transcripts.ConfigTest do
 
   describe "import_projects_from_toml!/0" do
     test "imports TOML projects and makes DB authoritative" do
+      toml_names = Config.read!().projects |> Map.keys()
+
       assert {:ok, count} = Config.import_projects_from_toml!()
       assert count > 0
+      assert count == length(toml_names)
 
       # Now DB has projects, so read! should use them
       config = Config.read!()
-      assert Map.has_key?(config.projects, "spotter")
+
+      Enum.each(toml_names, fn name ->
+        assert Map.has_key?(config.projects, name)
+      end)
     end
 
     test "upserts on repeated import" do
