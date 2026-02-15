@@ -24,7 +24,7 @@ defmodule Spotter.Services.CoChangeCalculatorDeltaTest do
     Ash.create!(Project, %{name: name, pattern: "^#{name}"})
   end
 
-  defp create_session(project, opts \\ []) do
+  defp create_session(project, opts) do
     Ash.create!(Session, %{
       session_id: Ash.UUID.generate(),
       transcript_dir: "test-dir",

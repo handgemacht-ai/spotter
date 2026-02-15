@@ -111,7 +111,6 @@ defmodule SpotterWeb.SpotterMcpPlug do
   defp sse_keepalive_loop(conn) do
     config = Application.get_env(:spotter, __MODULE__, [])
     keepalive_ms = config[:sse_keepalive_ms] || 15_000
-    keepalive_ms = max(keepalive_ms, 1000)
     max_duration_ms = config[:sse_max_duration_ms] || :infinity
     started_at = System.monotonic_time(:millisecond)
 
