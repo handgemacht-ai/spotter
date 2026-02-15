@@ -20,7 +20,7 @@ Call `mcp__spotter__list_projects` and pick the relevant project:
 }
 ```
 
-Note the `id` of the target project.
+Each project returns `id`, `name`, `session_count`, and `open_review_annotation_count`. Pick by `name` and use `open_review_annotation_count` to prioritize projects with pending reviews.
 
 ### 2. Determine review scope
 
@@ -45,14 +45,13 @@ Call `mcp__spotter__list_review_annotations` with:
 {
   "filter": {
     "state": { "eq": "open" },
-    "purpose": { "eq": "review" },
     "session_id": { "in": ["<session_id_1>", "<session_id_2>"] }
   },
   "limit": 100
 }
 ```
 
-This returns annotations with loaded `subagent`, `file_refs`, and `message_refs` (including messages).
+This tool is review-only: it never returns `purpose=explain` annotations, so no `purpose` filter is needed. Results include `state`, `purpose`, `source`, `selected_text`, `comment`, `inserted_at`, and loaded `subagent`, `file_refs`, and `message_refs` (with full message content).
 
 ### 4. Resolve each annotation
 

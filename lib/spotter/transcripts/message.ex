@@ -65,6 +65,7 @@ defmodule Spotter.Transcripts.Message do
 
     attribute :uuid, :string do
       allow_nil? false
+      public? true
     end
 
     attribute :parent_uuid, :string
@@ -72,6 +73,7 @@ defmodule Spotter.Transcripts.Message do
 
     attribute :type, :atom do
       allow_nil? false
+      public? true
 
       constraints one_of: [
                     :user,
@@ -86,14 +88,16 @@ defmodule Spotter.Transcripts.Message do
     end
 
     attribute :role, :atom do
+      public? true
       constraints one_of: [:user, :assistant, :system]
     end
 
-    attribute :content, :map
+    attribute :content, :map, public?: true
     attribute :raw_payload, :map
 
     attribute :timestamp, :utc_datetime_usec do
       allow_nil? false
+      public? true
     end
 
     attribute :is_sidechain, :boolean do

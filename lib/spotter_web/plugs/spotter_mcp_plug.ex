@@ -42,6 +42,12 @@ defmodule SpotterWeb.SpotterMcpPlug do
         _ -> nil
       end
 
+    tool_name =
+      case conn.body_params do
+        %{"method" => "tools/call", "params" => %{"name" => name}} when is_binary(name) -> name
+        _ -> nil
+      end
+
     accept_headers = Plug.Conn.get_req_header(conn, "accept")
     accept_str = Enum.join(accept_headers, ",")
     accepts_sse = Enum.any?(accept_headers, &String.contains?(&1, "text/event-stream"))
@@ -61,6 +67,7 @@ defmodule SpotterWeb.SpotterMcpPlug do
         "mcp.http.target" => conn.request_path
       }
       |> maybe_put("mcp.jsonrpc_method", jsonrpc_method)
+      |> maybe_put("mcp.tool_name", tool_name)
 
     maybe_log_get_fingerprint(conn.method, peer_ip, accepts_sse, accept_str, user_agent)
 
@@ -79,9 +86,21 @@ defmodule SpotterWeb.SpotterMcpPlug do
         OtelTraceHelpers.with_span "spotter.mcp.http", attrs do
           conn
           |> OtelTraceHelpers.put_trace_response_header()
-          |> @mcp_router.call(router_opts)
+          |> call_router_with_rescue(router_opts, tool_name)
         end
     end
+  end
+
+  defp call_router_with_rescue(conn, router_opts, tool_name) do
+    @mcp_router.call(conn, router_opts)
+  rescue
+    e ->
+      OtelTraceHelpers.set_error(:mcp_request_failed, %{
+        "error.message" => Exception.message(e),
+        "mcp.tool_name" => tool_name || "unknown"
+      })
+
+      reraise e, __STACKTRACE__
   end
 
   defp handle_sse_get(conn, attrs) do

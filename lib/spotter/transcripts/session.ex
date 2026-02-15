@@ -105,23 +105,24 @@ defmodule Spotter.Transcripts.Session do
 
     attribute :session_id, :uuid do
       allow_nil? false
+      public? true
     end
 
     attribute :slug, :string
     attribute :transcript_dir, :string
     attribute :cwd, :string
-    attribute :git_branch, :string
+    attribute :git_branch, :string, public?: true
     attribute :version, :string
 
-    attribute :started_at, :utc_datetime_usec
-    attribute :ended_at, :utc_datetime_usec
+    attribute :started_at, :utc_datetime_usec, public?: true
+    attribute :ended_at, :utc_datetime_usec, public?: true
 
     attribute :schema_version, :integer do
       allow_nil? false
       default 1
     end
 
-    attribute :message_count, :integer
+    attribute :message_count, :integer, public?: true
     attribute :hidden_at, :utc_datetime_usec, allow_nil?: true
 
     attribute :custom_title, :string
@@ -157,6 +158,7 @@ defmodule Spotter.Transcripts.Session do
   relationships do
     belongs_to :project, Spotter.Transcripts.Project do
       allow_nil? false
+      attribute_public? true
     end
 
     has_many :messages, Spotter.Transcripts.Message

@@ -98,13 +98,14 @@ defmodule Spotter.Transcripts do
   tools do
     tool :list_projects, Spotter.Transcripts.Project, :read do
       description "List Spotter projects (use to pick project_id for review)."
+      load [:session_count, :open_review_annotation_count]
     end
 
     tool :list_sessions, Spotter.Transcripts.Session, :read do
       description "List sessions (filter by project_id for review scoping)."
     end
 
-    tool :list_review_annotations, Spotter.Transcripts.Annotation, :read do
+    tool :list_review_annotations, Spotter.Transcripts.Annotation, :read_review_annotations do
       description "List review annotations (filter by state/purpose/session_id scope; includes refs)."
       load [:subagent, :file_refs, message_refs: [:message]]
     end

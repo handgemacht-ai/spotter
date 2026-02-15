@@ -38,6 +38,7 @@ defmodule Spotter.Transcripts.Project do
 
     attribute :name, :string do
       allow_nil? false
+      public? true
     end
 
     attribute :pattern, :string do
@@ -55,6 +56,19 @@ defmodule Spotter.Transcripts.Project do
 
   relationships do
     has_many :sessions, Spotter.Transcripts.Session
+    has_many :annotations, Spotter.Transcripts.Annotation
+  end
+
+  calculations do
+    calculate :session_count, :integer, {Spotter.Transcripts.Project.SessionCount, []} do
+      public? true
+    end
+
+    calculate :open_review_annotation_count,
+              :integer,
+              {Spotter.Transcripts.Project.OpenReviewAnnotationCount, []} do
+      public? true
+    end
   end
 
   identities do

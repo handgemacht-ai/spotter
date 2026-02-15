@@ -86,6 +86,32 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
       assert "list_review_annotations" in tool_names
       assert "resolve_annotation" in tool_names
     end
+
+    test "list_sessions schema includes project_id filter" do
+      {_body, session_id} = initialize()
+
+      {200, body, _conn} =
+        mcp_post(
+          %{
+            "jsonrpc" => "2.0",
+            "id" => 20,
+            "method" => "tools/list",
+            "params" => %{}
+          },
+          session_id
+        )
+
+      tools = body["result"]["tools"]
+
+      list_sessions = Enum.find(tools, &(&1["name"] == "list_sessions"))
+      assert list_sessions != nil
+
+      filter_props =
+        get_in(list_sessions, ["inputSchema", "properties", "filter", "properties"])
+
+      assert filter_props != nil
+      assert Map.has_key?(filter_props, "project_id")
+    end
   end
 
   defp mcp_get(headers \\ []) do
@@ -156,6 +182,250 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
       decoded = Jason.decode!(content["text"])
       assert is_list(decoded)
       assert decoded != []
+    end
+
+    test "list_projects returns name, session_count, and open_review_annotation_count", %{
+      project: project,
+      session: session
+    } do
+      # Create a second session
+      session2 =
+        Ash.create!(Session, %{
+          session_id: Ash.UUID.generate(),
+          transcript_dir: "test-dir-2",
+          project_id: project.id
+        })
+
+      # 2 open review annotations (should be counted)
+      Ash.create!(Annotation, %{
+        session_id: session.id,
+        source: :transcript,
+        selected_text: "a",
+        comment: "review 1",
+        purpose: :review,
+        state: :open,
+        project_id: project.id
+      })
+
+      Ash.create!(Annotation, %{
+        session_id: session2.id,
+        source: :transcript,
+        selected_text: "b",
+        comment: "review 2",
+        purpose: :review,
+        state: :open,
+        project_id: project.id
+      })
+
+      # 1 closed review (should NOT be counted)
+      Ash.create!(Annotation, %{
+        session_id: session.id,
+        source: :transcript,
+        selected_text: "c",
+        comment: "closed review",
+        purpose: :review,
+        state: :closed,
+        project_id: project.id
+      })
+
+      # 1 open explain (should NOT be counted)
+      Ash.create!(Annotation, %{
+        session_id: session.id,
+        source: :transcript,
+        selected_text: "d",
+        comment: "explain",
+        purpose: :explain,
+        state: :open,
+        project_id: project.id
+      })
+
+      {_body, session_id} = initialize()
+
+      {200, body, _conn} =
+        mcp_post(
+          %{
+            "jsonrpc" => "2.0",
+            "id" => 13,
+            "method" => "tools/call",
+            "params" => %{
+              "name" => "list_projects",
+              "arguments" => %{}
+            }
+          },
+          session_id
+        )
+
+      [content | _] = body["result"]["content"]
+      projects = Jason.decode!(content["text"])
+      entry = Enum.find(projects, &(&1["id"] == project.id))
+
+      assert entry["name"] == project.name
+      assert entry["session_count"] == 2
+      assert entry["open_review_annotation_count"] == 2
+    end
+
+    test "list_projects returns name in output", %{project: project} do
+      {_body, session_id} = initialize()
+
+      {200, body, _conn} =
+        mcp_post(
+          %{
+            "jsonrpc" => "2.0",
+            "id" => 10,
+            "method" => "tools/call",
+            "params" => %{
+              "name" => "list_projects",
+              "arguments" => %{}
+            }
+          },
+          session_id
+        )
+
+      [content | _] = body["result"]["content"]
+      [first | _] = Jason.decode!(content["text"])
+      assert first["name"] == project.name
+    end
+
+    test "list_sessions supports filtering by project_id", %{project: project} do
+      {_body, session_id} = initialize()
+
+      {200, body, _conn} =
+        mcp_post(
+          %{
+            "jsonrpc" => "2.0",
+            "id" => 11,
+            "method" => "tools/call",
+            "params" => %{
+              "name" => "list_sessions",
+              "arguments" => %{"filter" => %{"project_id" => %{"eq" => project.id}}}
+            }
+          },
+          session_id
+        )
+
+      result = body["result"]
+      assert result["isError"] in [false, nil]
+
+      [content | _] = result["content"]
+      decoded = Jason.decode!(content["text"])
+      assert is_list(decoded)
+
+      Enum.each(decoded, fn session ->
+        assert session["project_id"] == project.id
+      end)
+    end
+
+    test "list_review_annotations output includes public fields", %{session: session} do
+      Ash.create!(Annotation, %{
+        session_id: session.id,
+        source: :transcript,
+        selected_text: "check this",
+        comment: "review comment",
+        purpose: :review,
+        state: :open
+      })
+
+      {_body, session_id} = initialize()
+
+      {200, body, _conn} =
+        mcp_post(
+          %{
+            "jsonrpc" => "2.0",
+            "id" => 12,
+            "method" => "tools/call",
+            "params" => %{
+              "name" => "list_review_annotations",
+              "arguments" => %{}
+            }
+          },
+          session_id
+        )
+
+      [content | _] = body["result"]["content"]
+      [annotation | _] = Jason.decode!(content["text"])
+
+      assert annotation["state"] != nil
+      assert annotation["purpose"] != nil
+      assert annotation["source"] != nil
+      assert annotation["selected_text"] != nil
+      assert annotation["comment"] != nil
+      assert annotation["inserted_at"] != nil
+    end
+
+    test "list_review_annotations excludes purpose=explain", %{session: session} do
+      review =
+        Ash.create!(Annotation, %{
+          session_id: session.id,
+          source: :transcript,
+          selected_text: "review item",
+          comment: "needs review",
+          purpose: :review,
+          state: :open
+        })
+
+      _explain =
+        Ash.create!(Annotation, %{
+          session_id: session.id,
+          source: :transcript,
+          selected_text: "explain item",
+          comment: "explanation",
+          purpose: :explain,
+          state: :open
+        })
+
+      {_body, session_id} = initialize()
+
+      {200, body, _conn} =
+        mcp_post(
+          %{
+            "jsonrpc" => "2.0",
+            "id" => 14,
+            "method" => "tools/call",
+            "params" => %{
+              "name" => "list_review_annotations",
+              "arguments" => %{}
+            }
+          },
+          session_id
+        )
+
+      [content | _] = body["result"]["content"]
+      annotations = Jason.decode!(content["text"])
+
+      ids = Enum.map(annotations, & &1["id"])
+      assert review.id in ids
+      purposes = Enum.map(annotations, & &1["purpose"])
+      refute "explain" in purposes
+    end
+
+    test "tool call with invalid filter returns structured JSON-RPC error", %{} do
+      {_body, session_id} = initialize()
+
+      {200, body, _conn} =
+        mcp_post(
+          %{
+            "jsonrpc" => "2.0",
+            "id" => 15,
+            "method" => "tools/call",
+            "params" => %{
+              "name" => "list_sessions",
+              "arguments" => %{"filter" => %{"cwd" => %{"eq" => "/fake"}}}
+            }
+          },
+          session_id
+        )
+
+      # AshAi returns tool errors as isError result or JSON-RPC error
+      cond do
+        body["result"] != nil ->
+          assert body["result"]["isError"] == true
+          [content | _] = body["result"]["content"]
+          assert content["type"] == "text"
+
+        body["error"] != nil ->
+          assert is_binary(body["error"]["message"])
+          assert body["error"]["code"] != nil
+      end
     end
 
     test "resolve_annotation updates state and writes metadata", %{session: session} do

@@ -12,6 +12,10 @@ defmodule Spotter.Transcripts.Annotation do
   actions do
     defaults [:read, :destroy]
 
+    read :read_review_annotations do
+      filter expr(purpose == :review)
+    end
+
     create :create do
       primary? true
 
@@ -86,6 +90,7 @@ defmodule Spotter.Transcripts.Annotation do
     attribute :source, :atom do
       allow_nil? false
       default :terminal
+      public? true
       constraints one_of: [:terminal, :transcript, :file, :commit_message, :code]
     end
 
@@ -98,36 +103,40 @@ defmodule Spotter.Transcripts.Annotation do
       default %{}
     end
 
-    attribute :selected_text, :string, allow_nil?: false
+    attribute :selected_text, :string, allow_nil?: false, public?: true
     attribute :start_row, :integer, allow_nil?: true
     attribute :start_col, :integer, allow_nil?: true
     attribute :end_row, :integer, allow_nil?: true
     attribute :end_col, :integer, allow_nil?: true
-    attribute :comment, :string, allow_nil?: false
+    attribute :comment, :string, allow_nil?: false, public?: true
 
     attribute :purpose, :atom do
       allow_nil? false
       default :review
+      public? true
       constraints one_of: [:review, :explain]
     end
 
     attribute :state, :atom do
       allow_nil? false
       default :open
+      public? true
       constraints one_of: [:open, :closed]
     end
 
-    create_timestamp :inserted_at
+    create_timestamp :inserted_at, public?: true
     update_timestamp :updated_at
   end
 
   relationships do
     belongs_to :session, Spotter.Transcripts.Session do
       allow_nil? false
+      attribute_public? true
     end
 
     belongs_to :subagent, Spotter.Transcripts.Subagent do
       allow_nil? true
+      attribute_public? true
     end
 
     belongs_to :project, Spotter.Transcripts.Project do

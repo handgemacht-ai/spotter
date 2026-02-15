@@ -28,9 +28,9 @@ defmodule Spotter.Transcripts.AnnotationFileRef do
   attributes do
     uuid_v7_primary_key :id
 
-    attribute :relative_path, :string, allow_nil?: false
-    attribute :line_start, :integer, allow_nil?: false
-    attribute :line_end, :integer, allow_nil?: false
+    attribute :relative_path, :string, allow_nil?: false, public?: true
+    attribute :line_start, :integer, allow_nil?: false, public?: true
+    attribute :line_end, :integer, allow_nil?: false, public?: true
 
     create_timestamp :inserted_at
     update_timestamp :updated_at
