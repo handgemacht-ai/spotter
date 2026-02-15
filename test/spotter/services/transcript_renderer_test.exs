@@ -3017,6 +3017,138 @@ defmodule Spotter.Services.TranscriptRendererTest do
     end
   end
 
+  describe "malformed toolUseResult payloads" do
+    test "Edit with string toolUseResult renders generic fallback instead of crashing" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Edit",
+                "id" => "toolu_err1",
+                "input" => %{
+                  "file_path" => "/tmp/foo.ex",
+                  "old_string" => "x",
+                  "new_string" => "y"
+                }
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_err1",
+                "content" => "Error: String to replace not found in file",
+                "is_error" => true
+              }
+            ]
+          },
+          raw_payload: %{
+            "toolUseResult" => "Error: String to replace not found in file"
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      tool_result_lines = Enum.filter(result, &(&1.kind == :tool_result))
+
+      assert [first | _] = tool_result_lines
+      assert first.line =~ "Error: String to replace not found"
+    end
+
+    test "Edit with nil toolUseResult renders generic fallback" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Edit",
+                "id" => "toolu_nil1",
+                "input" => %{
+                  "file_path" => "/tmp/foo.ex",
+                  "old_string" => "x",
+                  "new_string" => "y"
+                }
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_nil1",
+                "content" => "Edit failed"
+              }
+            ]
+          },
+          raw_payload: %{
+            "toolUseResult" => nil
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      tool_result_lines = Enum.filter(result, &(&1.kind == :tool_result))
+
+      assert [_ | _] = tool_result_lines
+    end
+
+    test "AskUserQuestion with string toolUseResult renders empty answers" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "AskUserQuestion",
+                "id" => "toolu_ask1",
+                "input" => %{"questions" => [%{"question" => "Pick one", "header" => "Choice"}]}
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_ask1",
+                "content" => "user responded"
+              }
+            ]
+          },
+          raw_payload: %{
+            "toolUseResult" => "user responded"
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      ask_answers = Enum.filter(result, &(&1.kind == :ask_user_answer))
+
+      assert ask_answers == []
+    end
+  end
+
   defp load_fixture(name) do
     path = Path.join(@fixtures_dir, name)
     {:ok, %{messages: messages}} = JsonlParser.parse_session_file(path)

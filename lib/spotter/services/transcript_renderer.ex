@@ -914,6 +914,13 @@ defmodule Spotter.Services.TranscriptRenderer do
   defp non_empty_string(value) when is_binary(value) and value != "", do: value
   defp non_empty_string(_), do: nil
 
+  defp safe_tool_use_result(msg, key) do
+    case get_in(msg, [:raw_payload, "toolUseResult"]) do
+      %{} = result -> Map.get(result, key)
+      _ -> nil
+    end
+  end
+
   defp plan_write?(tool_use_id, tool_use_index) do
     case Map.get(tool_use_index, tool_use_id) do
       %{name: "Write", input: %{"file_path" => path}} when is_binary(path) ->
@@ -929,7 +936,7 @@ defmodule Spotter.Services.TranscriptRenderer do
   defp render_ask_user_answer(block, msg) do
     tool_use_id = block["tool_use_id"]
     thread_key = tool_use_id || "unmatched-result"
-    answers = get_in(msg, [:raw_payload, "toolUseResult", "answers"]) || %{}
+    answers = safe_tool_use_result(msg, "answers") || %{}
 
     if map_size(answers) == 0 do
       []
@@ -974,7 +981,7 @@ defmodule Spotter.Services.TranscriptRenderer do
 
   defp render_plan_content(block, msg, tool_use_index) do
     tool_use_id = block["tool_use_id"]
-    plan_content = get_in(msg, [:raw_payload, "toolUseResult", "content"]) || ""
+    plan_content = safe_tool_use_result(msg, "content") || ""
 
     if plan_content == "" do
       render_generic_tool_result(block, msg, nil, tool_use_index)
@@ -999,7 +1006,7 @@ defmodule Spotter.Services.TranscriptRenderer do
 
   defp render_with_diff_or_generic(block, msg, session_cwd, tool_use_index) do
     is_error = block["is_error"] == true
-    patches = get_in(msg, [:raw_payload, "toolUseResult", "structuredPatch"]) || []
+    patches = safe_tool_use_result(msg, "structuredPatch") || []
 
     if not is_error and is_list(patches) and patches != [] do
       tool_use_id = block["tool_use_id"]

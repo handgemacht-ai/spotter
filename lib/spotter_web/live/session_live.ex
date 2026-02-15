@@ -799,13 +799,20 @@ defmodule SpotterWeb.SessionLive do
           |> Ash.Query.sort(inserted_at: :desc)
           |> Ash.read!()
 
-        commit_ids = Enum.map(links, & &1.commit_id)
+        commit_ids =
+          links
+          |> Enum.map(& &1.commit_id)
+          |> Enum.reject(&is_nil/1)
 
         commits_by_id =
-          Commit
-          |> Ash.Query.filter(id in ^commit_ids)
-          |> Ash.read!()
-          |> Map.new(&{&1.id, &1})
+          if commit_ids == [] do
+            %{}
+          else
+            Commit
+            |> Ash.Query.filter(id in ^commit_ids)
+            |> Ash.read!()
+            |> Map.new(&{&1.id, &1})
+          end
 
         Enum.map(links, fn link ->
           commit = Map.get(commits_by_id, link.commit_id)
