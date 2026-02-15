@@ -8,6 +8,7 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
 
   require Ash.Query
   require Logger
+  require OpenTelemetry.Tracer, as: Tracer
 
   alias Spotter.ProductSpec.Jobs.UpdateRollingSpec
   alias Spotter.Services.GitCommitReader
@@ -19,16 +20,47 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
     limit = Map.get(args, "limit", 10)
     branch = Map.get(args, "branch")
 
-    Logger.info("IngestRecentCommits: ingesting up to #{limit} commits for project #{project_id}")
+    Tracer.with_span "spotter.ingest_recent_commits.perform" do
+      set_span_attributes(project_id, limit, branch, args)
 
-    case resolve_repo_path(project_id) do
-      {:ok, repo_path} ->
-        ingest(project_id, repo_path, limit, branch)
+      Logger.info(
+        "IngestRecentCommits: ingesting up to #{limit} commits for project #{project_id}"
+      )
 
-      :no_cwd ->
-        Logger.info("IngestRecentCommits: no accessible cwd for project #{project_id}, skipping")
-        :ok
+      case resolve_repo_path(project_id) do
+        {:ok, repo_path} ->
+          ingest(project_id, repo_path, limit, branch)
+
+        :no_cwd ->
+          Tracer.set_status(:error, "no_accessible_cwd")
+
+          Logger.info(
+            "IngestRecentCommits: no accessible cwd for project #{project_id}, skipping"
+          )
+
+          :ok
+      end
     end
+  rescue
+    error ->
+      Tracer.set_status(:error, Exception.message(error))
+      reraise error, __STACKTRACE__
+  end
+
+  defp set_span_attributes(project_id, limit, branch, args) do
+    Tracer.set_attribute("spotter.project_id", project_id)
+    Tracer.set_attribute("spotter.limit", limit)
+    if is_binary(branch), do: Tracer.set_attribute("spotter.branch", branch)
+
+    if is_binary(args["otel_trace_id"]) and args["otel_trace_id"] != "" do
+      Tracer.set_attribute("spotter.parent_trace_id", args["otel_trace_id"])
+    end
+
+    if is_binary(args["otel_traceparent"]) and args["otel_traceparent"] != "" do
+      Tracer.set_attribute("spotter.parent_traceparent", args["otel_traceparent"])
+    end
+  rescue
+    _error -> :ok
   end
 
   defp resolve_repo_path(project_id) do
@@ -50,6 +82,8 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
 
     case GitCommitReader.recent_commits(repo_path, opts) do
       {:ok, commit_data} ->
+        Tracer.set_attribute("spotter.commits_found", length(commit_data))
+
         Enum.each(commit_data, fn data ->
           upsert_commit_and_review_item(project_id, data)
         end)
@@ -63,6 +97,9 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
         :ok
 
       {:error, reason} ->
+        Tracer.set_status(:error, "recent_commits_failed")
+        Tracer.add_event("recent_commits_error", [{"error.reason", inspect(reason)}])
+
         Logger.warning(
           "IngestRecentCommits: failed for project #{project_id}: #{inspect(reason)}"
         )
@@ -79,6 +116,7 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
         maybe_enqueue_rolling_spec(project_id, commit)
 
       {:error, reason} ->
+        Tracer.add_event("commit_upsert_failed", [{"error.reason", inspect(reason)}])
         Logger.warning("IngestRecentCommits: failed to upsert commit: #{inspect(reason)}")
     end
   end

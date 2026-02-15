@@ -9,6 +9,8 @@ defmodule SpotterWeb.OtelTraceHelpers do
   require OpenTelemetry.Tracer, as: Tracer
   import Plug.Conn
 
+  alias Spotter.Telemetry.TraceContext
+
   @doc """
   Create a span with the given name and attributes, executing a block within it.
 
@@ -80,6 +82,34 @@ defmodule SpotterWeb.OtelTraceHelpers do
     end
 
     :ok
+  end
+
+  @doc """
+  Return a map with trace context keys suitable for merging into job args.
+
+  Adds `:otel_trace_id` and `:otel_traceparent` when the corresponding values
+  are available from the current span context. Returns an empty map when no
+  trace is active.
+  """
+  @spec maybe_add_trace_context(map()) :: map()
+  def maybe_add_trace_context(args) when is_map(args) do
+    args
+    |> maybe_put_trace_id()
+    |> maybe_put_traceparent()
+  end
+
+  defp maybe_put_trace_id(args) do
+    case current_trace_id() do
+      nil -> args
+      trace_id -> Map.put(args, :otel_trace_id, trace_id)
+    end
+  end
+
+  defp maybe_put_traceparent(args) do
+    case TraceContext.current_traceparent() do
+      nil -> args
+      traceparent -> Map.put(args, :otel_traceparent, traceparent)
+    end
   end
 
   @doc """

@@ -38,14 +38,18 @@ defmodule Spotter.Observability.ObanTelemetry do
   @doc false
   def handle_event([:oban, :job, :start], _measurements, metadata, _config) do
     job = Map.get(metadata, :job, %{})
+    args = get_args(job)
 
-    FlowHub.record(%{
-      kind: "oban.job.start",
-      status: :running,
-      flow_keys: flow_keys_for(job),
-      summary: "Job started: #{worker_name(job)}",
-      payload: start_payload(job)
-    })
+    FlowHub.record(
+      %{
+        kind: "oban.job.start",
+        status: :running,
+        flow_keys: flow_keys_for(job),
+        summary: "Job started: #{worker_name(job)}",
+        payload: start_payload(job)
+      }
+      |> maybe_put_trace_context(args)
+    )
   rescue
     _ -> :ok
   end
@@ -53,14 +57,18 @@ defmodule Spotter.Observability.ObanTelemetry do
   def handle_event([:oban, :job, :stop], measurements, metadata, _config) do
     job = Map.get(metadata, :job, %{})
     state = Map.get(metadata, :state)
+    args = get_args(job)
 
-    FlowHub.record(%{
-      kind: "oban.job.stop",
-      status: map_stop_status(state),
-      flow_keys: flow_keys_for(job),
-      summary: "Job #{state}: #{worker_name(job)}",
-      payload: stop_payload(job, state, measurements)
-    })
+    FlowHub.record(
+      %{
+        kind: "oban.job.stop",
+        status: map_stop_status(state),
+        flow_keys: flow_keys_for(job),
+        summary: "Job #{state}: #{worker_name(job)}",
+        payload: stop_payload(job, state, measurements)
+      }
+      |> maybe_put_trace_context(args)
+    )
   rescue
     _ -> :ok
   end
@@ -68,16 +76,31 @@ defmodule Spotter.Observability.ObanTelemetry do
   def handle_event([:oban, :job, :exception], measurements, metadata, _config) do
     job = Map.get(metadata, :job, %{})
     state = Map.get(metadata, :state)
+    args = get_args(job)
 
-    FlowHub.record(%{
-      kind: "oban.job.exception",
-      status: :error,
-      flow_keys: flow_keys_for(job),
-      summary: "Job exception: #{worker_name(job)}",
-      payload: exception_payload(job, state, measurements, metadata)
-    })
+    FlowHub.record(
+      %{
+        kind: "oban.job.exception",
+        status: :error,
+        flow_keys: flow_keys_for(job),
+        summary: "Job exception: #{worker_name(job)}",
+        payload: exception_payload(job, state, measurements, metadata)
+      }
+      |> maybe_put_trace_context(args)
+    )
   rescue
     _ -> :ok
+  end
+
+  defp maybe_put_trace_context(event, args) do
+    traceparent = args["otel_traceparent"]
+    trace_id = args["otel_trace_id"]
+
+    event
+    |> then(fn e ->
+      if is_binary(traceparent), do: Map.put(e, :traceparent, traceparent), else: e
+    end)
+    |> then(fn e -> if is_binary(trace_id), do: Map.put(e, :trace_id, trace_id), else: e end)
   end
 
   defp flow_keys_for(job) do

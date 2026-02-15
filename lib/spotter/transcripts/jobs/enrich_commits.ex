@@ -19,7 +19,7 @@ defmodule Spotter.Transcripts.Jobs.EnrichCommits do
     } = args
 
     Tracer.with_span "spotter.enrich_commits.perform" do
-      set_span_attributes(hashes, session_id, args["otel_trace_id"])
+      set_span_attributes(hashes, session_id, args)
       do_perform(hashes, session_id, git_cwd)
     end
   end
@@ -32,18 +32,23 @@ defmodule Spotter.Transcripts.Jobs.EnrichCommits do
         SessionCommitLinker.link_inferred(session, commits)
 
       _ ->
+        Tracer.add_event("session_not_found", [{"spotter.session_id", session_id}])
         Logger.warning("EnrichCommits: session #{session_id} not found, skipping inference")
     end
 
     :ok
   end
 
-  defp set_span_attributes(hashes, session_id, parent_trace_id) do
+  defp set_span_attributes(hashes, session_id, args) do
     Tracer.set_attribute("spotter.commit_hash_count", length(hashes))
     Tracer.set_attribute("spotter.session_id", session_id)
 
-    if is_binary(parent_trace_id) and parent_trace_id != "" do
-      Tracer.set_attribute("spotter.parent_trace_id", parent_trace_id)
+    if is_binary(args["otel_trace_id"]) and args["otel_trace_id"] != "" do
+      Tracer.set_attribute("spotter.parent_trace_id", args["otel_trace_id"])
+    end
+
+    if is_binary(args["otel_traceparent"]) and args["otel_traceparent"] != "" do
+      Tracer.set_attribute("spotter.parent_traceparent", args["otel_traceparent"])
     end
   rescue
     _error -> :ok

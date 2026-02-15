@@ -260,9 +260,17 @@ Plugin hooks → traceparent header → Phoenix controllers → Ash actions → 
 | Plugin hooks | W3C `traceparent` header generation | (client-side, no spans) |
 | Phoenix controllers | `with_span` macro in hook controllers | `spotter.hook.*` |
 | Ash Framework | `opentelemetry_ash` tracer (action, custom, flow) | `ash.*` |
-| Oban jobs | Manual spans in `EnrichCommits.perform/1` | `spotter.enrich_commits.perform` |
+| Oban jobs | Manual spans in job `perform/1` functions | `spotter.enrich_commits.perform`, `spotter.ingest_recent_commits.perform`, `spotter.sync_transcripts.perform`, `spotter.product_spec.update_rolling_spec.perform` |
 | LiveView | Telemetry handler for mount/handle_params/handle_event | `spotter.liveview.*` |
 | TerminalChannel | Span events for join/input/resize/stream lifecycle | `spotter.channel.*` |
+
+### Trace context propagation
+
+Hook controllers propagate trace context into Oban jobs via `OtelTraceHelpers.maybe_add_trace_context/1`, which adds `otel_trace_id` and `otel_traceparent` to job args. Jobs read these and set them as span attributes (`spotter.parent_trace_id`, `spotter.parent_traceparent`), enabling cross-process trace correlation.
+
+Hook responses expose the `x-spotter-trace-id` header. Use this ID to query related spans in Jaeger, including downstream job spans from the same request.
+
+The `ObanTelemetry` handler extracts trace context from job args and includes `traceparent`/`trace_id` in FlowHub events, enabling the `/flows` view to display trace linkage between hooks and jobs.
 
 ### Local mode (default OTLP collector)
 
@@ -285,8 +293,21 @@ mix phx.server
 
 3. Inspect traces:
 
-- JSON trace file: `tmp/otel/spotter-traces.json`
+- JSON trace file: `tail -f tmp/otel/spotter-traces.json`
 - Jaeger UI: `http://localhost:16686`
+
+Query Jaeger programmatically:
+
+```bash
+# List available services
+curl http://localhost:16686/api/services
+
+# Recent traces for the Spotter service
+curl "http://localhost:16686/api/traces?service=spotter&limit=20"
+
+# Lookup a specific trace by ID (from x-spotter-trace-id response header)
+curl "http://localhost:16686/api/traces?traceID=<trace_id>&limit=50"
+```
 
 4. Stop the stack when done:
 

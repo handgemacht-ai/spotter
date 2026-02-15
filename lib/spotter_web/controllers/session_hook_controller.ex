@@ -201,6 +201,7 @@ defmodule SpotterWeb.SessionHookController do
 
   defp enqueue_ingest(project_id) do
     %{project_id: project_id}
+    |> OtelTraceHelpers.maybe_add_trace_context()
     |> IngestRecentCommits.new()
     |> Oban.insert()
   end
@@ -222,9 +223,8 @@ defmodule SpotterWeb.SessionHookController do
       {:ok, session} ->
         Ash.update!(session, %{hook_ended_at: DateTime.utc_now()})
 
-        args = %{session_id: session_id}
-
-        args
+        %{session_id: session_id}
+        |> OtelTraceHelpers.maybe_add_trace_context()
         |> DistillCompletedSession.new()
         |> Oban.insert()
 
@@ -260,7 +260,19 @@ defmodule SpotterWeb.SessionHookController do
 
   defp maybe_bootstrap_sync(session) do
     if is_nil(session.message_count) or session.message_count == 0 do
-      Task.start(fn -> SyncTranscripts.sync_session_by_id(session.session_id) end)
+      trace_ctx = OtelTraceHelpers.maybe_add_trace_context(%{})
+      session_id = session.session_id
+
+      Task.start(fn ->
+        SyncTranscripts.sync_session_by_id(session_id, trace_context: trace_ctx)
+      end)
     end
+  rescue
+    error ->
+      OtelTraceHelpers.set_error("bootstrap_sync_failed", %{
+        "error.message" => Exception.message(error)
+      })
+
+      :ok
   end
 end

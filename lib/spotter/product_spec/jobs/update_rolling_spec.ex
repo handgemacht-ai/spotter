@@ -35,6 +35,10 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
         Tracer.set_attribute("spotter.parent_trace_id", args["otel_trace_id"])
       end
 
+      if args["otel_traceparent"] do
+        Tracer.set_attribute("spotter.parent_traceparent", args["otel_traceparent"])
+      end
+
       case normalize_project_id(project_id) do
         {:ok, normalized_project_id} ->
           Tracer.set_attribute("spotter.project_id", normalized_project_id)

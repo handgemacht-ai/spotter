@@ -6,6 +6,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   use Oban.Worker, queue: :default, max_attempts: 3
 
   require Logger
+  require OpenTelemetry.Tracer, as: Tracer
 
   alias Spotter.Transcripts.Config
   alias Spotter.Transcripts.Jobs.ComputeCoChange
@@ -29,14 +30,41 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   Returns `%{session_id: ..., ingested_messages: n, status: :ok | :not_found | :error}`.
   """
   def sync_session_by_id(session_id, opts \\ []) do
-    case find_transcript_file(session_id) do
-      {:ok, file_path} ->
-        sync_session_file(file_path, opts)
+    Tracer.with_span "spotter.sync_transcripts.sync_session_by_id" do
+      Tracer.set_attribute("spotter.session_id", session_id)
+      set_trace_context_attributes(Keyword.get(opts, :trace_context, %{}))
 
-      :not_found ->
-        %{session_id: session_id, ingested_messages: 0, status: :not_found}
+      case find_transcript_file(session_id) do
+        {:ok, file_path} ->
+          sync_session_file(file_path, opts)
+
+        :not_found ->
+          Tracer.set_status(:error, "transcript_not_found")
+          %{session_id: session_id, ingested_messages: 0, status: :not_found}
+      end
     end
+  rescue
+    error ->
+      Tracer.set_status(:error, Exception.message(error))
+      reraise error, __STACKTRACE__
   end
+
+  defp set_trace_context_attributes(trace_ctx) when is_map(trace_ctx) do
+    trace_id = trace_ctx[:otel_trace_id] || trace_ctx["otel_trace_id"]
+    traceparent = trace_ctx[:otel_traceparent] || trace_ctx["otel_traceparent"]
+
+    if is_binary(trace_id) and trace_id != "" do
+      Tracer.set_attribute("spotter.parent_trace_id", trace_id)
+    end
+
+    if is_binary(traceparent) and traceparent != "" do
+      Tracer.set_attribute("spotter.parent_traceparent", traceparent)
+    end
+  rescue
+    _error -> :ok
+  end
+
+  defp set_trace_context_attributes(_), do: :ok
 
   @doc """
   Syncs a single session from a specific JSONL file path.
@@ -46,44 +74,50 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   Returns `%{session_id: ..., ingested_messages: n, status: :ok | :not_found | :error}`.
   """
   def sync_session_file(file_path, _opts \\ []) do
-    case JsonlParser.parse_session_file(file_path) do
-      {:ok, %{session_id: nil}} ->
-        %{session_id: nil, ingested_messages: 0, status: :not_found}
+    Tracer.with_span "spotter.sync_transcripts.sync_session_file" do
+      case JsonlParser.parse_session_file(file_path) do
+        {:ok, %{session_id: nil}} ->
+          %{session_id: nil, ingested_messages: 0, status: :not_found}
 
-      {:ok, parsed} ->
-        dir = Path.dirname(file_path)
-        transcript_dir = Path.basename(dir)
-        index = SessionsIndex.read(dir)
-        index_meta = Map.get(index, parsed.session_id, %{})
+        {:ok, parsed} ->
+          dir = Path.dirname(file_path)
+          transcript_dir = Path.basename(dir)
+          index = SessionsIndex.read(dir)
+          index_meta = Map.get(index, parsed.session_id, %{})
 
-        # Ensure session and project exist
-        session_record =
-          case Session |> Ash.Query.filter(session_id == ^parsed.session_id) |> Ash.read_one!() do
-            %Session{} = existing ->
-              existing
+          # Ensure session and project exist
+          session_record =
+            case Session
+                 |> Ash.Query.filter(session_id == ^parsed.session_id)
+                 |> Ash.read_one!() do
+              %Session{} = existing ->
+                existing
 
-            nil ->
-              {:ok, stub} = Sessions.find_or_create(parsed.session_id, cwd: parsed.cwd)
-              stub
-          end
+              nil ->
+                {:ok, stub} = Sessions.find_or_create(parsed.session_id, cwd: parsed.cwd)
+                stub
+            end
 
-        # Upsert session with full metadata + transcript_dir backfill
-        session = upsert_existing_session!(session_record, transcript_dir, parsed, index_meta)
-        subagent_type_by_agent_id = build_subagent_type_index(parsed.messages)
+          # Upsert session with full metadata + transcript_dir backfill
+          session = upsert_existing_session!(session_record, transcript_dir, parsed, index_meta)
+          subagent_type_by_agent_id = build_subagent_type_index(parsed.messages)
 
-        ingested = upsert_messages!(session, parsed.messages)
-        create_tool_calls!(session, parsed.messages)
-        create_session_reworks!(session, parsed)
-        sync_subagents(session, dir, parsed.session_id, subagent_type_by_agent_id)
+          ingested = upsert_messages!(session, parsed.messages)
+          create_tool_calls!(session, parsed.messages)
+          create_session_reworks!(session, parsed)
+          sync_subagents(session, dir, parsed.session_id, subagent_type_by_agent_id)
 
-        %{session_id: parsed.session_id, ingested_messages: ingested, status: :ok}
+          %{session_id: parsed.session_id, ingested_messages: ingested, status: :ok}
 
-      {:error, reason} ->
-        Logger.warning("Failed to parse #{file_path}: #{inspect(reason)}")
-        %{session_id: nil, ingested_messages: 0, status: :error}
+        {:error, reason} ->
+          Tracer.set_status(:error, "parse_failed")
+          Logger.warning("Failed to parse #{file_path}: #{inspect(reason)}")
+          %{session_id: nil, ingested_messages: 0, status: :error}
+      end
     end
   rescue
     e ->
+      Tracer.set_status(:error, Exception.message(e))
       Logger.warning("Error syncing #{file_path}: #{Exception.message(e)}")
       %{session_id: nil, ingested_messages: 0, status: :error}
   end
@@ -133,74 +167,81 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
     run_id = args["run_id"]
     start_time = System.monotonic_time(:millisecond)
 
-    try do
-      pattern = Regex.compile!(pattern_str)
+    Tracer.with_span "spotter.sync_transcripts.perform" do
+      Tracer.set_attribute("spotter.project_name", name)
+      Tracer.set_attribute("spotter.run_id", run_id || "")
+      set_trace_context_attributes(Map.take(args, ["otel_trace_id", "otel_traceparent"]))
 
-      # Upsert project
-      project = upsert_project!(name, pattern_str)
+      try do
+        pattern = Regex.compile!(pattern_str)
 
-      # Find matching transcript directories
-      dirs = list_matching_dirs(transcripts_dir, pattern)
-      dirs_total = length(dirs)
+        # Upsert project
+        project = upsert_project!(name, pattern_str)
 
-      # Count total sessions across all dirs (capped per dir)
-      sessions_total = count_sessions_total(dirs)
+        # Find matching transcript directories
+        dirs = list_matching_dirs(transcripts_dir, pattern)
+        dirs_total = length(dirs)
 
-      Logger.info("Syncing project #{name}: found #{dirs_total} matching directories")
+        # Count total sessions across all dirs (capped per dir)
+        sessions_total = count_sessions_total(dirs)
 
-      broadcast(
-        {:sync_started,
-         %{
-           run_id: run_id,
-           project: name,
-           dirs_total: dirs_total,
-           sessions_total: sessions_total
-         }}
-      )
+        Logger.info("Syncing project #{name}: found #{dirs_total} matching directories")
 
-      {_dirs_done, sessions_synced} =
-        Enum.reduce(dirs, {0, 0}, fn dir, {dirs_done, sessions_acc} ->
-          synced = sync_directory(project, dir)
-          new_dirs_done = dirs_done + 1
-          new_sessions_done = sessions_acc + synced
+        broadcast(
+          {:sync_started,
+           %{
+             run_id: run_id,
+             project: name,
+             dirs_total: dirs_total,
+             sessions_total: sessions_total
+           }}
+        )
 
-          broadcast(
-            {:sync_progress,
-             %{
-               run_id: run_id,
-               project: name,
-               dirs_done: new_dirs_done,
-               dirs_total: dirs_total,
-               sessions_done: new_sessions_done,
-               sessions_total: sessions_total
-             }}
-          )
+        {_dirs_done, sessions_synced} =
+          Enum.reduce(dirs, {0, 0}, fn dir, {dirs_done, sessions_acc} ->
+            synced = sync_directory(project, dir)
+            new_dirs_done = dirs_done + 1
+            new_sessions_done = sessions_acc + synced
 
-          {new_dirs_done, new_sessions_done}
-        end)
+            broadcast(
+              {:sync_progress,
+               %{
+                 run_id: run_id,
+                 project: name,
+                 dirs_done: new_dirs_done,
+                 dirs_total: dirs_total,
+                 sessions_done: new_sessions_done,
+                 sessions_total: sessions_total
+               }}
+            )
 
-      if Map.get(args, "enqueue_downstream_jobs", true) do
-        enqueue_heatmap(project)
+            {new_dirs_done, new_sessions_done}
+          end)
+
+        if Map.get(args, "enqueue_downstream_jobs", true) do
+          enqueue_heatmap(project)
+        end
+
+        duration_ms = System.monotonic_time(:millisecond) - start_time
+
+        broadcast(
+          {:sync_completed,
+           %{
+             run_id: run_id,
+             project: name,
+             dirs_synced: dirs_total,
+             sessions_synced: sessions_synced,
+             duration_ms: duration_ms
+           }}
+        )
+
+        :ok
+      rescue
+        e ->
+          Tracer.set_status(:error, Exception.message(e))
+          broadcast({:sync_error, %{run_id: run_id, project: name, error: Exception.message(e)}})
+          reraise e, __STACKTRACE__
       end
-
-      duration_ms = System.monotonic_time(:millisecond) - start_time
-
-      broadcast(
-        {:sync_completed,
-         %{
-           run_id: run_id,
-           project: name,
-           dirs_synced: dirs_total,
-           sessions_synced: sessions_synced,
-           duration_ms: duration_ms
-         }}
-      )
-
-      :ok
-    rescue
-      e ->
-        broadcast({:sync_error, %{run_id: run_id, project: name, error: Exception.message(e)}})
-        reraise e, __STACKTRACE__
     end
   end
 
