@@ -107,7 +107,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscriptsTest do
         "uuid" => "#{session_id}-system",
         "type" => "system",
         "sessionId" => session_id,
-        "cwd" => "/tmp/test",
+        "cwd" => "test-sync/project",
         "version" => "1.0.0",
         "timestamp" => "2026-02-01T12:00:00Z"
       },
@@ -223,7 +223,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscriptsTest do
           "uuid" => "#{session_id}-system",
           "type" => "system",
           "sessionId" => session_id,
-          "cwd" => "/tmp/test",
+          "cwd" => "test-sync/project",
           "version" => "1.0.0",
           "timestamp" => "2026-02-01T12:00:00Z"
         },

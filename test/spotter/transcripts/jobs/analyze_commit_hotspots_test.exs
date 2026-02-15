@@ -46,7 +46,6 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspotsTest do
     end
   end
 
-  @tag :live_api
   describe "perform/1 with valid repo but no API key" do
     @tag :spawns_claude
     test "marks commit as error for missing API key" do

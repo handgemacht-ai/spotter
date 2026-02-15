@@ -9,6 +9,8 @@ defmodule Spotter.Services.TranscriptTailWorkerTest do
     Sandbox.checkout(Spotter.Repo)
     Sandbox.mode(Spotter.Repo, {:shared, self()})
 
+    Ash.create!(Spotter.Transcripts.Project, %{name: "test-tail", pattern: "^test"})
+
     tmp_dir = Path.join(System.tmp_dir!(), "tail_test_#{System.unique_integer([:positive])}")
     File.mkdir_p!(tmp_dir)
 
@@ -27,7 +29,7 @@ defmodule Spotter.Services.TranscriptTailWorkerTest do
         "uuid" => "#{session_id}-sys",
         "type" => "system",
         "sessionId" => session_id,
-        "cwd" => "/tmp/test",
+        "cwd" => "test-tail/project",
         "version" => "1.0.0",
         "timestamp" => "2026-02-01T12:00:00Z"
       },

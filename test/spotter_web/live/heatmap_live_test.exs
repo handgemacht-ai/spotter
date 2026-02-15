@@ -19,7 +19,7 @@ defmodule SpotterWeb.HeatmapLiveTest do
     Ash.create!(Project, %{name: name, pattern: "^#{name}"})
   end
 
-  defp create_heatmap(project, path, opts \\ []) do
+  defp create_heatmap(project, path, opts) do
     Ash.create!(FileHeatmap, %{
       project_id: project.id,
       relative_path: path,
