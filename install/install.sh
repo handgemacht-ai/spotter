@@ -23,9 +23,8 @@ curl -fsSL "${REPO_RAW}/install/bundle/dolt/dolt-init.sql"  -o "${BUNDLE_DIR}/do
 echo ""
 echo "Spotter installed successfully!"
 echo ""
-echo "Next steps:"
-echo "  1. Run this line:"
-echo '  1. export PATH="$HOME/.local/bin:$PATH"'
+echo "Run this:"
+echo '  export PATH="$HOME/.local/bin:$PATH"'
 echo "  2. export SPOTTER_ANTHROPIC_API_KEY=sk-ant-..."
 echo "  3. cd /path/to/target-repo"
 echo "  4. spotter"
