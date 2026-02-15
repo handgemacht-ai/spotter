@@ -464,6 +464,8 @@ defmodule Spotter.ProductSpec.Agent.RepoToolsTest do
   alias Spotter.ProductSpec.Agent.Tools
 
   describe "repo tools fail-safe" do
+    @tag :slow
+    @tag timeout: 5_000
     test "repo_read_file_at_commit returns error when git_cwd not set" do
       ToolHelpers.set_git_cwd(nil)
 
@@ -489,6 +491,8 @@ defmodule Spotter.ProductSpec.Agent.RepoToolsTest do
       assert parsed["error"] =~ "git_cwd"
     end
 
+    @tag :slow
+    @tag timeout: 5_000
     test "repo_read_file_at_commit returns error for invalid cwd" do
       ToolHelpers.set_git_cwd("/nonexistent/path")
 

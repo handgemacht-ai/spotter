@@ -5,6 +5,8 @@ defmodule SpotterWeb.ErrorRenderingTest do
 
   @endpoint SpotterWeb.Endpoint
 
+  @tag :slow
+  @tag timeout: 5_000
   test "unknown html route renders 404 page" do
     conn =
       Phoenix.ConnTest.build_conn()
@@ -15,6 +17,8 @@ defmodule SpotterWeb.ErrorRenderingTest do
     assert conn.resp_body =~ "Page not found"
   end
 
+  @tag :slow
+  @tag timeout: 5_000
   test "unknown json route renders structured 404 response" do
     conn =
       Phoenix.ConnTest.build_conn()

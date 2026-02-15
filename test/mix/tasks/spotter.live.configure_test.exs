@@ -8,6 +8,8 @@ defmodule Mix.Tasks.Spotter.Live.ConfigureTest do
   require Ash.Query
 
   describe "run/1" do
+    @tag :slow
+    @tag timeout: 5_000
     test "creates project with escaped pattern from repo dir" do
       System.put_env("SPOTTER_LIVE_REPO_DIR", "/workspace/myrepo")
       System.put_env("SPOTTER_LIVE_PROJECT_NAME", "myrepo")
@@ -24,6 +26,8 @@ defmodule Mix.Tasks.Spotter.Live.ConfigureTest do
       assert project.pattern == "^\\-workspace\\-myrepo"
     end
 
+    @tag :slow
+    @tag timeout: 5_000
     test "upserts transcripts_dir when SPOTTER_LIVE_TRANSCRIPTS_DIR is set" do
       System.put_env("SPOTTER_LIVE_REPO_DIR", "/workspace/myrepo")
       System.put_env("SPOTTER_LIVE_PROJECT_NAME", "myrepo")

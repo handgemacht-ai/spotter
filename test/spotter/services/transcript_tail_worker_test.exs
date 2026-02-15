@@ -98,6 +98,8 @@ defmodule Spotter.Services.TranscriptTailWorkerTest do
   end
 
   describe "worker publishes on file change" do
+    @tag :slow
+    @tag timeout: 5_000
     test "broadcasts transcript_updated after debounce", %{tmp_dir: tmp_dir} do
       session_id = Ash.UUID.generate()
       path = write_jsonl(tmp_dir, session_id)

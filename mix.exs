@@ -99,7 +99,7 @@ defmodule Spotter.MixProject do
         "phx.digest"
       ],
       test: ["ash.setup --quiet", "test --exclude slow"],
-      "test.all": ["ash.setup --quiet", "test"],
+      "test.all": ["ash.setup --quiet", "test --include slow"],
       "test.slow": ["ash.setup --quiet", "test --only slow"],
       quality: ["credo", "deps.audit"]
     ]
