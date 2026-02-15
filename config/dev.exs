@@ -11,7 +11,7 @@ config :opentelemetry_exporter,
   otlp_endpoint: System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT") || "http://localhost:4318"
 
 config :spotter, Spotter.Repo,
-  database: System.get_env("SPOTTER_SQLITE_DB") || "../path/to/your.db",
+  database: System.get_env("SPOTTER_SQLITE_DB") || Path.expand("~/projects/todo.db"),
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
 
