@@ -205,29 +205,37 @@ defmodule SpotterWeb.SessionLive do
   def handle_event("text_selected", params, socket) do
     current_msg_id = socket.assigns.current_message_id
 
-    {:noreply,
-     assign(socket,
-       selected_text: params["text"],
-       selection_source: :terminal,
-       selection_message_ids: if(current_msg_id, do: [current_msg_id], else: []),
-       selection_start_row: params["start_row"],
-       selection_start_col: params["start_col"],
-       selection_end_row: params["end_row"],
-       selection_end_col: params["end_col"]
-     )}
+    socket =
+      socket
+      |> assign(
+        selected_text: params["text"],
+        selection_source: :terminal,
+        selection_message_ids: if(current_msg_id, do: [current_msg_id], else: []),
+        selection_start_row: params["start_row"],
+        selection_start_col: params["start_col"],
+        selection_end_row: params["end_row"],
+        selection_end_col: params["end_col"]
+      )
+      |> maybe_focus_annotations_tab()
+
+    {:noreply, socket}
   end
 
   def handle_event("transcript_text_selected", params, socket) do
-    {:noreply,
-     assign(socket,
-       selected_text: params["text"],
-       selection_source: :transcript,
-       selection_message_ids: params["message_ids"] || [],
-       selection_start_row: nil,
-       selection_start_col: nil,
-       selection_end_row: nil,
-       selection_end_col: nil
-     )}
+    socket =
+      socket
+      |> assign(
+        selected_text: params["text"],
+        selection_source: :transcript,
+        selection_message_ids: params["message_ids"] || [],
+        selection_start_row: nil,
+        selection_start_col: nil,
+        selection_end_row: nil,
+        selection_end_col: nil
+      )
+      |> maybe_focus_annotations_tab()
+
+    {:noreply, socket}
   end
 
   def handle_event("clear_selection", _params, socket) do
@@ -340,6 +348,16 @@ defmodule SpotterWeb.SessionLive do
 
   def handle_event("switch_sidebar_tab", %{"tab" => tab}, socket) do
     {:noreply, assign(socket, active_sidebar_tab: String.to_existing_atom(tab))}
+  end
+
+  defp maybe_focus_annotations_tab(socket) do
+    if socket.assigns.active_sidebar_tab != :annotations do
+      socket
+      |> assign(active_sidebar_tab: :annotations)
+      |> push_event("annotations_attention", %{})
+    else
+      socket
+    end
   end
 
   defp jump_to_tool_use(socket, tool_use_id) do
@@ -660,6 +678,7 @@ defmodule SpotterWeb.SessionLive do
             Commits ({length(@commit_links)})
           </button>
           <button
+            id="sidebar-tab-annotations"
             class={"sidebar-tab#{if @active_sidebar_tab == :annotations, do: " is-active"}"}
             phx-click="switch_sidebar_tab"
             phx-value-tab="annotations"

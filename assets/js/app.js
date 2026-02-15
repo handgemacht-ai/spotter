@@ -45,6 +45,17 @@ function renderTranscriptMarkdown(rootEl) {
   }
 }
 
+function pulseClass(el, className, durationMs = 650) {
+  if (!el) return
+
+  // Remove + force reflow so CSS animation reliably restarts.
+  el.classList.remove(className)
+  void el.offsetWidth
+
+  el.classList.add(className)
+  window.setTimeout(() => el.classList.remove(className), durationMs)
+}
+
 // Shared socket instance for all channel connections
 let sharedSocket = null
 function getSharedSocket() {
@@ -182,6 +193,29 @@ Hooks.TranscriptHighlighter = {
     renderTranscriptMarkdown(this.el)
     highlightTranscriptCode(this.el)
     this._highlightDebugJson()
+
+    // Sidebar UX: when selection is made outside the annotations panel,
+    // SessionLive auto-switches to the Annotations tab and emits an attention event.
+    this.handleEvent("annotations_attention", () => {
+      const tick = (remaining) => {
+        pulseClass(document.getElementById("sidebar-tab-annotations"), "is-attention", 550)
+
+        const sidebar = document.querySelector(".session-sidebar")
+        if (!sidebar) return
+
+        const editor = sidebar.querySelector(".annotation-form")
+        const panel = sidebar.querySelector(".sidebar-tab-content")
+
+        if (editor || panel || remaining <= 0) {
+          pulseClass(editor || panel, "is-attention", 700)
+        } else {
+          requestAnimationFrame(() => tick(remaining - 1))
+        }
+      }
+
+      // Allow the LiveView DOM patch (tab switch + editor insertion) to land.
+      requestAnimationFrame(() => tick(2))
+    })
 
     // Scroll-to-line events
     this.handleEvent("scroll_to_transcript_line", ({ index }) => {

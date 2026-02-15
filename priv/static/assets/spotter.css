@@ -838,10 +838,39 @@ input::placeholder, textarea::placeholder {
   border-bottom-color: var(--accent-blue);
 }
 
+@keyframes spotter-sidebar-tab-attention {
+  0% { transform: translateY(0); text-shadow: none; }
+  30% { transform: translateY(-1px); text-shadow: 0 0 12px rgba(91, 156, 245, 0.35); }
+  100% { transform: translateY(0); text-shadow: none; }
+}
+
+.sidebar-tab.is-attention {
+  animation: spotter-sidebar-tab-attention 550ms ease-out;
+}
+
 .sidebar-tab-content {
   padding: var(--space-4);
   flex: 1;
   overflow-y: auto;
+}
+
+@keyframes spotter-sidebar-panel-attention {
+  0% { transform: translateY(1px); box-shadow: 0 0 0 0 rgba(91, 156, 245, 0); }
+  35% { transform: translateY(0); box-shadow: 0 0 0 3px rgba(91, 156, 245, 0.18); }
+  100% { transform: translateY(0); box-shadow: 0 0 0 0 rgba(91, 156, 245, 0); }
+}
+
+.sidebar-tab-content.is-attention,
+.annotation-form.is-attention {
+  animation: spotter-sidebar-panel-attention 700ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-tab.is-attention,
+  .sidebar-tab-content.is-attention,
+  .annotation-form.is-attention {
+    animation: none !important;
+  }
 }
 
 /* --- Commit cards --- */

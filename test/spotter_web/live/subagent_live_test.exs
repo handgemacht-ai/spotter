@@ -251,6 +251,26 @@ defmodule SpotterWeb.SubagentLiveTest do
     end
   end
 
+  describe "annotations" do
+    test "shows annotation editor when transcript text is selected", %{
+      session_id: session_id,
+      agent_id: agent_id
+    } do
+      {:ok, view, html} = live(build_conn(), "/sessions/#{session_id}/agents/#{agent_id}")
+
+      refute html =~ ~s(class="annotation-form")
+
+      html =
+        render_hook(view, "transcript_text_selected", %{
+          "text" => "selected snippet",
+          "message_ids" => ["msg-1"]
+        })
+
+      assert html =~ ~s(class="annotation-form")
+      assert html =~ "selected snippet"
+    end
+  end
+
   describe "timestamp and duration rendering" do
     test "renders timestamp and delta", %{
       subagent: subagent,

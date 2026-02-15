@@ -56,11 +56,15 @@ defmodule SpotterWeb.SubagentLive do
 
   @impl true
   def handle_event("transcript_text_selected", params, socket) do
-    {:noreply,
-     assign(socket,
-       selected_text: params["text"],
-       selection_message_ids: params["message_ids"] || []
-     )}
+    socket =
+      socket
+      |> assign(
+        selected_text: params["text"],
+        selection_message_ids: params["message_ids"] || []
+      )
+      |> push_event("annotations_attention", %{})
+
+    {:noreply, socket}
   end
 
   def handle_event("clear_selection", _params, socket) do

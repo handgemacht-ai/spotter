@@ -538,6 +538,25 @@ defmodule SpotterWeb.SessionLiveTest do
     end
   end
 
+  describe "annotations sidebar tab" do
+    test "auto-opens annotations tab when selection is made outside it", %{session_id: session_id} do
+      {:ok, view, _html} = live(build_conn(), "/sessions/#{session_id}")
+
+      html = render_click(view, "switch_sidebar_tab", %{"tab" => "errors"})
+      assert html =~ "No errors detected"
+
+      html =
+        render_hook(view, "transcript_text_selected", %{
+          "text" => "selected snippet",
+          "message_ids" => ["msg-1"]
+        })
+
+      assert html =~ ~r/id="sidebar-tab-annotations"[^>]*class="sidebar-tab is-active"/
+      assert html =~ ~s(class="annotation-form")
+      assert html =~ "selected snippet"
+    end
+  end
+
   describe "errors not in transcript header" do
     test "errors are not rendered as transcript header blocks", %{session_id: session_id} do
       {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}")
