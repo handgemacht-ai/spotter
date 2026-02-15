@@ -253,9 +253,31 @@ defmodule SpotterWeb.SessionHookController do
   defp maybe_start_tail_worker(_session_id, _cwd), do: :ok
 
   defp live_transcript_path(cwd, session_id) do
-    {transcripts_dir, _source} = Runtime.transcripts_dir()
-    dir_name = String.replace(cwd, "/", "-")
-    Path.join([transcripts_dir, dir_name, "#{session_id}.jsonl"])
+    {configured_transcripts_dir, _source} = Runtime.transcripts_dir()
+    dir_name = transcript_dir_name(cwd)
+    candidate_roots = transcript_search_roots(configured_transcripts_dir)
+    fallback_root = List.first(candidate_roots)
+
+    transcript_root =
+      Enum.find(candidate_roots, &File.dir?(Path.join(&1, dir_name))) || fallback_root
+
+    Path.join([transcript_root, dir_name, "#{session_id}.jsonl"])
+  end
+
+  defp transcript_search_roots(configured_transcripts_dir) do
+    configured_roots =
+      if is_binary(configured_transcripts_dir) and configured_transcripts_dir != "" do
+        [Path.expand(configured_transcripts_dir)]
+      else
+        []
+      end
+
+    (configured_roots ++ [Path.expand("~/.claude/projects")])
+    |> Enum.uniq()
+  end
+
+  defp transcript_dir_name(cwd) do
+    String.replace(cwd, "/", "-")
   end
 
   defp maybe_bootstrap_sync(session) do

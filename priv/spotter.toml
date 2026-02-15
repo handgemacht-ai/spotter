@@ -1,5 +1,5 @@
 # Transcript source directory
-transcripts_dir = "~/projects/todo"
+transcripts_dir = "~/.claude/projects"
 
 [projects.todo]
 pattern = "^-home-marco-projects-todo"

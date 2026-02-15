@@ -272,9 +272,11 @@ defmodule SpotterWeb.ProductLive do
 
   defp normalize_run_status(nil), do: :none
   defp normalize_run_status(%{status: :ok, dolt_commit_hash: nil}), do: :ok_no_changes
+
   defp normalize_run_status(%{status: status})
        when status in [:pending, :running, :ok, :error, :skipped],
        do: status
+
   defp normalize_run_status(_), do: :none
 
   defp detail_diff(assigns) do
@@ -540,7 +542,13 @@ defmodule SpotterWeb.ProductLive do
   rescue
     e ->
       Tracer.set_status(:error, Exception.message(e))
-      assign(socket, detail_content: nil, detail_error: {:error, Exception.message(e)}, tree: [], commit_id_cache: %{})
+
+      assign(socket,
+        detail_content: nil,
+        detail_error: {:error, Exception.message(e)},
+        tree: [],
+        commit_id_cache: %{}
+      )
   end
 
   defp load_detail_for_view(socket, :snapshot, project_id, commit) do
@@ -567,7 +575,13 @@ defmodule SpotterWeb.ProductLive do
   rescue
     e ->
       Tracer.set_status(:error, Exception.message(e))
-      assign(socket, detail_content: nil, detail_error: {:error, Exception.message(e)}, tree: [], commit_id_cache: %{})
+
+      assign(socket,
+        detail_content: nil,
+        detail_error: {:error, Exception.message(e)},
+        tree: [],
+        commit_id_cache: %{}
+      )
   end
 
   defp error_message(:no_spec_run) do

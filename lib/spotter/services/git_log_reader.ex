@@ -39,6 +39,28 @@ defmodule Spotter.Services.GitLogReader do
     do: {:ok, branch}
 
   def resolve_branch(repo_path, _) do
+    case current_branch(repo_path) do
+      {:ok, branch} -> {:ok, branch}
+      :no_branch -> detect_fallback_branch(repo_path)
+    end
+  end
+
+  defp current_branch(repo_path) do
+    case System.cmd("git", ["-C", repo_path, "branch", "--show-current"], stderr_to_stdout: true) do
+      {output, 0} ->
+        output
+        |> String.trim()
+        |> then(fn
+          "" -> :no_branch
+          branch -> {:ok, branch}
+        end)
+
+      _ ->
+        :no_branch
+    end
+  end
+
+  defp detect_fallback_branch(repo_path) do
     case System.cmd("git", ["-C", repo_path, "symbolic-ref", "refs/remotes/origin/HEAD"],
            stderr_to_stdout: true
          ) do
@@ -46,11 +68,11 @@ defmodule Spotter.Services.GitLogReader do
         {:ok, output |> String.trim() |> String.replace("refs/remotes/origin/", "")}
 
       _ ->
-        detect_fallback_branch(repo_path)
+        detect_legacy_fallback_branches(repo_path)
     end
   end
 
-  defp detect_fallback_branch(repo_path) do
+  defp detect_legacy_fallback_branches(repo_path) do
     case System.cmd("git", ["-C", repo_path, "rev-parse", "--verify", "main"],
            stderr_to_stdout: true
          ) do
