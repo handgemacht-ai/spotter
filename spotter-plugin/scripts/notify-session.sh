@@ -36,10 +36,13 @@ else
   PORT=1100
 fi
 
+# Resolve base URL (container-safe: honours SPOTTER_URL)
+BASE_URL="${SPOTTER_URL:-http://127.0.0.1:${PORT}}"
+
 # POST the mapping to Spotter (fail silently)
 CURL_ARGS=(
   -s -o /dev/null -X POST
-  "http://127.0.0.1:${PORT}/api/hooks/session-start"
+  "${BASE_URL}/api/hooks/session-start"
   -H "Content-Type: application/json"
   -H "x-spotter-hook-event: SessionStart"
   -H "x-spotter-hook-script: notify-session.sh"

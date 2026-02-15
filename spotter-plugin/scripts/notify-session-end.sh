@@ -10,6 +10,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LIB_DIR="${SCRIPT_DIR}/lib"
 [ -f "${LIB_DIR}/trace_context.sh" ] && . "${LIB_DIR}/trace_context.sh"
+[ -f "${LIB_DIR}/hook_timeouts.sh" ] && . "${LIB_DIR}/hook_timeouts.sh"
 
 # Read the session JSON from stdin
 INPUT="$(cat)"
@@ -34,16 +35,19 @@ else
   PORT=1100
 fi
 
+# Resolve base URL (container-safe: honours SPOTTER_URL)
+BASE_URL="${SPOTTER_URL:-http://127.0.0.1:${PORT}}"
+
 # POST session end to Spotter (fail silently)
 CURL_ARGS=(
   -s -o /dev/null -X POST
-  "http://127.0.0.1:${PORT}/api/hooks/session-end"
+  "${BASE_URL}/api/hooks/session-end"
   -H "Content-Type: application/json"
   -H "x-spotter-hook-event: Stop"
   -H "x-spotter-hook-script: notify-session-end.sh"
   -d "{\"session_id\": \"${SESSION_ID}\"}"
-  --connect-timeout 2
-  --max-time 4
+  --connect-timeout "$(resolve_timeout "${SPOTTER_NOTIFY_END_CONNECT_TIMEOUT:-}" "${SPOTTER_HOOK_CONNECT_TIMEOUT:-}" "$SPOTTER_DEFAULT_CONNECT_TIMEOUT")"
+  --max-time "$(resolve_timeout "${SPOTTER_NOTIFY_END_MAX_TIME:-}" "${SPOTTER_HOOK_MAX_TIME:-}" "$SPOTTER_DEFAULT_MAX_TIME")"
 )
 
 # Add traceparent header if available

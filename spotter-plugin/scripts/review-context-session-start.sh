@@ -21,12 +21,13 @@ if [ -z "$TOKEN" ]; then
   exit 0
 fi
 
-# Determine port
+# Determine port and base URL (container-safe: honours SPOTTER_URL)
 PORT="${SPOTTER_PORT:-1100}"
+BASE_URL="${SPOTTER_URL:-http://127.0.0.1:${PORT}}"
 
 # Fetch review context (fail silently)
 RESPONSE="$(curl -s \
-  "http://127.0.0.1:${PORT}/api/review-context/${TOKEN}" \
+  "${BASE_URL}/api/review-context/${TOKEN}" \
   -H "Accept: application/json" \
   --connect-timeout "$(resolve_timeout "${SPOTTER_REVIEW_CONTEXT_CONNECT_TIMEOUT:-}" "${SPOTTER_HOOK_CONNECT_TIMEOUT:-}" "$SPOTTER_DEFAULT_CONNECT_TIMEOUT")" \
   --max-time "$(resolve_timeout "${SPOTTER_REVIEW_CONTEXT_MAX_TIME:-}" "${SPOTTER_HOOK_MAX_TIME:-}" "$SPOTTER_DEFAULT_MAX_TIME")" \
