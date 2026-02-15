@@ -25,7 +25,7 @@ mix spotter.live.configure
 REPO_DIR="${SPOTTER_LIVE_REPO_DIR:-/workspace}"
 if ! tmux has-session -t spotter-live 2>/dev/null; then
   tmux new-session -d -s spotter-live -c "${REPO_DIR}" \
-    "claude --dangerously-skip-permissions --plugin-dir /opt/spotter-plugin"
+    "SPOTTER_URL=http://localhost:1100 claude --dangerously-skip-permissions --plugin-dir /opt/spotter-plugin"
 fi
 
 # Start Phoenix server (foreground)
