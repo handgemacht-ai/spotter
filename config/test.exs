@@ -25,5 +25,10 @@ config :claude_agent_sdk,
   tool_execution_timeout_ms: 5_000,
   timeout_ms: 30_000
 
+# Bound SSE stream duration so GET /api/mcp tests return quickly
+config :spotter, SpotterWeb.SpotterMcpPlug,
+  sse_keepalive_ms: 10,
+  sse_max_duration_ms: 25
+
 # Dolt repo for product spec - use a test-friendly pool size
 config :spotter, Spotter.ProductSpec.Repo, pool_size: 2

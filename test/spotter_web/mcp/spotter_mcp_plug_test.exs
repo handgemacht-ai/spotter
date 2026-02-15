@@ -88,6 +88,47 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
     end
   end
 
+  defp mcp_get(headers \\ []) do
+    conn =
+      Enum.reduce(headers, Phoenix.ConnTest.build_conn(), fn {key, val}, acc ->
+        Plug.Conn.put_req_header(acc, key, val)
+      end)
+
+    conn = Phoenix.ConnTest.dispatch(conn, @endpoint, :get, "/api/mcp", nil)
+    {conn.status, conn.resp_body, conn}
+  end
+
+  describe "GET /api/mcp (SSE)" do
+    test "returns 200 with endpoint event when Accept: text/event-stream" do
+      {status, body, conn} = mcp_get([{"accept", "text/event-stream"}])
+
+      assert status == 200
+
+      content_type =
+        Plug.Conn.get_resp_header(conn, "content-type") |> List.first("")
+
+      assert content_type =~ "text/event-stream"
+      assert body =~ "event: endpoint"
+      assert body =~ "/api/mcp"
+    end
+  end
+
+  describe "GET /api/mcp (non-SSE)" do
+    test "returns 204 with empty body when no SSE accept header" do
+      {status, body, _conn} = mcp_get([{"accept", "*/*"}])
+
+      assert status == 204
+      assert body == ""
+    end
+
+    test "returns 204 when no accept header is set" do
+      {status, body, _conn} = mcp_get()
+
+      assert status == 204
+      assert body == ""
+    end
+  end
+
   describe "tools/call" do
     test "list_projects returns JSON text content", %{project: _project} do
       {_body, session_id} = initialize()
