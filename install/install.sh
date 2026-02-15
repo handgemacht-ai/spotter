@@ -24,26 +24,8 @@ echo ""
 echo "Spotter installed successfully!"
 echo ""
 echo "Next steps:"
-SHELL_NAME="$(basename "${SHELL:-bash}")"
-case "${SHELL_NAME}" in
-  zsh)
-    echo "  1. Run this command:"
-    echo "     if ! grep -qxF 'export PATH=\"$HOME/.local/bin:$PATH\"' ~/.zshrc; then"
-    echo "       echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.zshrc"
-    echo "     fi"
-    echo "     source ~/.zshrc"
-    ;;
-  bash)
-    echo "  1. Run this command:"
-    echo "     if ! grep -qxF 'export PATH=\"$HOME/.local/bin:$PATH\"' ~/.bashrc; then"
-    echo "       echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.bashrc"
-    echo "     fi"
-    echo "     source ~/.bashrc"
-    ;;
-  *)
-    echo "  1. Append ~/.local/bin to your shell path manually (current shell: ${SHELL_NAME})"
-    ;;
-esac
+echo "  1. Run this line:"
+echo '  1. export PATH="$HOME/.local/bin:$PATH"'
 echo "  2. export SPOTTER_ANTHROPIC_API_KEY=sk-ant-..."
 echo "  3. cd /path/to/target-repo"
 echo "  4. spotter"
