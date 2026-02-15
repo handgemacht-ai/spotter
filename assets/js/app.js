@@ -96,6 +96,56 @@ Hooks.BrowserTimezone = {
   },
 }
 
+Hooks.StudyCard = {
+  mounted() {
+    this._currentCardId = this._getCardId()
+    const card = this.el.querySelector('.study-card')
+    if (card) {
+      card.classList.add('study-card-enter')
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          card.classList.add('study-card-enter-active')
+        })
+      })
+    }
+  },
+
+  beforeUpdate() {
+    this._previousCardId = this._getCardId()
+  },
+
+  updated() {
+    const newCardId = this._getCardId()
+    if (newCardId && newCardId !== this._previousCardId) {
+      this._currentCardId = newCardId
+      this._animateEntrance()
+    }
+  },
+
+  _getCardId() {
+    const card = this.el.querySelector('[data-card-id]')
+    return card ? card.dataset.cardId : null
+  },
+
+  _animateEntrance() {
+    const card = this.el.querySelector('.study-card')
+    if (!card) return
+
+    card.classList.remove('study-card-enter-active')
+    card.classList.add('study-card-enter')
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        card.classList.add('study-card-enter-active')
+      })
+    })
+
+    card.addEventListener('transitionend', () => {
+      card.classList.remove('study-card-enter', 'study-card-enter-active')
+    }, { once: true })
+  },
+}
+
 Hooks.PreserveScroll = {
   mounted() {
     this._lastKey = this.el.dataset.scrollKey || ""

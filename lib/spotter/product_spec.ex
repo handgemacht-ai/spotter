@@ -160,19 +160,17 @@ defmodule Spotter.ProductSpec do
 
         run ->
           effective_hash = run.dolt_commit_hash || find_previous_dolt_hash(project_id, run)
-
-          if effective_hash do
-            case tree_at(project_id, effective_hash) do
-              {:ok, tree} ->
-                {:ok, %{tree: tree, effective_dolt_commit_hash: effective_hash}}
-
-              {:error, reason} ->
-                {:error, reason}
-            end
-          else
-            {:ok, %{tree: [], effective_dolt_commit_hash: nil}}
-          end
+          resolve_tree(project_id, effective_hash)
       end
+    end
+  end
+
+  defp resolve_tree(_project_id, nil), do: {:ok, %{tree: [], effective_dolt_commit_hash: nil}}
+
+  defp resolve_tree(project_id, effective_hash) do
+    case tree_at(project_id, effective_hash) do
+      {:ok, tree} -> {:ok, %{tree: tree, effective_dolt_commit_hash: effective_hash}}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -185,7 +183,8 @@ defmodule Spotter.ProductSpec do
   - `{:ok, diff_result}` with the semantic diff
   """
   @spec diff_for_commit(String.t(), String.t()) ::
-          {:ok, map()} | {:error, :no_spec_run | {:dolt_query_failed, String.t()} | {:error, String.t()}}
+          {:ok, map()}
+          | {:error, :no_spec_run | {:dolt_query_failed, String.t()} | {:error, String.t()}}
   def diff_for_commit(project_id, commit_hash) do
     Tracer.with_span "spotter.product_spec.diff_for_commit" do
       Tracer.set_attribute("spotter.project_id", project_id)
@@ -319,18 +318,18 @@ defmodule Spotter.ProductSpec do
            ) do
       {:ok,
        Enum.map(result.rows, fn [
-                                 id,
-                                 proj_id,
-                                 feat_id,
-                                 spec_key,
-                                 stmt,
-                                 rat,
-                                 ac,
-                                 pri,
-                                 git_commit,
-                                 ins,
-                                 upd
-                               ] ->
+                                  id,
+                                  proj_id,
+                                  feat_id,
+                                  spec_key,
+                                  stmt,
+                                  rat,
+                                  ac,
+                                  pri,
+                                  git_commit,
+                                  ins,
+                                  upd
+                                ] ->
          %{
            id: id,
            project_id: proj_id,
@@ -349,14 +348,12 @@ defmodule Spotter.ProductSpec do
   end
 
   defp query_at(query, params) do
-    try do
-      case SQL.query(Repo, query, params) do
-        {:ok, result} -> {:ok, result}
-        {:error, error} -> {:error, {:dolt_query_failed, inspect(error)}}
-      end
-    rescue
-      e -> {:error, {:dolt_query_failed, Exception.message(e)}}
+    case SQL.query(Repo, query, params) do
+      {:ok, result} -> {:ok, result}
+      {:error, error} -> {:error, {:dolt_query_failed, inspect(error)}}
     end
+  rescue
+    e -> {:error, {:dolt_query_failed, Exception.message(e)}}
   end
 
   # -- Spec run helpers -------------------------------------------------------

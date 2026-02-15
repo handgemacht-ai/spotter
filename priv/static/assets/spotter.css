@@ -1789,12 +1789,34 @@ input::placeholder, textarea::placeholder {
   gap: var(--space-3);
 }
 
+.study-progress {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Card container */
+.study-card-container {
+  position: relative;
+  min-height: 120px;
+}
+
 .study-card {
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  padding: var(--space-3);
-  margin-bottom: var(--space-2);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
   background: var(--surface-2);
+  max-width: 640px;
+}
+
+/* Card entrance animation */
+.study-card-enter {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.study-card-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
 }
 
 .study-card-header {
@@ -1805,7 +1827,7 @@ input::placeholder, textarea::placeholder {
 }
 
 .study-card-body {
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 .study-commit-subject {
@@ -1814,8 +1836,6 @@ input::placeholder, textarea::placeholder {
 
 .study-commit-body {
   white-space: pre-wrap;
-  max-height: 4em;
-  overflow: hidden;
 }
 
 .study-hotspot-reason {
@@ -1827,19 +1847,80 @@ input::placeholder, textarea::placeholder {
   font-size: 0.85em;
 }
 
+/* Rating buttons */
 .study-card-actions {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
+  margin-top: var(--space-4);
 }
 
-.importance-select {
+.study-rate-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: var(--text-base);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+
+.study-rate-btn:active {
+  transform: scale(0.96);
+}
+
+.study-rate-low {
   background: var(--surface-3);
+  border-color: var(--border-default);
+  color: var(--text-secondary);
+}
+
+.study-rate-low:hover {
+  background: var(--surface-4);
+  border-color: var(--border-strong);
   color: var(--text-primary);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius);
-  padding: 0.25rem 0.5rem;
-  font-size: 0.85em;
+}
+
+.study-rate-medium {
+  background: color-mix(in srgb, var(--accent-amber) 15%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--accent-amber) 40%, var(--border-default));
+  color: var(--accent-amber);
+}
+
+.study-rate-medium:hover {
+  background: color-mix(in srgb, var(--accent-amber) 25%, var(--surface-2));
+  border-color: var(--accent-amber);
+}
+
+.study-rate-high {
+  background: color-mix(in srgb, var(--accent-red) 15%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--accent-red) 40%, var(--border-default));
+  color: var(--accent-red);
+}
+
+.study-rate-high:hover {
+  background: color-mix(in srgb, var(--accent-red) 25%, var(--surface-2));
+  border-color: var(--accent-red);
+}
+
+/* Keyboard shortcut badges */
+.study-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.08);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: inherit;
+  opacity: 0.6;
 }
 
 .badge.study-kind-commit_message {

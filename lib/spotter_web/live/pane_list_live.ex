@@ -60,8 +60,12 @@ defmodule SpotterWeb.PaneListLive do
     end
 
     val :due_counts do
-      compute(fn %{study_scope: _scope, study_project_id: project_id, browser_timezone: tz} ->
-        count_due_items(project_id, tz)
+      compute(fn %{
+                   study_project_id: project_id,
+                   study_include_upcoming: include_upcoming,
+                   browser_timezone: tz
+                 } ->
+        count_due_items(project_id, include_upcoming, tz)
       end)
     end
 
@@ -330,34 +334,46 @@ defmodule SpotterWeb.PaneListLive do
     {:noreply, update_computer_inputs(socket, :study_queue, %{study_include_upcoming: include})}
   end
 
-  def handle_event("mark_seen", %{"id" => id}, socket) do
+  def handle_event("rate_card", %{"id" => id, "importance" => importance}, socket) do
     item = Ash.get!(ReviewItem, id)
     today = browser_today(socket)
-    new_interval = advance_interval(item.importance, item.interval_days || 4)
+    importance_atom = String.to_existing_atom(importance)
 
-    Ash.update!(item, %{}, action: :mark_seen)
+    # Mark seen first — increments seen_count
+    item = Ash.update!(item, %{}, action: :mark_seen)
+
+    # Compute interval using SM-2-style progression based on seen_count
+    interval = next_interval(importance_atom, item.seen_count)
 
     Ash.update!(item, %{
-      interval_days: new_interval,
-      next_due_on: Date.add(today, new_interval)
+      importance: importance_atom,
+      interval_days: interval,
+      next_due_on: Date.add(today, interval)
     })
 
     {:noreply, refresh_study_queue(socket)}
   end
 
-  def handle_event("set_importance", %{"id" => id, "importance" => importance}, socket) do
-    item = Ash.get!(ReviewItem, id)
-    today = browser_today(socket)
-    importance_atom = String.to_existing_atom(importance)
-    {interval, offset} = schedule_for_importance(importance_atom)
+  def handle_event("study_keydown", %{"key" => key}, socket) do
+    current_entry = List.first(socket.assigns.study_queue_due_items || [])
 
-    Ash.update!(item, %{
-      importance: importance_atom,
-      interval_days: interval,
-      next_due_on: Date.add(today, offset)
-    })
+    importance =
+      case key do
+        "1" -> "low"
+        "2" -> "medium"
+        "3" -> "high"
+        _ -> nil
+      end
 
-    {:noreply, refresh_study_queue(socket)}
+    if current_entry && importance do
+      handle_event(
+        "rate_card",
+        %{"id" => current_entry.item.id, "importance" => importance},
+        socket
+      )
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -421,12 +437,21 @@ defmodule SpotterWeb.PaneListLive do
 
   defp extract_timezone_error(_), do: "invalid timezone"
 
-  defp advance_interval(:high, _current), do: 1
-  defp advance_interval(_importance, current), do: (current || 4) * 2
+  # SM-2-style spaced repetition: interval grows exponentially with reviews
+  defp next_interval(importance, seen_count) do
+    base = base_interval(importance)
+    multiplier = interval_multiplier(importance)
+    interval = round(base * :math.pow(multiplier, seen_count))
+    min(interval, 180)
+  end
 
-  defp schedule_for_importance(:high), do: {1, 1}
-  defp schedule_for_importance(:medium), do: {4, 4}
-  defp schedule_for_importance(:low), do: {14, 14}
+  defp base_interval(:high), do: 1
+  defp base_interval(:medium), do: 3
+  defp base_interval(:low), do: 7
+
+  defp interval_multiplier(:high), do: 2.0
+  defp interval_multiplier(:medium), do: 2.5
+  defp interval_multiplier(:low), do: 3.0
 
   defp find_project_name(projects, project_id) do
     case Enum.find(projects, &(&1.id == project_id)) do
@@ -577,16 +602,25 @@ defmodule SpotterWeb.PaneListLive do
     end)
   end
 
-  defp count_due_items(project_id, tz) do
+  defp count_due_items(project_id, include_upcoming, tz) do
     today = today_in_tz(tz)
 
     base =
       ReviewItem
       |> Ash.Query.filter(is_nil(suspended_at))
-      |> Ash.Query.filter(is_nil(next_due_on) or next_due_on <= ^today)
 
     base = if project_id, do: Ash.Query.filter(base, project_id == ^project_id), else: base
-    items = Ash.read!(base)
+
+    due_query = Ash.Query.filter(base, is_nil(next_due_on) or next_due_on <= ^today)
+    due_items = Ash.read!(due_query)
+
+    items =
+      if include_upcoming do
+        upcoming_query = Ash.Query.filter(base, next_due_on > ^today)
+        due_items ++ Ash.read!(upcoming_query)
+      else
+        due_items
+      end
 
     %{
       total: length(items),
@@ -633,20 +667,27 @@ defmodule SpotterWeb.PaneListLive do
 
   defp classify_due_status(items, tz) do
     today = today_in_tz(tz)
+    next_week = Date.add(today, 7)
     suspended = Enum.count(items, &(not is_nil(&1.suspended_at)))
-    future_items = Enum.filter(items, &future_item?(&1, today))
+
+    upcoming_items =
+      Enum.filter(items, fn item ->
+        is_nil(item.suspended_at) and not is_nil(item.next_due_on) and
+          Date.compare(item.next_due_on, today) == :gt and
+          Date.compare(item.next_due_on, next_week) != :gt
+      end)
 
     cond do
-      suspended == length(items) -> :all_suspended
-      future_items != [] -> {:future_items, length(future_items), earliest_due(future_items)}
-      true -> :no_due
+      suspended == length(items) ->
+        :all_suspended
+
+      upcoming_items != [] ->
+        {:future_items, length(upcoming_items), earliest_due(upcoming_items)}
+
+      true ->
+        :no_due
     end
   end
-
-  defp future_item?(%{suspended_at: nil, next_due_on: due}, today) when not is_nil(due),
-    do: Date.compare(due, today) == :gt
-
-  defp future_item?(_, _), do: false
 
   defp earliest_due(items) do
     items |> Enum.min_by(& &1.next_due_on, Date, fn -> nil end) |> then(&(&1 && &1.next_due_on))
@@ -888,9 +929,9 @@ defmodule SpotterWeb.PaneListLive do
               <% {:future_items, count, next_due} -> %>
                 <p>
                   No items due today.
-                  {count} {if count == 1, do: "item", else: "items"} scheduled
+                  {count} {if count == 1, do: "item", else: "items"} due this week
                   <%= if next_due do %>
-                    &mdash; next due {Calendar.strftime(next_due, "%b %d")}.
+                    &mdash; next on {Calendar.strftime(next_due, "%b %d")}.
                   <% end %>
                 </p>
                 <button
@@ -906,61 +947,84 @@ defmodule SpotterWeb.PaneListLive do
             <% end %>
           </div>
         <% else %>
-          <div :for={entry <- @study_queue_due_items} class="study-card" data-testid="study-card">
-            <div class="study-card-header">
-              <span class={"badge study-kind-#{entry.item.target_kind}"}>
-                <%= if entry.item.target_kind == :commit_message, do: "Commit", else: "Hotspot" %>
-              </span>
-              <span class={"badge study-importance-#{entry.item.importance}"}>
-                {entry.item.importance}
-              </span>
-              <span :if={entry.upcoming} class="badge text-muted text-xs">
-                Due: {Calendar.strftime(entry.item.next_due_on, "%b %d")}
-              </span>
-              <span :if={entry.item.seen_count > 0} class="text-muted text-xs">
-                seen {entry.item.seen_count}x
-              </span>
-            </div>
+          <% current_entry = List.first(@study_queue_due_items) %>
+          <div class="study-progress text-sm text-muted mb-2">
+            {@study_queue_due_counts.total} remaining
+          </div>
 
-            <div class="study-card-body">
-              <%= if entry.item.target_kind == :commit_message and entry.commit do %>
-                <div class="study-commit-hash text-muted text-xs">
-                  {String.slice(entry.commit.commit_hash, 0, 8)}
-                </div>
-                <div class="study-commit-subject">{entry.commit.subject}</div>
-                <div :if={entry.commit.body} class="study-commit-body text-sm text-muted">
-                  {String.slice(entry.commit.body || "", 0, 200)}
-                </div>
-              <% end %>
+          <div
+            id="study-card-container"
+            phx-hook="StudyCard"
+            phx-window-keydown="study_keydown"
+            class="study-card-container"
+          >
+            <div class="study-card" data-testid="study-card" data-card-id={current_entry.item.id}>
+              <div class="study-card-header">
+                <span class={"badge study-kind-#{current_entry.item.target_kind}"}>
+                  <%= if current_entry.item.target_kind == :commit_message, do: "Commit", else: "Hotspot" %>
+                </span>
+                <span class={"badge study-importance-#{current_entry.item.importance}"}>
+                  {current_entry.item.importance}
+                </span>
+                <span :if={current_entry.upcoming} class="badge text-muted text-xs">
+                  Due: {Calendar.strftime(current_entry.item.next_due_on, "%b %d")}
+                </span>
+                <span :if={current_entry.item.seen_count > 0} class="text-muted text-xs">
+                  seen {current_entry.item.seen_count}x
+                </span>
+              </div>
 
-              <%= if entry.item.target_kind == :commit_hotspot and entry.hotspot do %>
-                <div class="study-hotspot-path text-muted text-xs">
-                  {entry.hotspot.relative_path}:{entry.hotspot.line_start}-{entry.hotspot.line_end}
-                  <%= if entry.hotspot.symbol_name do %>
-                    ({entry.hotspot.symbol_name})
-                  <% end %>
-                </div>
-                <div class="study-hotspot-reason">{entry.hotspot.reason}</div>
-                <div class="study-hotspot-score">
-                  Score: {entry.hotspot.overall_score}
-                </div>
-              <% end %>
-            </div>
+              <div class="study-card-body">
+                <%= if current_entry.item.target_kind == :commit_message and current_entry.commit do %>
+                  <div class="study-commit-hash text-muted text-xs">
+                    {String.slice(current_entry.commit.commit_hash, 0, 8)}
+                  </div>
+                  <div class="study-commit-subject">{current_entry.commit.subject}</div>
+                  <div :if={current_entry.commit.body} class="study-commit-body text-sm text-muted">
+                    {current_entry.commit.body}
+                  </div>
+                <% end %>
 
-            <div class="study-card-actions">
-              <select
-                phx-change="set_importance"
-                phx-value-id={entry.item.id}
-                name="importance"
-                class="importance-select"
-              >
-                <option value="high" selected={entry.item.importance == :high}>High</option>
-                <option value="medium" selected={entry.item.importance == :medium}>Medium</option>
-                <option value="low" selected={entry.item.importance == :low}>Low</option>
-              </select>
-              <button class="btn btn-success" phx-click="mark_seen" phx-value-id={entry.item.id}>
-                Mark seen
-              </button>
+                <%= if current_entry.item.target_kind == :commit_hotspot and current_entry.hotspot do %>
+                  <div class="study-hotspot-path text-muted text-xs">
+                    {current_entry.hotspot.relative_path}:{current_entry.hotspot.line_start}-{current_entry.hotspot.line_end}
+                    <%= if current_entry.hotspot.symbol_name do %>
+                      ({current_entry.hotspot.symbol_name})
+                    <% end %>
+                  </div>
+                  <div class="study-hotspot-reason">{current_entry.hotspot.reason}</div>
+                  <div class="study-hotspot-score">
+                    Score: {current_entry.hotspot.overall_score}
+                  </div>
+                <% end %>
+              </div>
+
+              <div class="study-card-actions">
+                <button
+                  class="btn study-rate-btn study-rate-low"
+                  phx-click="rate_card"
+                  phx-value-id={current_entry.item.id}
+                  phx-value-importance="low"
+                >
+                  Low <kbd class="study-kbd">1</kbd>
+                </button>
+                <button
+                  class="btn study-rate-btn study-rate-medium"
+                  phx-click="rate_card"
+                  phx-value-id={current_entry.item.id}
+                  phx-value-importance="medium"
+                >
+                  Medium <kbd class="study-kbd">2</kbd>
+                </button>
+                <button
+                  class="btn study-rate-btn study-rate-high"
+                  phx-click="rate_card"
+                  phx-value-id={current_entry.item.id}
+                  phx-value-importance="high"
+                >
+                  High <kbd class="study-kbd">3</kbd>
+                </button>
+              </div>
             </div>
           </div>
         <% end %>

@@ -146,6 +146,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
         project_name: name,
         pattern: Regex.source(pattern),
         transcripts_dir: config.transcripts_dir,
+        transcript_roots: transcript_search_roots(config.transcripts_dir),
         run_id: run_id
       }
       |> __MODULE__.new()
@@ -179,7 +180,9 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
         project = upsert_project!(name, pattern_str)
 
         # Find matching transcript directories
-        dirs = list_matching_dirs(transcripts_dir, pattern)
+        transcript_dirs = transcript_dirs_from_args(transcripts_dir, args)
+
+        dirs = list_matching_dirs(transcript_dirs, pattern)
         dirs_total = length(dirs)
 
         # Count total sessions across all dirs (capped per dir)
@@ -282,6 +285,14 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   end
 
   defp list_matching_dirs(transcripts_dir, pattern) do
+    transcript_dir = List.wrap(transcripts_dir)
+
+    transcript_dir
+    |> Enum.flat_map(&list_matching_dirs_for_root(&1, pattern))
+    |> Enum.uniq()
+  end
+
+  defp list_matching_dirs_for_root(transcripts_dir, pattern) do
     case File.ls(transcripts_dir) do
       {:ok, entries} ->
         entries
@@ -293,6 +304,32 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
         Logger.warning("Cannot list #{transcripts_dir}: #{reason}")
         []
     end
+  end
+
+  defp transcript_search_roots(configured_transcripts_dir) do
+    configured_roots =
+      if is_binary(configured_transcripts_dir) do
+        [configured_transcripts_dir]
+      else
+        []
+      end
+
+    (configured_roots ++ [Path.expand("~/.claude/projects")])
+    |> Enum.map(&Path.expand/1)
+    |> Enum.uniq()
+  end
+
+  defp transcript_dirs_from_args(transcripts_dir, args) do
+    from_args =
+      case args do
+        %{"transcript_roots" => dirs} when is_list(dirs) -> dirs
+        _ -> [transcripts_dir]
+      end
+      |> Enum.filter(&is_binary/1)
+      |> Enum.uniq()
+
+    (transcript_search_roots(List.first(from_args)) ++ from_args)
+    |> Enum.uniq()
   end
 
   defp sync_directory(project, dir) do
@@ -596,14 +633,28 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
 
   defp find_transcript_file(session_id) do
     config = Config.read!()
-    transcripts_dir = config.transcripts_dir
+    transcript_roots = transcript_search_roots(config.transcripts_dir)
 
-    transcripts_dir
-    |> list_subdirectories()
-    |> Enum.find_value(:not_found, fn dir ->
-      file = Path.join(dir, "#{session_id}.jsonl")
-      if File.exists?(file), do: {:ok, file}
+    Enum.find_value(transcript_roots, :not_found, fn transcripts_dir ->
+      find_in_transcript_dir(transcripts_dir, session_id)
     end)
+  end
+
+  defp find_in_transcript_dir(transcripts_dir, session_id) do
+    file = Path.join(transcripts_dir, "#{session_id}.jsonl")
+
+    if File.exists?(file) do
+      {:ok, file}
+    else
+      transcripts_dir
+      |> list_subdirectories()
+      |> Enum.map(&Path.join(&1, "#{session_id}.jsonl"))
+      |> Enum.find(&File.exists?/1)
+      |> then(fn
+        nil -> nil
+        path -> {:ok, path}
+      end)
+    end
   end
 
   defp list_subdirectories(dir) do
