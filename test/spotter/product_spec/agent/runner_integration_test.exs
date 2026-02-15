@@ -3,7 +3,7 @@ defmodule Spotter.ProductSpec.Agent.RunnerIntegrationTest do
   Integration test for the spec agent runner against the live Claude API.
 
   Requires:
-  - ANTHROPIC_API_KEY set
+  - SPOTTER_ANTHROPIC_API_KEY set
   - Dolt running: `docker compose -f docker-compose.dolt.yml up -d`
   - Claude Code CLI authenticated (`claude login`)
 

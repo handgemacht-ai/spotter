@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # Fail fast if no API key
-if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-  echo "ERROR: ANTHROPIC_API_KEY is required" >&2
+if [ -z "${SPOTTER_ANTHROPIC_API_KEY:-}" ]; then
+  echo "ERROR: SPOTTER_ANTHROPIC_API_KEY is required" >&2
   exit 1
 fi
 

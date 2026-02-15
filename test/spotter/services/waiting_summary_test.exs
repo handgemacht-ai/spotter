@@ -81,14 +81,14 @@ defmodule Spotter.Services.WaitingSummaryTest do
 
   describe "generate/2 missing API key regression" do
     setup do
-      prev_env = System.get_env("ANTHROPIC_API_KEY")
+      prev_env = System.get_env("SPOTTER_ANTHROPIC_API_KEY")
 
-      System.delete_env("ANTHROPIC_API_KEY")
+      System.delete_env("SPOTTER_ANTHROPIC_API_KEY")
 
       on_exit(fn ->
         if prev_env,
-          do: System.put_env("ANTHROPIC_API_KEY", prev_env),
-          else: System.delete_env("ANTHROPIC_API_KEY")
+          do: System.put_env("SPOTTER_ANTHROPIC_API_KEY", prev_env),
+          else: System.delete_env("SPOTTER_ANTHROPIC_API_KEY")
       end)
 
       :ok

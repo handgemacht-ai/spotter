@@ -167,7 +167,7 @@ if command -v tmux &>/dev/null; then
       echo "==> Bead detected: $BRANCH (Claude will auto-start)"
     fi
 
-    # Make sure `claude` sees `.envrc` vars (e.g., ANTHROPIC_API_KEY) even when started via tmux.
+    # Make sure `claude` sees `.envrc` vars (e.g., SPOTTER_ANTHROPIC_API_KEY) even when started via tmux.
     if [ "$DIRENV_ALLOWED" = true ]; then
       CLAUDE_CMD="direnv exec \"$WORKTREE_ROOT\" $CLAUDE_CMD"
     fi

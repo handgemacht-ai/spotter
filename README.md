@@ -9,7 +9,7 @@ Run Spotter + Claude Code + tmux in Docker without cloning this repo.
 ### Prerequisites
 
 - Docker Desktop or Docker Engine with `docker compose`
-- `ANTHROPIC_API_KEY` exported
+- `SPOTTER_ANTHROPIC_API_KEY` exported
 - A local git repo to run inside (or pass `--repo`)
 
 ### Install
@@ -23,7 +23,7 @@ Ensure `~/.local/bin` is in your `PATH`.
 ### Run
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
+export SPOTTER_ANTHROPIC_API_KEY=sk-ant-...
 cd /path/to/target-repo
 spotter
 ```
@@ -123,7 +123,7 @@ Only links with `confidence >= 0.60` are persisted.
 
 LLM-powered features (hotspot scoring, waiting summary) use the Anthropic API via LangChain.
 
-- **Environment variable**: `ANTHROPIC_API_KEY`
+- **Environment variable**: `SPOTTER_ANTHROPIC_API_KEY`
 - **LangChain app config**: `:langchain, :anthropic_key` (wired in `config/runtime.exs`)
 - **Resolution order**: app config first, then system env fallback
 - **Fail-safe**: when the key is missing or blank, LLM features degrade gracefully (deterministic fallback summaries, scoring skipped) without crashing workers or making outbound API calls
@@ -144,7 +144,7 @@ npm install -g @anthropic-ai/claude-code
 claude --version
 ```
 
-The SDK authenticates via `ANTHROPIC_API_KEY` (environment variable) or CLI auth (`claude auth`).
+The SDK authenticates via `SPOTTER_ANTHROPIC_API_KEY` (environment variable) or CLI auth (`claude auth`).
 
 In test mode, the SDK uses a mock server (`ClaudeAgentSDK.Mock`) so the CLI binary is not required for `mix test`.
 
@@ -186,7 +186,7 @@ Spotter includes a local-only E2E harness that runs:
 ### Prerequisites
 
 - Docker + Docker Compose
-- `ANTHROPIC_API_KEY` exported in your shell (the app will fail to start in dev/prod without it)
+- `SPOTTER_ANTHROPIC_API_KEY` exported in your shell (the app will fail to start in dev/prod without it)
 
 ### Refresh transcript fixtures from host Claude sessions
 
@@ -207,13 +207,13 @@ The snapshot script selects longer sessions (line-count based), forces subagent 
 ### Run E2E suite
 
 ```bash
-ANTHROPIC_API_KEY=... scripts/e2e/run.sh
+SPOTTER_ANTHROPIC_API_KEY=... scripts/e2e/run.sh
 ```
 
 Default host port is `1101`. If it is already in use, override it:
 
 ```bash
-SPOTTER_E2E_HOST_PORT=1102 ANTHROPIC_API_KEY=... scripts/e2e/run.sh
+SPOTTER_E2E_HOST_PORT=1102 SPOTTER_ANTHROPIC_API_KEY=... scripts/e2e/run.sh
 ```
 
 This command:

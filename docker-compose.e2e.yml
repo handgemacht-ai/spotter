@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile.e2e
     environment:
       MIX_ENV: dev
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}
+      SPOTTER_ANTHROPIC_API_KEY: ${SPOTTER_ANTHROPIC_API_KEY:?SPOTTER_ANTHROPIC_API_KEY is required}
       SPOTTER_E2E_FIXTURE_ROOT: /app/test/fixtures/transcripts
       TZ: UTC
       LANG: C.UTF-8

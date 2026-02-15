@@ -14,7 +14,7 @@ defmodule Spotter.Services.LlmCredentials do
   """
   @spec anthropic_api_key() :: {:ok, String.t()} | {:error, :missing_api_key}
   def anthropic_api_key do
-    case System.get_env("ANTHROPIC_API_KEY") do
+    case System.get_env("SPOTTER_ANTHROPIC_API_KEY") do
       nil -> {:error, :missing_api_key}
       key -> if String.trim(key) == "", do: {:error, :missing_api_key}, else: {:ok, key}
     end

@@ -2,7 +2,7 @@ services:
   spotter:
     image: ghcr.io/marot/spotter-live:${SPOTTER_IMAGE_TAG:-main}
     environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY must be set}
+      SPOTTER_ANTHROPIC_API_KEY: ${SPOTTER_ANTHROPIC_API_KEY:?SPOTTER_ANTHROPIC_API_KEY must be set}
       HOME: /home/spotter
       SPOTTER_SQLITE_DB: /var/lib/spotter/spotter.db
       SPOTTER_LIVE_REPO_DIR: /workspace/${SPOTTER_REPO_NAME}

@@ -45,11 +45,11 @@ defmodule Spotter.Application do
     env = Application.get_env(:spotter, :env, :prod)
 
     if env in [:dev, :prod] do
-      key = System.get_env("ANTHROPIC_API_KEY") || ""
+      key = System.get_env("SPOTTER_ANTHROPIC_API_KEY") || ""
 
       if String.trim(key) == "" do
         raise """
-        ANTHROPIC_API_KEY is required in #{env} environment.
+        SPOTTER_ANTHROPIC_API_KEY is required in #{env} environment.
 
         This key is needed for:
           - Waiting overlay summaries (Spotter.Services.WaitingSummary)
@@ -58,7 +58,7 @@ defmodule Spotter.Application do
 
         Export the key before starting the server:
 
-            export ANTHROPIC_API_KEY=sk-ant-...
+            export SPOTTER_ANTHROPIC_API_KEY=sk-ant-...
             mix phx.server
         """
       end

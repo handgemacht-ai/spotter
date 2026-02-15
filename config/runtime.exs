@@ -5,7 +5,7 @@ import Config
 # SPOTTER_SUMMARY_TOKEN_BUDGET - character budget for transcript slicing (default: 4000)
 # SPOTTER_WAITING_DELAY_SECONDS - delay before showing overlay (default: 300)
 # SPOTTER_OVERLAY_HEIGHT - tmux popup height in lines (default: 16)
-# ANTHROPIC_API_KEY - required for LLM-based summaries
+# SPOTTER_ANTHROPIC_API_KEY - required for LLM-based summaries
 #
 # Session distillation configuration
 # SPOTTER_SESSION_DISTILL_MODEL - LLM model for session distillation (default: claude-3-5-haiku-latest)

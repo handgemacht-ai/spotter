@@ -31,15 +31,15 @@ defmodule Spotter.Transcripts.Jobs.ComputePromptPatternsTest do
   setup do
     Application.put_env(:spotter, :prompt_pattern_agent_module, StubAgent)
 
-    prev_key = System.get_env("ANTHROPIC_API_KEY")
-    System.put_env("ANTHROPIC_API_KEY", "test-key-for-stub")
+    prev_key = System.get_env("SPOTTER_ANTHROPIC_API_KEY")
+    System.put_env("SPOTTER_ANTHROPIC_API_KEY", "test-key-for-stub")
 
     on_exit(fn ->
       Application.delete_env(:spotter, :prompt_pattern_agent_module)
 
       if prev_key,
-        do: System.put_env("ANTHROPIC_API_KEY", prev_key),
-        else: System.delete_env("ANTHROPIC_API_KEY")
+        do: System.put_env("SPOTTER_ANTHROPIC_API_KEY", prev_key),
+        else: System.delete_env("SPOTTER_ANTHROPIC_API_KEY")
     end)
   end
 
@@ -102,7 +102,7 @@ defmodule Spotter.Transcripts.Jobs.ComputePromptPatternsTest do
 
     test "missing API key marks run error without raising" do
       # Clear the API key set by setup so the worker hits the missing_api_key path
-      System.delete_env("ANTHROPIC_API_KEY")
+      System.delete_env("SPOTTER_ANTHROPIC_API_KEY")
 
       project = create_project()
       session = create_session(project)
