@@ -5,6 +5,8 @@ ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
 mkdir -p tmp/otel
+chmod 777 tmp/otel
+rm -f tmp/otel/spotter-traces.json
 
 docker compose -f docker-compose.otel.yml up -d
 
