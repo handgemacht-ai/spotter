@@ -465,16 +465,26 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
 
   defp extract_text_content(_), do: ""
 
+  # Batch-upsert session rework records. All writes go through chunked bulk_create
+  # to avoid per-item DB roundtrips under bursty transcript ingestion.
+  defp create_session_reworks!(_session, %{messages: []}), do: :ok
+
   defp create_session_reworks!(session, parsed) do
     rework_records =
       JsonlParser.extract_session_rework_records(parsed.messages, session_cwd: parsed.cwd)
 
-    rework_records
-    |> Enum.map(&Map.put(&1, :session_id, session.id))
-    |> Enum.chunk_every(@batch_size)
-    |> Enum.each(fn batch ->
-      Ash.bulk_create!(batch, Spotter.Transcripts.SessionRework, :upsert)
-    end)
+    if rework_records == [] do
+      :ok
+    else
+      rework_records
+      |> Enum.map(&Map.put(&1, :session_id, session.id))
+      |> Enum.chunk_every(@batch_size)
+      |> Enum.each(fn batch ->
+        Ash.bulk_create!(batch, Spotter.Transcripts.SessionRework, :upsert,
+          return_records?: false
+        )
+      end)
+    end
   end
 
   defp sync_subagents(session, dir, session_id, subagent_type_by_agent_id)

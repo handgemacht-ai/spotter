@@ -75,6 +75,76 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscriptsTest do
       assert length(persisted) == 2
     end
 
+    test "empty rework records cause zero DB writes", %{session: session} do
+      # No file modifications at all
+      messages = [
+        %{
+          uuid: "msg-system",
+          type: :system,
+          role: nil,
+          timestamp: ~U[2026-02-12 10:00:00Z],
+          content: nil
+        }
+      ]
+
+      persist_rework!(session, messages)
+
+      persisted =
+        SessionRework
+        |> Ash.Query.filter(session_id == ^session.id)
+        |> Ash.read!()
+
+      assert persisted == []
+    end
+
+    test "records spanning multiple batch chunks are persisted correctly", %{session: session} do
+      # Generate enough rework records to require >1 batch chunk (batch_size = 500)
+      # We need N+1 writes to file X to get N rework records. 502 reworks -> 503 writes.
+      file_path = "/home/user/project/lib/big.ex"
+
+      messages =
+        for i <- 1..503, reduce: [] do
+          acc ->
+            tu_id = "tu-#{String.pad_leading(Integer.to_string(i), 4, "0")}"
+
+            acc ++
+              [
+                assistant_write(tu_id, file_path),
+                tool_result(tu_id, false)
+              ]
+        end
+
+      persist_rework!(session, messages)
+
+      persisted =
+        SessionRework
+        |> Ash.Query.filter(session_id == ^session.id)
+        |> Ash.read!()
+
+      # 503 writes to same file -> 502 rework records (first write is not rework)
+      assert length(persisted) == 502
+    end
+
+    test "preserves session_id, tool_use_id, and parsed fields", %{session: session} do
+      messages = build_rework_messages()
+
+      persist_rework!(session, messages)
+
+      persisted =
+        SessionRework
+        |> Ash.Query.filter(session_id == ^session.id)
+        |> Ash.Query.sort(occurrence_index: :asc)
+        |> Ash.read!()
+
+      first = Enum.at(persisted, 0)
+      assert first.session_id == session.id
+      assert first.tool_use_id == "tu-2"
+      assert first.file_path == "/home/user/project/lib/foo.ex"
+      assert first.relative_path == "lib/foo.ex"
+      assert first.first_tool_use_id == "tu-1"
+      assert first.detection_source == :transcript_sync
+    end
+
     test "failed tool results do not produce rework records", %{session: session} do
       messages = [
         assistant_write("tu-1", "/home/user/project/lib/foo.ex"),
@@ -440,14 +510,18 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscriptsTest do
     end
   end
 
+  # Mirrors the production batch-upsert path in create_session_reworks!/2
   defp persist_rework!(session, messages) do
     rework_records =
       JsonlParser.extract_session_rework_records(messages,
         session_cwd: session.cwd
       )
 
-    Enum.each(rework_records, fn record ->
-      Ash.create!(SessionRework, Map.put(record, :session_id, session.id), action: :upsert)
+    rework_records
+    |> Enum.map(&Map.put(&1, :session_id, session.id))
+    |> Enum.chunk_every(500)
+    |> Enum.each(fn batch ->
+      Ash.bulk_create!(batch, SessionRework, :upsert, return_records?: false)
     end)
   end
 
