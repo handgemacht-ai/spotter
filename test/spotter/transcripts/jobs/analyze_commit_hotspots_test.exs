@@ -1,8 +1,5 @@
 defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspotsTest do
   use ExUnit.Case, async: false
-  # Quarantined: flaky DBConnection.OwnershipError and timeouts in CI/hooks
-  # See spotter-y6o for follow-up fix
-  @moduletag :flaky
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Spotter.Repo
@@ -13,6 +10,8 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspotsTest do
 
   setup do
     Sandbox.checkout(Repo)
+    Sandbox.mode(Repo, {:shared, self()})
+    :ok
   end
 
   describe "perform/1 with missing repo path" do
