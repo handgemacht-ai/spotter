@@ -425,7 +425,7 @@ defmodule SpotterWeb.SessionLiveTest do
   end
 
   describe "hook_progress rendering" do
-    test "renders hook_progress row with is-hook-progress class", %{
+    test "renders hook_group summary and hook_progress detail rows", %{
       session: session,
       session_id: session_id
     } do
@@ -446,8 +446,10 @@ defmodule SpotterWeb.SessionLiveTest do
 
       {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}")
 
-      assert html =~ "is-hook-progress"
-      assert html =~ "hook PostToolUse lint-check: mix credo"
+      assert html =~ "is-hook-group"
+      assert html =~ "hooks PostToolUse lint-check (1)"
+      # Detail rows are hidden by default (hidden_by_default: true)
+      refute html =~ "hook PostToolUse lint-check: mix credo"
     end
   end
 

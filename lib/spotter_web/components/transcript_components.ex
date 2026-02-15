@@ -14,7 +14,8 @@ defmodule SpotterWeb.TranscriptComponents do
 
     * `:rendered_lines` (required) - list of visible line maps from TranscriptRenderer
     * `:all_rendered_lines` - full list including hidden lines, for expand controls (default same as rendered_lines)
-    * `:expanded_tool_groups` - MapSet of expanded group keys (default empty)
+    * `:expanded_tool_groups` - MapSet of expanded tool result group keys (default empty)
+    * `:expanded_hook_groups` - MapSet of expanded hook group keys (default empty)
     * `:current_message_id` - message ID to highlight as active (default `nil`)
     * `:clicked_subagent` - currently clicked subagent ref (default `nil`)
     * `:show_debug` - whether debug sidecar is visible (default `false`)
@@ -25,6 +26,7 @@ defmodule SpotterWeb.TranscriptComponents do
   attr(:rendered_lines, :list, required: true)
   attr(:all_rendered_lines, :list, default: nil)
   attr(:expanded_tool_groups, :any, default: nil)
+  attr(:expanded_hook_groups, :any, default: nil)
   attr(:current_message_id, :any, default: nil)
   attr(:clicked_subagent, :string, default: nil)
   attr(:show_debug, :boolean, default: false)
@@ -35,10 +37,12 @@ defmodule SpotterWeb.TranscriptComponents do
   def transcript_panel(assigns) do
     all_lines = assigns.all_rendered_lines || assigns.rendered_lines
     expanded = assigns.expanded_tool_groups || MapSet.new()
+    expanded_hooks = assigns.expanded_hook_groups || MapSet.new()
 
     assigns =
       assigns
       |> assign(:expand_groups, compute_expand_groups(all_lines, expanded))
+      |> assign(:hook_expand_groups, compute_hook_expand_groups(all_lines, expanded_hooks))
 
     ~H"""
     <%= if @rendered_lines != [] do %>
@@ -65,6 +69,10 @@ defmodule SpotterWeb.TranscriptComponents do
           <.expand_control
             :if={expand_control_for(line, @expand_groups)}
             group_info={expand_control_for(line, @expand_groups)}
+          />
+          <.expand_control
+            :if={hook_expand_control_for(line, @hook_expand_groups)}
+            group_info={hook_expand_control_for(line, @hook_expand_groups)}
           />
         <% end %>
       </div>
@@ -229,7 +237,14 @@ defmodule SpotterWeb.TranscriptComponents do
   defp format_token_delta(delta) when delta > 0, do: " (+#{delta})"
   defp format_token_delta(delta), do: " (#{delta})"
 
+  defp expand_button_text(%{is_expanded: true, event: "transcript_view_toggle_hook_group"}),
+    do: "Hide hooks"
+
   defp expand_button_text(%{is_expanded: true}), do: "Show less"
+
+  defp expand_button_text(%{event: "transcript_view_toggle_hook_group", hidden_count: count}) do
+    "Show #{count} hooks"
+  end
 
   defp expand_button_text(%{hidden_count: count}) do
     "Show #{count} more lines"
@@ -262,7 +277,9 @@ defmodule SpotterWeb.TranscriptComponents do
     ask_user_answer: ["is-ask-user-answer"],
     plan_content: ["is-plan-content"],
     plan_decision: ["is-plan-decision"],
-    hook_progress: ["is-hook-progress"]
+    hook_progress: ["is-hook-progress"],
+    hook_group: ["is-hook-group"],
+    hook_output: ["is-hook-output"]
   }
 
   defp kind_classes(%{kind: :tool_use} = line) do
@@ -288,6 +305,36 @@ defmodule SpotterWeb.TranscriptComponents do
   defp markdown_line?(line) do
     line[:render_mode] == :plain and line[:kind] in [:text, :thinking]
   end
+
+  # ── Hook group expand computation ──────────────────────────────────
+
+  defp compute_hook_expand_groups(all_lines, expanded_hooks) do
+    all_lines
+    |> Enum.filter(&(&1[:kind] == :hook_group))
+    |> Map.new(fn summary ->
+      group_key = summary.hook_group
+      is_expanded = MapSet.member?(expanded_hooks, group_key)
+
+      detail_count =
+        Enum.count(all_lines, fn line ->
+          line[:hook_group] == group_key and line[:kind] != :hook_group
+        end)
+
+      {group_key,
+       %{
+         group: group_key,
+         hidden_count: detail_count,
+         is_expanded: is_expanded,
+         event: "transcript_view_toggle_hook_group"
+       }}
+    end)
+  end
+
+  defp hook_expand_control_for(%{kind: :hook_group} = line, hook_expand_groups) do
+    Map.get(hook_expand_groups, line[:hook_group])
+  end
+
+  defp hook_expand_control_for(_line, _hook_expand_groups), do: nil
 
   defp anchor_color(:tool_use), do: "var(--accent-amber)"
   defp anchor_color(:user), do: "var(--accent-blue)"

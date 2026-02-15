@@ -115,6 +115,10 @@ defmodule SpotterWeb.FileDetailLive do
     {:noreply, socket}
   end
 
+  def handle_event("transcript_view_toggle_hook_group", _params, socket) do
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_info({:annotation_explain_delta, id, chunk}, socket) do
     streams = socket.assigns.explain_streams

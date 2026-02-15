@@ -33,6 +33,10 @@ defmodule SpotterWeb.CommitDetailLive do
     {:noreply, socket}
   end
 
+  def handle_event("transcript_view_toggle_hook_group", _params, socket) do
+    {:noreply, socket}
+  end
+
   defp session_label(session) do
     SessionPresenter.primary_label(session)
   end

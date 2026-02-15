@@ -79,6 +79,7 @@ defmodule Spotter.Services.TranscriptRenderer do
       end)
     end)
     |> annotate_tool_result_groups()
+    |> collapse_hook_progress_groups()
     |> annotate_token_deltas()
     |> annotate_timestamp_deltas()
     |> Enum.with_index(1)
@@ -232,6 +233,107 @@ defmodule Spotter.Services.TranscriptRenderer do
       end)
 
     annotated
+  end
+
+  # ── Hook progress group collapsing ─────────────────────────────────
+
+  defp collapse_hook_progress_groups(lines) do
+    lines
+    |> chunk_hook_groups()
+    |> Enum.flat_map(fn
+      {:hook_group, group_lines} ->
+        emit_hook_group(group_lines)
+
+      {:other, other_lines} ->
+        other_lines
+    end)
+  end
+
+  # Chunks lines into tagged groups: {:hook_group, lines} or {:other, lines}
+  defp chunk_hook_groups(lines) do
+    Enum.chunk_while(lines, nil, &chunk_hook_step/2, &chunk_hook_flush/1)
+  end
+
+  defp chunk_hook_step(line, nil) do
+    {:cont, {hook_group_key(line), [line]}}
+  end
+
+  defp chunk_hook_step(line, {current_key, current_lines}) do
+    line_key = hook_group_key(line)
+
+    if current_key != nil and line_key == current_key do
+      {:cont, {current_key, current_lines ++ [line]}}
+    else
+      tag = if current_key, do: :hook_group, else: :other
+      {:cont, {tag, current_lines}, {line_key, [line]}}
+    end
+  end
+
+  defp chunk_hook_flush(nil), do: {:cont, []}
+
+  defp chunk_hook_flush({key, lines_acc}) do
+    tag = if key, do: :hook_group, else: :other
+    {:cont, {tag, lines_acc}, nil}
+  end
+
+  defp hook_group_key(%{kind: kind} = line) when kind in [:hook_progress, :hook_output] do
+    {line.tool_use_id, line[:hook_event], line[:hook_name]}
+  end
+
+  defp hook_group_key(_line), do: nil
+
+  defp emit_hook_group(group_lines) do
+    first = hd(group_lines)
+    count = Enum.count(group_lines, &(&1.kind == :hook_progress))
+
+    first_uuid =
+      case first[:debug_payload] do
+        %{uuid: uuid} when is_binary(uuid) -> uuid
+        _ -> "unknown"
+      end
+
+    tool_use_part = first.tool_use_id || "unthreaded"
+    hook_event = first[:hook_event] || "unknown"
+    hook_name = first[:hook_name] || "unknown"
+
+    group_key =
+      "hookgroup:#{tool_use_part}:#{hook_event}:#{hook_name}:#{first_uuid}"
+
+    summary = %{
+      line: "hooks #{hook_event} #{hook_name} (#{count})",
+      kind: :hook_group,
+      tool_use_id: first.tool_use_id,
+      thread_key: first.thread_key,
+      hook_group: group_key,
+      hook_detail?: false,
+      message_id: nil,
+      timestamp: first[:timestamp],
+      type: :progress,
+      code_language: nil,
+      render_mode: :plain,
+      source_line_number: nil,
+      tool_result_group: nil,
+      result_line_index: nil,
+      result_total_lines: nil,
+      hidden_by_default: false,
+      token_count_total: nil,
+      token_count_delta: nil,
+      subagent_ref: first[:subagent_ref],
+      debug_payload: nil,
+      timestamp_delta_seconds: nil,
+      timestamp_delta_slow?: nil,
+      tool_duration_seconds: nil,
+      tool_duration_slow?: nil
+    }
+
+    details =
+      Enum.map(group_lines, fn line ->
+        line
+        |> Map.put(:hook_group, group_key)
+        |> Map.put(:hidden_by_default, true)
+      end)
+
+    [summary | details]
   end
 
   # ── Debug payload ─────────────────────────────────────────────────
@@ -702,6 +804,8 @@ defmodule Spotter.Services.TranscriptRenderer do
 
   @hook_command_max_length 120
 
+  @hook_output_max_lines 20
+
   defp render_hook_progress(
          %{raw_payload: %{"data" => %{"type" => "hook_progress"} = data}} = msg
        ) do
@@ -716,20 +820,96 @@ defmodule Spotter.Services.TranscriptRenderer do
     command = data["command"] || ""
     truncated_command = truncate_preview(command, @hook_command_max_length)
 
-    [
-      %{
-        line: "hook #{hook_event} #{hook_name}: #{truncated_command}",
-        kind: :hook_progress,
-        tool_use_id: parent_tool_use_id,
-        thread_key: thread_key,
-        code_language: nil,
-        render_mode: :plain,
-        source_line_number: nil
-      }
-    ]
+    exit_code = data["exitCode"] || data["exit_code"]
+    stdout = data["stdout"]
+    stderr = data["stderr"]
+    duration_ms = data["durationMs"] || data["duration_ms"]
+
+    base = %{
+      tool_use_id: parent_tool_use_id,
+      thread_key: thread_key,
+      hook_event: hook_event,
+      hook_name: hook_name,
+      hook_group: nil,
+      hook_detail?: true
+    }
+
+    command_row = %{
+      line: "hook #{hook_event} #{hook_name}: #{truncated_command}",
+      kind: :hook_progress,
+      hook_command: command,
+      hook_exit_code: exit_code,
+      hook_stdout: stdout,
+      hook_stderr: stderr,
+      hook_duration_ms: duration_ms,
+      code_language: nil,
+      render_mode: :plain,
+      source_line_number: nil
+    }
+
+    output_rows =
+      hook_output_rows(exit_code, duration_ms, stdout, stderr)
+
+    [Map.merge(base, command_row) | Enum.map(output_rows, &Map.merge(base, &1))]
   end
 
   defp render_hook_progress(_msg), do: []
+
+  defp hook_output_rows(exit_code, duration_ms, stdout, stderr) do
+    exit_row =
+      if exit_code != nil,
+        do: [hook_output_line("↳ exit_code: #{exit_code}")],
+        else: []
+
+    duration_row =
+      if duration_ms != nil,
+        do: [hook_output_line("↳ duration_ms: #{duration_ms}")],
+        else: []
+
+    stdout_rows = hook_stream_rows("stdout", stdout)
+    stderr_rows = hook_stream_rows("stderr", stderr)
+
+    exit_row ++ duration_row ++ stdout_rows ++ stderr_rows
+  end
+
+  defp hook_stream_rows(_label, nil), do: []
+  defp hook_stream_rows(_label, ""), do: []
+
+  defp hook_stream_rows(label, text) do
+    lines = String.split(text, "\n")
+    truncated? = length(lines) > @hook_output_max_lines
+    visible = Enum.take(lines, @hook_output_max_lines)
+
+    header = [hook_output_line("↳ #{label}:")]
+
+    content =
+      Enum.map(visible, fn line ->
+        %{
+          line: line,
+          kind: :hook_output,
+          code_language: "plaintext",
+          render_mode: :code,
+          source_line_number: nil
+        }
+      end)
+
+    truncation =
+      if truncated?,
+        do: [hook_output_line("↳ #{label}: (truncated)")],
+        else: []
+
+    header ++ content ++ truncation
+  end
+
+  defp hook_output_line(text) do
+    %{
+      line: text,
+      kind: :hook_output,
+      code_language: nil,
+      render_mode: :plain,
+      source_line_number: nil
+    }
+  end
 
   defp non_empty_string(value) when is_binary(value) and value != "", do: value
   defp non_empty_string(_), do: nil

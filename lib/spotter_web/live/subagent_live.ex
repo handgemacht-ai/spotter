@@ -273,6 +273,7 @@ defmodule SpotterWeb.SubagentLive do
             rendered_lines={@transcript_view_visible_lines}
             all_rendered_lines={@transcript_view_rendered_lines}
             expanded_tool_groups={@transcript_view_expanded_tool_groups}
+            expanded_hook_groups={@transcript_view_expanded_hook_groups}
             show_debug={@transcript_view_show_debug}
             empty_message="No transcript available for this agent."
           />

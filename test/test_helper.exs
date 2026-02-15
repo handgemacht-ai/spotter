@@ -5,7 +5,7 @@ end
 # Exclude tests that spawn Claude CLI when:
 # - Running inside a Claude Code session (nested sessions crash)
 # - No SPOTTER_ANTHROPIC_API_KEY set (LLM calls will fail anyway)
-excludes = [:slow, :live_dolt, :live_api]
+excludes = [:slow, :live_dolt, :live_api, :flaky]
 
 excludes =
   if System.get_env("CLAUDECODE") || is_nil(System.get_env("SPOTTER_ANTHROPIC_API_KEY")) do

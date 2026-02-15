@@ -1169,13 +1169,36 @@ input::placeholder, textarea::placeholder {
   flex-shrink: 0;
 }
 
-/* Kind: hook_progress */
+/* Kind: hook_group (collapsible summary) */
+.transcript-row.is-hook-group {
+  background: var(--bg-secondary);
+  border-radius: 3px;
+}
+
+.transcript-row.is-hook-group .row-text {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* Kind: hook_progress (detail rows) */
 .transcript-row.is-hook-progress {
   opacity: 0.85;
+  padding-left: 1.5rem;
 }
 
 .transcript-row.is-hook-progress .row-text {
   color: var(--text-tertiary);
+}
+
+/* Kind: hook_output (stdout/stderr/exit code) */
+.transcript-row.is-hook-output {
+  opacity: 0.8;
+  padding-left: 2rem;
+}
+
+.transcript-row.is-hook-output .row-text {
+  color: var(--text-tertiary);
+  font-size: 0.85em;
 }
 
 .source-line-number {

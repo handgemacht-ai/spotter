@@ -26,6 +26,10 @@ defmodule SpotterWeb.Live.TranscriptComputers do
       initial MapSet.new()
     end
 
+    input :expanded_hook_groups do
+      initial MapSet.new()
+    end
+
     val :rendered_lines do
       compute(fn %{messages: messages, session_cwd: session_cwd} ->
         opts = if session_cwd, do: [session_cwd: session_cwd], else: []
@@ -36,27 +40,50 @@ defmodule SpotterWeb.Live.TranscriptComputers do
     end
 
     val :visible_lines do
-      compute(fn %{rendered_lines: rendered_lines, expanded_tool_groups: expanded} ->
+      compute(fn %{
+                   rendered_lines: rendered_lines,
+                   expanded_tool_groups: expanded_tools,
+                   expanded_hook_groups: expanded_hooks
+                 } ->
         Enum.reject(rendered_lines, fn line ->
-          line[:hidden_by_default] == true and
-            not MapSet.member?(expanded, line[:tool_result_group])
+          hidden_tool_result?(line, expanded_tools) or
+            hidden_hook_detail?(line, expanded_hooks)
         end)
       end)
 
-      depends_on([:rendered_lines, :expanded_tool_groups])
+      depends_on([:rendered_lines, :expanded_tool_groups, :expanded_hook_groups])
     end
 
     event :toggle_tool_result_group do
       handle(fn %{expanded_tool_groups: expanded}, %{"group" => group} ->
-        new_expanded =
-          if MapSet.member?(expanded, group) do
-            MapSet.delete(expanded, group)
-          else
-            MapSet.put(expanded, group)
-          end
-
-        %{expanded_tool_groups: new_expanded}
+        %{expanded_tool_groups: toggle_set(expanded, group)}
       end)
+    end
+
+    event :toggle_hook_group do
+      handle(fn %{expanded_hook_groups: expanded}, %{"group" => group} ->
+        %{expanded_hook_groups: toggle_set(expanded, group)}
+      end)
+    end
+  end
+
+  defp hidden_tool_result?(line, expanded) do
+    line[:hidden_by_default] == true and
+      line[:kind] == :tool_result and
+      not MapSet.member?(expanded, line[:tool_result_group])
+  end
+
+  defp hidden_hook_detail?(line, expanded) do
+    line[:hidden_by_default] == true and
+      is_binary(line[:hook_group]) and
+      not MapSet.member?(expanded, line[:hook_group])
+  end
+
+  defp toggle_set(set, value) do
+    if MapSet.member?(set, value) do
+      MapSet.delete(set, value)
+    else
+      MapSet.put(set, value)
     end
   end
 end

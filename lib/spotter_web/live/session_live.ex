@@ -642,6 +642,7 @@ defmodule SpotterWeb.SessionLive do
             rendered_lines={@transcript_view_visible_lines}
             all_rendered_lines={@transcript_view_rendered_lines}
             expanded_tool_groups={@transcript_view_expanded_tool_groups}
+            expanded_hook_groups={@transcript_view_expanded_hook_groups}
             current_message_id={@current_message_id}
             clicked_subagent={@clicked_subagent}
             show_debug={@transcript_view_show_debug}

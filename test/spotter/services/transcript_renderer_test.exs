@@ -2396,7 +2396,7 @@ defmodule Spotter.Services.TranscriptRendererTest do
   end
 
   describe "hook_progress rendering" do
-    test "hook_progress uses parentToolUseID for tool_use_id and thread_key" do
+    test "single hook_progress is wrapped in a group with summary + detail" do
       messages = [
         %{
           type: :progress,
@@ -2416,12 +2416,21 @@ defmodule Spotter.Services.TranscriptRendererTest do
       ]
 
       result = TranscriptRenderer.render(messages)
-      assert [hook_line] = result
+      assert [summary, detail] = result
 
-      assert hook_line.kind == :hook_progress
-      assert hook_line.tool_use_id == "toolu_parent"
-      assert hook_line.thread_key == "toolu_parent"
-      assert hook_line.line == "hook PostToolUse lint-check: mix credo"
+      assert summary.kind == :hook_group
+      assert summary.line == "hooks PostToolUse lint-check (1)"
+      assert summary.tool_use_id == "toolu_parent"
+      assert summary.thread_key == "toolu_parent"
+      assert summary.message_id == nil
+      assert summary.hidden_by_default == false
+
+      assert detail.kind == :hook_progress
+      assert detail.tool_use_id == "toolu_parent"
+      assert detail.thread_key == "toolu_parent"
+      assert detail.line == "hook PostToolUse lint-check: mix credo"
+      assert detail.hidden_by_default == true
+      assert detail.hook_group == summary.hook_group
     end
 
     test "hook_progress falls back to toolUseID when parentToolUseID is missing" do
@@ -2443,10 +2452,10 @@ defmodule Spotter.Services.TranscriptRendererTest do
       ]
 
       result = TranscriptRenderer.render(messages)
-      assert [hook_line] = result
+      assert [summary, _detail] = result
 
-      assert hook_line.tool_use_id == "toolu_only"
-      assert hook_line.thread_key == "toolu_only"
+      assert summary.tool_use_id == "toolu_only"
+      assert summary.thread_key == "toolu_only"
     end
 
     test "hook_progress with no tool IDs uses unthreaded fallback" do
@@ -2467,10 +2476,12 @@ defmodule Spotter.Services.TranscriptRendererTest do
       ]
 
       result = TranscriptRenderer.render(messages)
-      assert [hook_line] = result
+      assert [summary, detail] = result
 
-      assert hook_line.tool_use_id == nil
-      assert hook_line.thread_key == "hook-unthreaded"
+      assert summary.tool_use_id == nil
+      assert summary.thread_key == "hook-unthreaded"
+      assert detail.tool_use_id == nil
+      assert detail.thread_key == "hook-unthreaded"
     end
 
     test "non-hook progress messages are still skipped" do
@@ -2484,6 +2495,166 @@ defmodule Spotter.Services.TranscriptRendererTest do
       ]
 
       assert TranscriptRenderer.render(messages) == []
+    end
+
+    test "4 consecutive hook_progress messages are collapsed into one group" do
+      messages =
+        for i <- 1..4 do
+          %{
+            type: :progress,
+            uuid: "hook-uuid-#{i}",
+            content: nil,
+            raw_payload: %{
+              "parentToolUseID" => "toolu_bash_1",
+              "data" => %{
+                "type" => "hook_progress",
+                "hookEvent" => "PreToolUse",
+                "hookName" => "PreToolUse:Bash",
+                "command" => "echo step #{i}"
+              }
+            }
+          }
+        end
+
+      result = TranscriptRenderer.render(messages)
+      assert length(result) == 5
+
+      [summary | details] = result
+
+      assert summary.kind == :hook_group
+      assert summary.line == "hooks PreToolUse PreToolUse:Bash (4)"
+      assert summary.message_id == nil
+      assert summary.timestamp != nil or summary.timestamp == nil
+      assert summary.hook_group != nil
+
+      assert Enum.all?(details, &(&1.kind == :hook_progress))
+      assert Enum.all?(details, &(&1.hidden_by_default == true))
+      assert Enum.all?(details, &(&1.hook_group == summary.hook_group))
+
+      detail_lines = Enum.map(details, & &1.line)
+
+      assert detail_lines == [
+               "hook PreToolUse PreToolUse:Bash: echo step 1",
+               "hook PreToolUse PreToolUse:Bash: echo step 2",
+               "hook PreToolUse PreToolUse:Bash: echo step 3",
+               "hook PreToolUse PreToolUse:Bash: echo step 4"
+             ]
+    end
+
+    test "different hook events create separate groups" do
+      messages = [
+        %{
+          type: :progress,
+          uuid: "hook-1",
+          content: nil,
+          raw_payload: %{
+            "parentToolUseID" => "toolu_1",
+            "data" => %{
+              "type" => "hook_progress",
+              "hookEvent" => "PreToolUse",
+              "hookName" => "check",
+              "command" => "echo pre"
+            }
+          }
+        },
+        %{
+          type: :progress,
+          uuid: "hook-2",
+          content: nil,
+          raw_payload: %{
+            "parentToolUseID" => "toolu_1",
+            "data" => %{
+              "type" => "hook_progress",
+              "hookEvent" => "PostToolUse",
+              "hookName" => "check",
+              "command" => "echo post"
+            }
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      summaries = Enum.filter(result, &(&1.kind == :hook_group))
+      assert length(summaries) == 2
+
+      assert Enum.map(summaries, & &1.line) == [
+               "hooks PreToolUse check (1)",
+               "hooks PostToolUse check (1)"
+             ]
+    end
+
+    test "hook_progress with output fields renders hook_output rows" do
+      messages = [
+        %{
+          type: :progress,
+          uuid: "hook-with-output",
+          content: nil,
+          raw_payload: %{
+            "parentToolUseID" => "toolu_1",
+            "data" => %{
+              "type" => "hook_progress",
+              "hookEvent" => "PostToolUse",
+              "hookName" => "lint",
+              "command" => "mix credo",
+              "exitCode" => 1,
+              "stderr" => "line1\nline2",
+              "stdout" => "out1",
+              "durationMs" => 150
+            }
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+
+      summaries = Enum.filter(result, &(&1.kind == :hook_group))
+      assert [summary] = summaries
+      assert summary.line == "hooks PostToolUse lint (1)"
+
+      details = Enum.filter(result, &(&1.kind == :hook_progress))
+      assert [detail] = details
+      assert detail.hook_exit_code == 1
+      assert detail.hook_stderr == "line1\nline2"
+      assert detail.hook_stdout == "out1"
+      assert detail.hook_duration_ms == 150
+
+      outputs = Enum.filter(result, &(&1.kind == :hook_output))
+      output_lines = Enum.map(outputs, & &1.line)
+
+      assert "↳ exit_code: 1" in output_lines
+      assert "↳ duration_ms: 150" in output_lines
+      assert "↳ stdout:" in output_lines
+      assert "out1" in output_lines
+      assert "↳ stderr:" in output_lines
+      assert "line1" in output_lines
+      assert "line2" in output_lines
+
+      # All output rows share the same hook_group as the summary
+      assert Enum.all?(outputs, &(&1.hook_group == summary.hook_group))
+      assert Enum.all?(outputs, &(&1.hidden_by_default == true))
+    end
+
+    test "hook_progress without output fields renders no hook_output rows" do
+      messages = [
+        %{
+          type: :progress,
+          uuid: "hook-no-output",
+          content: nil,
+          raw_payload: %{
+            "parentToolUseID" => "toolu_1",
+            "data" => %{
+              "type" => "hook_progress",
+              "hookEvent" => "PreToolUse",
+              "hookName" => "check",
+              "command" => "echo hi"
+            }
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      outputs = Enum.filter(result, &(&1.kind == :hook_output))
+      assert outputs == []
     end
   end
 
