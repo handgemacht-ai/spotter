@@ -190,7 +190,7 @@ defmodule SpotterWeb.PaneListLive do
   @impl true
   def handle_params(params, _uri, socket) do
     pp_project_id = params["prompt_patterns_project_id"] || "all"
-    pp_timespan = params["prompt_patterns_timespan"] || "30"
+    pp_timespan = normalize_prompt_patterns_timespan(params["prompt_patterns_timespan"])
 
     socket =
       socket
@@ -209,10 +209,7 @@ defmodule SpotterWeb.PaneListLive do
         if scope == "project", do: socket.assigns.pp_project_id, else: nil
 
       timespan_days =
-        case socket.assigns.pp_timespan do
-          "all" -> nil
-          val -> String.to_integer(val)
-        end
+        parse_timespan_days(socket.assigns.pp_timespan)
 
       %{"scope" => scope, "project_id" => project_id, "timespan_days" => timespan_days}
       |> ComputePromptPatterns.new()
@@ -230,6 +227,8 @@ defmodule SpotterWeb.PaneListLive do
   end
 
   def handle_event("set_pp_timespan", %{"value" => value}, socket) do
+    value = normalize_prompt_patterns_timespan(value)
+
     {:noreply,
      push_patch(socket,
        to: pp_path(socket.assigns.pp_project_id, value)
@@ -464,17 +463,36 @@ defmodule SpotterWeb.PaneListLive do
     "/?prompt_patterns_project_id=#{project_id}&prompt_patterns_timespan=#{timespan}"
   end
 
+  defp normalize_prompt_patterns_timespan(nil), do: "30"
+
+  defp normalize_prompt_patterns_timespan(timespan) when is_binary(timespan) do
+    timespan
+    |> String.trim()
+    |> case do
+      "" -> "30"
+      "all" -> "all"
+      value -> value
+    end
+  end
+
+  defp parse_timespan_days("all"), do: nil
+
+  defp parse_timespan_days(timespan) when is_binary(timespan) do
+    case Integer.parse(timespan) do
+      {days, ""} -> days
+      _ -> 30
+    end
+  end
+
+  defp parse_timespan_days(_), do: 30
+
   defp load_latest_pp_run(socket) do
     scope = if socket.assigns.pp_project_id == "all", do: :global, else: :project
 
     project_id =
       if scope == :project, do: socket.assigns.pp_project_id, else: nil
 
-    timespan_days =
-      case socket.assigns.pp_timespan do
-        "all" -> nil
-        val -> String.to_integer(val)
-      end
+    timespan_days = parse_timespan_days(socket.assigns.pp_timespan)
 
     query =
       PromptPatternRun
@@ -1044,13 +1062,6 @@ defmodule SpotterWeb.PaneListLive do
         </div>
 
         <div class="filter-bar">
-          <button
-            phx-click="set_pp_project"
-            phx-value-id="all"
-            class={"filter-btn#{if @pp_project_id == "all", do: " is-active"}"}
-          >
-            All projects
-          </button>
           <button
             :for={project <- @session_data_projects}
             phx-click="set_pp_project"
