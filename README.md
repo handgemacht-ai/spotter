@@ -15,7 +15,7 @@ Run Spotter + Claude Code + tmux in Docker without cloning this repo.
 ### Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/marot/spotter/main/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/marot/spotter/refs/heads/main/install/install.sh | bash
 ```
 
 Ensure `~/.local/bin` is in your `PATH`.
