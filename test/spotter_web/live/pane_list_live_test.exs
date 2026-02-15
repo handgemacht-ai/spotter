@@ -128,11 +128,27 @@ defmodule SpotterWeb.PaneListLiveTest do
   end
 
   describe "study queue" do
-    test "always renders study queue with empty state when no items due", %{} do
+    test "renders study queue section", %{} do
       {:ok, _view, html} = live(build_conn(), "/")
 
       assert html =~ ~s(data-testid="study-queue")
-      assert html =~ "No items due today."
+      assert html =~ ~s(data-testid="study-queue-empty")
+    end
+
+    test "shows no-items guidance when project exists but no review items", %{} do
+      {:ok, _view, html} = live(build_conn(), "/")
+
+      assert html =~ "No review items yet"
+      assert html =~ "committing from a Claude Code session"
+      refute html =~ "sync"
+    end
+
+    test "empty state does not reference sync-all", %{} do
+      {:ok, _view, html} = live(build_conn(), "/")
+
+      refute html =~ "sync-to-populate"
+      refute html =~ "Sync all"
+      refute html =~ "sync all"
     end
   end
 end

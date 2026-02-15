@@ -52,6 +52,12 @@ defmodule SpotterWeb.PaneListLive do
       end)
     end
 
+    val :empty_context do
+      compute(fn %{study_project_id: project_id} ->
+        study_queue_empty_context(project_id)
+      end)
+    end
+
     event :set_study_scope do
       handle(fn _values, %{"scope" => scope} ->
         %{study_scope: scope}
@@ -542,6 +548,58 @@ defmodule SpotterWeb.PaneListLive do
     _ -> %{total: 0, messages: 0, hotspots: 0, high: 0, medium: 0, low: 0}
   end
 
+  defp study_queue_empty_context(project_id) do
+    projects =
+      try do
+        Spotter.Transcripts.Project |> Ash.read!()
+      rescue
+        _ -> []
+      end
+
+    if projects == [] do
+      :no_project
+    else
+      classify_review_items(project_id)
+    end
+  rescue
+    _ -> :no_due
+  end
+
+  defp classify_review_items(project_id) do
+    base =
+      if project_id,
+        do: ReviewItem |> Ash.Query.filter(project_id == ^project_id),
+        else: ReviewItem
+
+    all_items = Ash.read!(base)
+
+    case all_items do
+      [] -> :no_items
+      items -> classify_due_status(items)
+    end
+  end
+
+  defp classify_due_status(items) do
+    today = Date.utc_today()
+    suspended = Enum.count(items, &(not is_nil(&1.suspended_at)))
+    future_items = Enum.filter(items, &future_item?(&1, today))
+
+    cond do
+      suspended == length(items) -> :all_suspended
+      future_items != [] -> {:future_items, length(future_items), earliest_due(future_items)}
+      true -> :no_due
+    end
+  end
+
+  defp future_item?(%{suspended_at: nil, next_due_on: due}, today) when not is_nil(due),
+    do: Date.compare(due, today) == :gt
+
+  defp future_item?(_, _), do: false
+
+  defp earliest_due(items) do
+    items |> Enum.min_by(& &1.next_due_on, Date, fn -> nil end) |> then(&(&1 && &1.next_due_on))
+  end
+
   defp lookup_session_cwd(session_id) do
     case Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one() do
       {:ok, %Session{cwd: cwd}} when is_binary(cwd) -> cwd
@@ -743,7 +801,30 @@ defmodule SpotterWeb.PaneListLive do
         </div>
 
         <%= if @study_queue_due_counts.total == 0 do %>
-          <div class="empty-state" data-testid="study-queue-empty">No items due today.</div>
+          <div class="empty-state" data-testid="study-queue-empty">
+            <%= case @study_queue_empty_context do %>
+              <% :no_project -> %>
+                <p>No projects configured. Add a project in <a href="/settings/config">Settings</a> to start tracking sessions.</p>
+                <p class="text-muted text-sm">Review items are created from commits and hotspot analysis during Claude Code sessions.</p>
+              <% :no_items -> %>
+                <p>No review items yet. Items appear after committing from a Claude Code session.</p>
+                <p class="text-muted text-sm">
+                  The session end hook persists context, then commit hotspot analysis and flashcard review create study items.
+                </p>
+              <% :all_suspended -> %>
+                <p>All review items are suspended. Unsuspend items to resume studying.</p>
+              <% {:future_items, count, next_due} -> %>
+                <p>
+                  No items due today.
+                  {count} {if count == 1, do: "item", else: "items"} scheduled
+                  <%= if next_due do %>
+                    &mdash; next due {Calendar.strftime(next_due, "%b %d")}.
+                  <% end %>
+                </p>
+              <% _ -> %>
+                <p>No items due today.</p>
+            <% end %>
+          </div>
         <% else %>
           <div :for={entry <- @study_queue_due_items} class="study-card" data-testid="study-card">
             <div class="study-card-header">
