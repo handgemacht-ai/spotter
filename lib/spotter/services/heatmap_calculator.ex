@@ -3,15 +3,18 @@ defmodule Spotter.Services.HeatmapCalculator do
 
   require Logger
   require Ash.Query
+  require OpenTelemetry.Tracer
 
   alias Spotter.Services.GitLogReader
-  alias Spotter.Transcripts.{FileHeatmap, FileSnapshot, Session}
+  alias Spotter.Transcripts.{FileHeatmap, FileSnapshot, ProjectIngestState, Session}
 
   @binary_extensions ~w(.png .jpg .jpeg .gif .bmp .ico .svg .webp .woff .woff2 .ttf .eot .otf
     .pdf .zip .tar .gz .bz2 .7z .exe .dll .so .dylib .o .beam .ez .pyc .class .jar)
 
   @doc """
   Compute heatmap data for a project.
+
+  Automatically selects delta or full mode based on watermark state.
 
   Options:
     - :window_days - rolling window in days (default 30)
@@ -21,26 +24,288 @@ defmodule Spotter.Services.HeatmapCalculator do
   def compute(project_id, opts \\ []) do
     window_days = Keyword.get(opts, :window_days, 30)
     reference_date = Keyword.get(opts, :reference_date, DateTime.utc_now())
-    since = DateTime.add(reference_date, -window_days * 86_400, :second)
 
-    snapshot_data = load_snapshot_data(project_id, since)
-    git_data = load_git_data(project_id, window_days)
+    case load_ingest_state(project_id) do
+      {:ok, state} when not is_nil(state.heatmap_last_run_at) ->
+        maybe_delta(project_id, state, window_days, reference_date)
 
-    file_map = merge_data(snapshot_data, git_data)
+      _ ->
+        compute_full(project_id, window_days, reference_date, :no_watermark)
+    end
+  end
 
-    upsert_heatmaps(project_id, file_map, reference_date)
-    delete_stale_rows(project_id, file_map)
+  defp maybe_delta(project_id, state, window_days, reference_date) do
+    prev_ref = state.heatmap_last_run_at
+    age_seconds = DateTime.diff(reference_date, prev_ref, :second)
+    window_changed = state.heatmap_window_days != window_days
 
-    :ok
+    cond do
+      window_changed ->
+        compute_full(project_id, window_days, reference_date, :window_changed)
+
+      age_seconds > window_days * 86_400 ->
+        compute_full(project_id, window_days, reference_date, :watermark_too_old)
+
+      true ->
+        compute_delta(project_id, prev_ref, window_days, reference_date)
+    end
+  end
+
+  # --- Full compute ---
+
+  defp compute_full(project_id, window_days, reference_date, reason) do
+    OpenTelemetry.Tracer.with_span "heatmap.compute_full" do
+      OpenTelemetry.Tracer.set_attributes([
+        {"spotter.project_id", project_id},
+        {"spotter.window_days", window_days},
+        {"spotter.heatmap.mode", "full"},
+        {"spotter.heatmap.fallback_full", Atom.to_string(reason)}
+      ])
+
+      since = DateTime.add(reference_date, -window_days * 86_400, :second)
+
+      snapshot_data = load_snapshot_data(project_id, since)
+      git_data = load_git_data(project_id, since: since, until: reference_date)
+
+      file_map = merge_data(snapshot_data, git_data)
+
+      upsert_heatmaps(project_id, file_map, reference_date)
+      delete_stale_rows(project_id, file_map)
+      persist_watermark(project_id, reference_date, window_days)
+
+      :ok
+    end
+  end
+
+  # --- Delta compute ---
+
+  defp compute_delta(project_id, prev_ref, window_days, reference_date) do
+    OpenTelemetry.Tracer.with_span "heatmap.compute_delta" do
+      since = DateTime.add(reference_date, -window_days * 86_400, :second)
+      prev_since = DateTime.add(prev_ref, -window_days * 86_400, :second)
+
+      added_events = load_added_events(project_id, prev_ref, reference_date, since)
+      removed_events = load_removed_events(project_id, prev_since, since)
+
+      added_agg = aggregate_events(added_events)
+      removed_agg = aggregate_events(removed_events)
+
+      affected_paths =
+        MapSet.union(
+          MapSet.new(Map.keys(added_agg)),
+          MapSet.new(Map.keys(removed_agg))
+        )
+
+      OpenTelemetry.Tracer.set_attributes([
+        {"spotter.project_id", project_id},
+        {"spotter.window_days", window_days},
+        {"spotter.heatmap.mode", "delta"},
+        {"spotter.heatmap.added_paths_count", map_size(added_agg)},
+        {"spotter.heatmap.removed_paths_count", map_size(removed_agg)},
+        {"spotter.heatmap.affected_paths_count", MapSet.size(affected_paths)}
+      ])
+
+      repo_path = resolve_repo_path(project_id)
+
+      apply_delta(
+        project_id,
+        affected_paths,
+        added_agg,
+        removed_agg,
+        reference_date,
+        since,
+        repo_path
+      )
+
+      persist_watermark(project_id, reference_date, window_days)
+      :ok
+    end
+  end
+
+  defp load_added_events(project_id, prev_ref, reference_date, _since) do
+    snap_events = load_snapshot_events(project_id, prev_ref, reference_date)
+    git_events = load_git_events(project_id, prev_ref, reference_date)
+    snap_events ++ git_events
+  end
+
+  defp load_removed_events(project_id, prev_since, since) do
+    snap_events = load_snapshot_events(project_id, prev_since, since)
+    git_events = load_git_events(project_id, prev_since, since)
+    snap_events ++ git_events
+  end
+
+  defp load_snapshot_events(project_id, from, to) do
+    session_ids = load_session_ids(project_id)
+
+    if session_ids == [] do
+      []
+    else
+      FileSnapshot
+      |> Ash.Query.filter(session_id in ^session_ids and timestamp > ^from and timestamp <= ^to)
+      |> Ash.read!()
+      |> Enum.map(fn snap ->
+        path = snap.relative_path || snap.file_path
+        {path, snap.timestamp}
+      end)
+      |> Enum.reject(fn {path, _} -> binary_file?(path) end)
+    end
+  end
+
+  defp load_git_events(project_id, from, to) do
+    case resolve_repo_path(project_id) do
+      {:ok, repo_path} ->
+        fetch_and_filter_git_events(repo_path, from, to)
+
+      :skip ->
+        []
+    end
+  end
+
+  defp fetch_and_filter_git_events(repo_path, from, to) do
+    case GitLogReader.changed_files_by_commit(repo_path, since: from, until: to) do
+      {:ok, commits} ->
+        commits
+        |> commits_to_file_events()
+        |> Enum.filter(fn {path, ts} ->
+          not binary_file?(path) and
+            DateTime.compare(ts, from) == :gt and DateTime.compare(ts, to) != :gt
+        end)
+
+      {:error, _} ->
+        []
+    end
+  end
+
+  defp commits_to_file_events(commits) do
+    Enum.flat_map(commits, fn c ->
+      Enum.map(c.files, fn f -> {f, c.timestamp} end)
+    end)
+  end
+
+  defp aggregate_events(events) do
+    events
+    |> Enum.group_by(fn {path, _} -> path end, fn {_, ts} -> ts end)
+    |> Map.new(fn {path, timestamps} ->
+      {path, %{count: length(timestamps), max_ts: Enum.max(timestamps, DateTime)}}
+    end)
+  end
+
+  defp apply_delta(project_id, affected_paths, added, removed, ref_date, since, repo_path) do
+    existing_rows = load_existing_rows(project_id, affected_paths)
+    ctx = %{project_id: project_id, repo_path: repo_path, since: since, ref_date: ref_date}
+
+    Enum.each(affected_paths, fn path ->
+      existing = Map.get(existing_rows, path)
+      added_data = Map.get(added, path, %{count: 0, max_ts: nil})
+      removed_data = Map.get(removed, path, %{count: 0, max_ts: nil})
+
+      old_count = if existing, do: existing.change_count_30d, else: 0
+      new_count = old_count + added_data.count - removed_data.count
+
+      apply_delta_for_path(ctx, path, existing, new_count, added_data, removed_data)
+    end)
+  end
+
+  defp apply_delta_for_path(_ctx, _path, existing, new_count, _, _) when new_count <= 0 do
+    if existing, do: Ash.destroy!(existing)
+  end
+
+  defp apply_delta_for_path(ctx, path, existing, new_count, added_data, removed_data) do
+    last_changed =
+      resolve_last_changed(
+        existing,
+        added_data,
+        removed_data,
+        ctx.repo_path,
+        path,
+        ctx.since,
+        ctx.ref_date
+      )
+
+    heat_score = calculate_heat_score(new_count, last_changed, ctx.ref_date)
+
+    Ash.create!(FileHeatmap, %{
+      project_id: ctx.project_id,
+      relative_path: path,
+      change_count_30d: new_count,
+      heat_score: heat_score,
+      last_changed_at: last_changed
+    })
+  end
+
+  defp resolve_last_changed(existing, added_data, removed_data, repo_path, path, since, ref_date) do
+    old_max = if existing, do: existing.last_changed_at
+    added_max = added_data.max_ts
+    removed_max = removed_data.max_ts
+
+    candidates = Enum.reject([old_max, added_max], &is_nil/1)
+    new_max = if candidates != [], do: Enum.max(candidates, DateTime)
+
+    needs_recompute =
+      removed_max != nil and old_max != nil and
+        DateTime.compare(removed_max, old_max) != :lt
+
+    if needs_recompute do
+      recompute_last_changed(repo_path, path, since, ref_date, new_max)
+    else
+      new_max || old_max
+    end
+  end
+
+  defp recompute_last_changed(repo_path, path, since, ref_date, fallback) do
+    case repo_path do
+      {:ok, rp} ->
+        case GitLogReader.last_file_touch(rp, path, since: since, until: ref_date) do
+          {:ok, ts} -> ts
+          _ -> fallback
+        end
+
+      :skip ->
+        fallback
+    end
+  end
+
+  defp load_existing_rows(project_id, affected_paths) do
+    path_list = MapSet.to_list(affected_paths)
+
+    if path_list == [] do
+      %{}
+    else
+      FileHeatmap
+      |> Ash.Query.filter(project_id == ^project_id and relative_path in ^path_list)
+      |> Ash.read!()
+      |> Map.new(fn row -> {row.relative_path, row} end)
+    end
+  end
+
+  # --- Shared helpers ---
+
+  defp load_ingest_state(project_id) do
+    case ProjectIngestState
+         |> Ash.Query.filter(project_id == ^project_id)
+         |> Ash.read!() do
+      [state] -> {:ok, state}
+      [] -> :none
+    end
+  end
+
+  defp persist_watermark(project_id, reference_date, window_days) do
+    Ash.create!(ProjectIngestState, %{
+      project_id: project_id,
+      heatmap_last_run_at: reference_date,
+      heatmap_window_days: window_days
+    })
+  end
+
+  defp load_session_ids(project_id) do
+    Session
+    |> Ash.Query.filter(project_id == ^project_id)
+    |> Ash.read!()
+    |> Enum.map(& &1.id)
   end
 
   defp load_snapshot_data(project_id, since) do
-    sessions =
-      Session
-      |> Ash.Query.filter(project_id == ^project_id)
-      |> Ash.read!()
-
-    session_ids = Enum.map(sessions, & &1.id)
+    session_ids = load_session_ids(project_id)
 
     if session_ids == [] do
       []
@@ -51,10 +316,10 @@ defmodule Spotter.Services.HeatmapCalculator do
     end
   end
 
-  defp load_git_data(project_id, window_days) do
+  defp load_git_data(project_id, opts) do
     case resolve_repo_path(project_id) do
       {:ok, repo_path} ->
-        case GitLogReader.changed_files_by_commit(repo_path, since_days: window_days) do
+        case GitLogReader.changed_files_by_commit(repo_path, opts) do
           {:ok, commits} -> commits
           {:error, _} -> []
         end

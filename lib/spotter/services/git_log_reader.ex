@@ -217,6 +217,56 @@ defmodule Spotter.Services.GitLogReader do
     end
   end
 
+  @doc """
+  Returns the most recent commit timestamp for a specific file within a time range.
+
+  Returns `{:ok, DateTime.t()}` if a commit was found, `:none` if no commit
+  touches the file in the range, or `{:error, term()}` on failure.
+  """
+  @spec last_file_touch(String.t(), String.t(), keyword()) ::
+          {:ok, DateTime.t()} | :none | {:error, term()}
+  def last_file_touch(repo_path, path, opts) do
+    since = Keyword.fetch!(opts, :since)
+    until_dt = Keyword.fetch!(opts, :until)
+
+    with {:ok, branch} <- resolve_branch(repo_path, Keyword.get(opts, :branch)),
+         {:ok, output} <- run_last_file_touch(repo_path, branch, path, since, until_dt) do
+      parse_single_timestamp(output)
+    end
+  end
+
+  defp run_last_file_touch(repo_path, branch, path, since, until_dt) do
+    args = [
+      "-C",
+      repo_path,
+      "log",
+      "-n",
+      "1",
+      "--format=%ct",
+      "--since=#{DateTime.to_iso8601(since)}",
+      "--until=#{DateTime.to_iso8601(until_dt)}",
+      branch,
+      "--",
+      path
+    ]
+
+    case System.cmd("git", args, stderr_to_stdout: true) do
+      {output, 0} ->
+        {:ok, output}
+
+      {error, _} ->
+        Logger.warning("GitLogReader: last_file_touch failed: #{String.slice(error, 0, 200)}")
+        {:error, :git_log_failed}
+    end
+  end
+
+  defp parse_single_timestamp(output) do
+    case output |> String.trim() |> Integer.parse() do
+      {unix, _} -> {:ok, DateTime.from_unix!(unix)}
+      :error -> :none
+    end
+  end
+
   defp drop_ignored(commits, ignored) do
     Enum.map(commits, fn commit ->
       %{commit | files: Enum.reject(commit.files, &MapSet.member?(ignored, &1))}
