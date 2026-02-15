@@ -139,6 +139,34 @@ defmodule Spotter.Config.RuntimeTest do
     end
   end
 
+  describe "prompt_patterns_sessions_per_run/0" do
+    test "DB override beats env and default" do
+      Ash.create!(Setting, %{key: "prompt_patterns_sessions_per_run", value: "5"})
+
+      assert {5, :db} = Runtime.prompt_patterns_sessions_per_run()
+    end
+
+    test "env beats default when DB absent" do
+      System.put_env("SPOTTER_PROMPT_PATTERNS_SESSIONS_PER_RUN", "20")
+      on_exit(fn -> System.delete_env("SPOTTER_PROMPT_PATTERNS_SESSIONS_PER_RUN") end)
+
+      assert {20, :env} = Runtime.prompt_patterns_sessions_per_run()
+    end
+
+    test "falls back to default" do
+      System.delete_env("SPOTTER_PROMPT_PATTERNS_SESSIONS_PER_RUN")
+
+      assert {10, :default} = Runtime.prompt_patterns_sessions_per_run()
+    end
+
+    test "invalid env value falls back to default" do
+      System.put_env("SPOTTER_PROMPT_PATTERNS_SESSIONS_PER_RUN", "abc")
+      on_exit(fn -> System.delete_env("SPOTTER_PROMPT_PATTERNS_SESSIONS_PER_RUN") end)
+
+      assert {10, :env} = Runtime.prompt_patterns_sessions_per_run()
+    end
+  end
+
   describe "prompt_patterns_model/0" do
     test "DB override beats env and default" do
       Ash.create!(Setting, %{key: "prompt_patterns_model", value: "claude-opus-4"})

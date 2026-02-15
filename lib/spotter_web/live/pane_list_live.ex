@@ -17,7 +17,7 @@ defmodule SpotterWeb.PaneListLive do
     ToolCall
   }
 
-  alias Spotter.Services.Tmux
+  alias Spotter.Services.{PromptPatternScheduler, Tmux}
 
   alias Spotter.Transcripts.Jobs.{
     ComputePromptPatterns,
@@ -149,7 +149,13 @@ defmodule SpotterWeb.PaneListLive do
       |> assign(hidden_expanded: %{})
       |> assign(expanded_subagents: %{})
       |> assign(subagents_by_session: %{})
-      |> assign(pp_project_id: "all", pp_timespan: "30", pp_run: nil, pp_patterns: [])
+      |> assign(
+        pp_project_id: "all",
+        pp_timespan: "30",
+        pp_run: nil,
+        pp_patterns: [],
+        pp_progress: %{remaining: 0, cadence: 10, latest_status: nil}
+      )
       |> mount_computers()
       |> load_session_data()
 
@@ -434,6 +440,8 @@ defmodule SpotterWeb.PaneListLive do
         query
       end
 
+    progress = PromptPatternScheduler.run_progress_for_ui()
+
     case Ash.read(query) do
       {:ok, [run]} ->
         patterns =
@@ -442,10 +450,10 @@ defmodule SpotterWeb.PaneListLive do
           |> Ash.Query.sort(count_total: :desc)
           |> Ash.read!()
 
-        assign(socket, pp_run: run, pp_patterns: patterns)
+        assign(socket, pp_run: run, pp_patterns: patterns, pp_progress: progress)
 
       _ ->
-        assign(socket, pp_run: nil, pp_patterns: [])
+        assign(socket, pp_run: nil, pp_patterns: [], pp_progress: progress)
     end
   end
 
@@ -838,8 +846,19 @@ defmodule SpotterWeb.PaneListLive do
 
         <%= cond do %>
           <% is_nil(@pp_run) -> %>
-            <div class="empty-state">
-              No prompt pattern analysis yet. Click Analyze patterns.
+            <div class="empty-state" data-testid="pp-empty-state">
+              <%= if @pp_progress.remaining == 0 do %>
+                <p>Automatic analysis is ready to start. Click <strong>Analyze patterns</strong> to run now.</p>
+              <% else %>
+                <p>
+                  No prompt pattern analysis yet.
+                  <span data-testid="pp-remaining-count">{@pp_progress.remaining}</span>
+                  more completed
+                  {if @pp_progress.remaining == 1, do: "session", else: "sessions"}
+                  until automatic analysis (every {@pp_progress.cadence} sessions).
+                </p>
+                <p class="text-muted text-sm">Or click <strong>Analyze patterns</strong> to run now.</p>
+              <% end %>
             </div>
           <% @pp_run.status in [:queued, :running] -> %>
             <div class="empty-state">Analyzing...</div>

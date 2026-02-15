@@ -72,6 +72,26 @@ defmodule SpotterWeb.ConfigLiveTest do
     end
   end
 
+  describe "prompt_patterns_sessions_per_run" do
+    test "form renders with default value" do
+      {:ok, _view, html} = live(build_conn(), "/settings/config")
+
+      assert html =~ "prompt_patterns_sessions_per_run"
+    end
+
+    test "invalid value keeps prior value" do
+      {:ok, view, _html} = live(build_conn(), "/settings/config")
+
+      view
+      |> element(~s(form[phx-submit="save_prompt_patterns_sessions_per_run"]))
+      |> render_submit(%{"value" => "not-a-number"})
+
+      html = render(view)
+      # Default value should still be shown
+      assert html =~ "10"
+    end
+  end
+
   describe "validation (client-side)" do
     test "invalid budget does not change the displayed value" do
       {:ok, view, _html} = live(build_conn(), "/settings/config")

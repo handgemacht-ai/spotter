@@ -33,10 +33,30 @@ defmodule SpotterWeb.PaneListPromptPatternsTest do
       assert html =~ ~s(data-testid="analyze-patterns-btn")
     end
 
-    test "shows empty state when no runs exist" do
+    test "shows empty state with remaining session count when no runs exist" do
       {:ok, _view, html} = live(build_conn(), "/")
 
       assert html =~ "No prompt pattern analysis yet"
+      assert html =~ ~s(data-testid="pp-remaining-count")
+      assert html =~ "more completed"
+      assert html =~ "Analyze patterns"
+    end
+
+    test "shows ready-to-start message when threshold is met", ctx do
+      Ash.create!(Spotter.Config.Setting, %{
+        key: "prompt_patterns_sessions_per_run",
+        value: "1"
+      })
+
+      Ash.create!(Session, %{
+        session_id: Ash.UUID.generate(),
+        project_id: ctx.project.id,
+        hook_ended_at: DateTime.utc_now()
+      })
+
+      {:ok, _view, html} = live(build_conn(), "/")
+
+      assert html =~ "ready to start"
     end
 
     test "clicking Analyze patterns enqueues an Oban job" do

@@ -89,6 +89,31 @@ defmodule SpotterWeb.ConfigLive do
     end
   end
 
+  def handle_event("save_prompt_patterns_sessions_per_run", %{"value" => raw}, socket) do
+    Tracer.with_span "spotter.config_live.save_setting" do
+      Tracer.set_attribute("config.key", "prompt_patterns_sessions_per_run")
+
+      case parse_positive_integer(raw) do
+        {:ok, _int} ->
+          case upsert_setting("prompt_patterns_sessions_per_run", String.trim(raw)) do
+            {:ok, _} ->
+              {:noreply,
+               socket
+               |> put_flash(:info, "Saved prompt_patterns_sessions_per_run")
+               |> load_all()}
+
+            {:error, reason} ->
+              Tracer.set_status(:error, "ash_error")
+              {:noreply, put_flash(socket, :error, "Failed to save: #{inspect(reason)}")}
+          end
+
+        :error ->
+          Tracer.set_status(:error, "validation_error")
+          {:noreply, put_flash(socket, :error, "Sessions per run must be a positive integer")}
+      end
+    end
+  end
+
   def handle_event("save_prompt_patterns_max_prompts_per_run", %{"value" => raw}, socket) do
     Tracer.with_span "spotter.config_live.save_setting" do
       Tracer.set_attribute("config.key", "prompt_patterns_max_prompts_per_run")
@@ -241,6 +266,9 @@ defmodule SpotterWeb.ConfigLive do
     {prompt_patterns_max_prompt_chars, prompt_patterns_max_prompt_chars_source} =
       Runtime.prompt_patterns_max_prompt_chars()
 
+    {prompt_patterns_sessions_per_run, prompt_patterns_sessions_per_run_source} =
+      Runtime.prompt_patterns_sessions_per_run()
+
     {prompt_patterns_model, prompt_patterns_model_source} = Runtime.prompt_patterns_model()
 
     {prompt_pattern_system_prompt, prompt_pattern_system_prompt_source} =
@@ -283,6 +311,8 @@ defmodule SpotterWeb.ConfigLive do
       prompt_patterns_max_prompts_per_run_source: prompt_patterns_max_prompts_per_run_source,
       prompt_patterns_max_prompt_chars: prompt_patterns_max_prompt_chars,
       prompt_patterns_max_prompt_chars_source: prompt_patterns_max_prompt_chars_source,
+      prompt_patterns_sessions_per_run: prompt_patterns_sessions_per_run,
+      prompt_patterns_sessions_per_run_source: prompt_patterns_sessions_per_run_source,
       prompt_patterns_model: prompt_patterns_model,
       prompt_patterns_model_source: prompt_patterns_model_source,
       prompt_pattern_system_prompt: prompt_pattern_system_prompt,
@@ -445,6 +475,23 @@ defmodule SpotterWeb.ConfigLive do
           <form phx-submit="save_setting" class="config-inline-form">
             <input type="hidden" name="key" value="prompt_patterns_model" />
             <input type="text" name="value" value={@prompt_patterns_model} class="config-input" />
+            <button type="submit" class="btn btn-sm">Save</button>
+          </form>
+        </div>
+
+        <div class="config-row">
+          <div class="config-label-group">
+            <label class="config-label">prompt_patterns_sessions_per_run</label>
+            <span class="config-source">{source_label(@prompt_patterns_sessions_per_run_source)}</span>
+          </div>
+          <form phx-submit="save_prompt_patterns_sessions_per_run" class="config-inline-form">
+            <input
+              type="number"
+              name="value"
+              value={@prompt_patterns_sessions_per_run}
+              min="1"
+              class="config-input"
+            />
             <button type="submit" class="btn btn-sm">Save</button>
           </form>
         </div>

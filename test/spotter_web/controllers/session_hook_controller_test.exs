@@ -185,6 +185,30 @@ defmodule SpotterWeb.SessionHookControllerTest do
     end
   end
 
+  describe "POST /api/hooks/session-end (prompt pattern scheduling)" do
+    test "session_end returns 200 even when scheduler would run" do
+      Ash.create!(Spotter.Config.Setting, %{
+        key: "prompt_patterns_sessions_per_run",
+        value: "1"
+      })
+
+      params = valid_params()
+      post_session_start(params)
+
+      {status, body, _conn} = post_session_end(%{"session_id" => params["session_id"]})
+
+      assert status == 200
+      assert body["ok"] == true
+    end
+
+    test "session_end remains non-blocking when no session exists" do
+      {status, body, _conn} = post_session_end(%{"session_id" => Ash.UUID.generate()})
+
+      assert status == 200
+      assert body["ok"] == true
+    end
+  end
+
   describe "POST /api/hooks/session-end" do
     test "succeeds with valid session_id" do
       session_id = Ash.UUID.generate()

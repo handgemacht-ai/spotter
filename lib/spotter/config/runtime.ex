@@ -16,6 +16,7 @@ defmodule Spotter.Config.Runtime do
   @default_summary_budget 4000
   @default_prompt_patterns_max_prompts 500
   @default_prompt_patterns_max_chars 400
+  @default_prompt_patterns_sessions_per_run 10
   @default_prompt_patterns_model "claude-haiku-4-5"
   @default_prompt_pattern_system_prompt """
   You are a prompt pattern analyst. Given a list of user prompts from Claude Code sessions,
@@ -195,6 +196,22 @@ defmodule Spotter.Config.Runtime do
   end
 
   @doc """
+  Returns the session cadence for automatic prompt-pattern runs.
+
+  Precedence: DB override -> env `SPOTTER_PROMPT_PATTERNS_SESSIONS_PER_RUN` -> default 10.
+  """
+  @spec prompt_patterns_sessions_per_run() :: {pos_integer(), atom()}
+  def prompt_patterns_sessions_per_run do
+    case db_get("prompt_patterns_sessions_per_run") do
+      {:ok, val} ->
+        {parse_positive_integer(val, @default_prompt_patterns_sessions_per_run), :db}
+
+      :miss ->
+        prompt_patterns_sessions_per_run_from_env()
+    end
+  end
+
+  @doc """
   Returns the model name for prompt pattern analysis.
 
   Precedence: DB override -> env `SPOTTER_PROMPT_PATTERNS_MODEL` -> default "claude-haiku-4-5".
@@ -363,6 +380,14 @@ defmodule Spotter.Config.Runtime do
       nil -> {@default_prompt_patterns_max_prompts, :default}
       "" -> {@default_prompt_patterns_max_prompts, :default}
       val -> {parse_positive_integer(val, @default_prompt_patterns_max_prompts), :env}
+    end
+  end
+
+  defp prompt_patterns_sessions_per_run_from_env do
+    case System.get_env("SPOTTER_PROMPT_PATTERNS_SESSIONS_PER_RUN") do
+      nil -> {@default_prompt_patterns_sessions_per_run, :default}
+      "" -> {@default_prompt_patterns_sessions_per_run, :default}
+      val -> {parse_positive_integer(val, @default_prompt_patterns_sessions_per_run), :env}
     end
   end
 

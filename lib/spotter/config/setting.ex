@@ -18,6 +18,7 @@ defmodule Spotter.Config.Setting do
     waiting_summary_system_prompt
     commit_hotspot_explore_system_prompt
     commit_hotspot_main_system_prompt
+    prompt_patterns_sessions_per_run
   )
 
   sqlite do
