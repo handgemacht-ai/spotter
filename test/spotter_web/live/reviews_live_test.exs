@@ -99,7 +99,7 @@ defmodule SpotterWeb.ReviewsLiveTest do
       {:ok, _view, html} = live(build_conn(), "/reviews")
 
       refute html =~ "Select a project to open or close a review session."
-      refute html =~ "Open conversation"
+      refute html =~ "Run this review in Claude Code"
       refute html =~ "Close review session"
     end
 
@@ -162,7 +162,7 @@ defmodule SpotterWeb.ReviewsLiveTest do
 
       {:ok, _view, html} = live(build_conn(), "/reviews?project_id=#{project.id}")
 
-      assert html =~ "Open conversation"
+      assert html =~ "Run this review in Claude Code"
       assert html =~ "Close review session"
     end
 
@@ -202,7 +202,7 @@ defmodule SpotterWeb.ReviewsLiveTest do
         render_click(view, "filter_project", %{"project-id" => proj_a.id})
 
       # Should show alpha's annotation and action buttons
-      assert html =~ "Open conversation"
+      assert html =~ "Run this review in Claude Code"
       assert_patched(view, "/reviews?project_id=#{proj_a.id}")
     end
 
@@ -215,7 +215,7 @@ defmodule SpotterWeb.ReviewsLiveTest do
 
       html = render_click(view, "filter_project", %{"project-id" => "all"})
 
-      refute html =~ "Open conversation"
+      refute html =~ "Run this review in Claude Code"
       refute html =~ "Close review session"
       assert_patched(view, "/reviews")
     end
@@ -226,7 +226,7 @@ defmodule SpotterWeb.ReviewsLiveTest do
       {:ok, _view, html} = live(build_conn(), "/reviews?project_id=#{Ash.UUID.generate()}")
 
       refute html =~ "Select a project to open or close a review session."
-      refute html =~ "Open conversation"
+      refute html =~ "Run this review in Claude Code"
       refute html =~ "Close review session"
     end
 

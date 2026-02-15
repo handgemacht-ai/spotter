@@ -1,12 +1,9 @@
 defmodule SpotterWeb.ProjectReviewLive do
   use Phoenix.LiveView
 
-  alias Spotter.Services.{ReviewSessionRegistry, ReviewTokenStore, ReviewUpdates, Tmux}
+  alias Spotter.Services.ReviewUpdates
   alias Spotter.Transcripts.{Annotation, Project, Session}
   require Ash.Query
-
-  @review_port Application.compile_env(:spotter, [SpotterWeb.Endpoint, :http, :port], 1100)
-  @review_heartbeat_interval 10_000
 
   @impl true
   def mount(%{"project_id" => project_id}, _session, socket) do
@@ -14,7 +11,7 @@ defmodule SpotterWeb.ProjectReviewLive do
       {:ok, project} ->
         {:ok,
          socket
-         |> assign(project: project, review_session_name: nil)
+         |> assign(project: project)
          |> load_review_data()}
 
       _ ->
@@ -22,8 +19,7 @@ defmodule SpotterWeb.ProjectReviewLive do
          assign(socket,
            project: nil,
            sessions: [],
-           open_annotations: [],
-           review_session_name: nil
+           open_annotations: []
          )}
     end
   end
@@ -60,52 +56,6 @@ defmodule SpotterWeb.ProjectReviewLive do
      |> put_flash(:info, "Closed #{closed_count} annotations")
      |> load_review_data()}
   end
-
-  def handle_event("open_conversation", _params, socket) do
-    project = socket.assigns.project
-    token = ReviewTokenStore.mint(project.id)
-
-    case tmux_module().launch_project_review(project.id, token, @review_port) do
-      {:ok, name} ->
-        previous = socket.assigns.review_session_name
-
-        if previous && previous != name do
-          ReviewSessionRegistry.deregister(previous)
-        end
-
-        ReviewSessionRegistry.register(name)
-        Process.send_after(self(), :review_heartbeat, @review_heartbeat_interval)
-
-        {:noreply,
-         socket
-         |> assign(review_session_name: name)
-         |> put_flash(:info, "Launched review session: #{name}")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :info, "Failed to launch: #{reason}")}
-    end
-  end
-
-  @impl true
-  def handle_info(:review_heartbeat, socket) do
-    if name = socket.assigns.review_session_name do
-      ReviewSessionRegistry.heartbeat(name)
-      Process.send_after(self(), :review_heartbeat, @review_heartbeat_interval)
-    end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def terminate(_reason, socket) do
-    if name = socket.assigns[:review_session_name] do
-      ReviewSessionRegistry.deregister(name)
-    end
-
-    :ok
-  end
-
-  defp tmux_module, do: Application.get_env(:spotter, :tmux_module, Tmux)
 
   defp load_review_data(socket) do
     project = socket.assigns.project
@@ -185,6 +135,15 @@ defmodule SpotterWeb.ProjectReviewLive do
           The requested project does not exist.
         </div>
       <% else %>
+        <div class="instruction-panel" data-testid="mcp-review-instructions">
+          <h3>Run this review in Claude Code</h3>
+          <ol>
+            <li>Ensure MCP server "spotter" is enabled (worktrees generate .mcp.json).</li>
+            <li>In Claude Code, run the Spotter review skill: "spotter-review".</li>
+            <li>Resolve each annotation using the skill; Spotter will update counts automatically.</li>
+          </ol>
+        </div>
+
         <%= if @open_annotations == [] do %>
           <div class="empty-state">
             No open annotations for this project.
@@ -195,9 +154,6 @@ defmodule SpotterWeb.ProjectReviewLive do
               {length(@open_annotations)} open annotations across {map_size(@sessions_by_id)} sessions
             </span>
             <div class="review-actions">
-              <button class="btn btn-success" phx-click="open_conversation">
-                Open conversation
-              </button>
               <button class="btn btn-danger" phx-click="close_review_session">
                 Close review session
               </button>

@@ -16,6 +16,10 @@ defmodule SpotterWeb.Router do
     plug(:accepts, ["json"])
   end
 
+  scope "/api" do
+    forward("/mcp", SpotterWeb.SpotterMcpPlug)
+  end
+
   scope "/api", SpotterWeb do
     pipe_through(:api)
 
@@ -25,8 +29,6 @@ defmodule SpotterWeb.Router do
     post("/hooks/tool-call", HooksController, :tool_call)
     post("/hooks/commit-event", HooksController, :commit_event)
     post("/hooks/waiting-summary", SessionHookController, :waiting_summary)
-
-    get("/review-context/:token", ReviewContextController, :show)
   end
 
   scope "/", SpotterWeb do

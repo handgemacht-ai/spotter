@@ -108,6 +108,10 @@ cat > .mcp.json << JSON_EOF
       "type": "http",
       "url": "http://${TS_IP}:${PORT}/tidewave/mcp"
     },
+    "spotter": {
+      "type": "http",
+      "url": "http://${TS_IP}:${PORT}/api/mcp"
+    },
     "chrome-devtools": {
       "command": "npx",
       "args": [
@@ -121,7 +125,7 @@ cat > .mcp.json << JSON_EOF
   }
 }
 JSON_EOF
-echo "==> Generated .mcp.json (url: http://${TS_IP}:${PORT}/tidewave/mcp)"
+echo "==> Generated .mcp.json (tidewave: http://${TS_IP}:${PORT}/tidewave/mcp, spotter: http://${TS_IP}:${PORT}/api/mcp)"
 
 if [ "$this_path" != "$main_path" ] && [ -d "$main_path/deps" ]; then
   echo "==> Copying deps from main worktree: $main_path/deps"

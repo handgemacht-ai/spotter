@@ -15,7 +15,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscriptsTest do
     Sandbox.mode(Repo, {:shared, self()})
     Phoenix.PubSub.subscribe(@pubsub, "sync:progress")
 
-    project = Ash.create!(Project, %{name: "test-sync", pattern: "^test"})
+    project = Ash.create!(Project, %{name: "test-sync", pattern: "tmp-test"})
     session_id = Ash.UUID.generate()
 
     session =

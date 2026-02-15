@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { prepareFullPageSnapshot, waitForLiveViewReady } from "../support/liveview";
 
-test("reviews live smoke launches conversation and captures full-page snapshot", async ({ page }) => {
+test("reviews live smoke shows MCP review instructions and captures full-page snapshot", async ({ page }) => {
   test.setTimeout(90_000);
 
   await page.goto("/reviews");
@@ -14,11 +14,9 @@ test("reviews live smoke launches conversation and captures full-page snapshot",
   await expect(projectButton).toBeVisible();
   await projectButton.click();
 
-  const openConversationButton = page.getByRole("button", { name: "Open conversation" });
-  await expect(openConversationButton).toBeVisible();
-  await openConversationButton.click();
-
-  await expect(page.getByText("Launched review session:", { exact: false })).toBeVisible();
+  const instructionPanel = page.getByTestId("mcp-review-instructions");
+  await expect(instructionPanel).toBeVisible();
+  await expect(instructionPanel.getByText("Run this review in Claude Code")).toBeVisible();
 
   await prepareFullPageSnapshot(page);
   await expect(page).toHaveScreenshot("reviews-live-smoke.png", {

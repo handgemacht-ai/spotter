@@ -134,34 +134,6 @@ defmodule Spotter.Services.Tmux do
   end
 
   @doc """
-  Launches a project review tmux session running `claude` with review env vars.
-  The session is named `spotter-review-project-<short-id>`.
-  Env vars tell the plugin SessionStart hook to fetch review context.
-  """
-  def launch_project_review(project_id, token, port) do
-    short_id = String.slice(project_id, 0, 8)
-    name = "spotter-review-project-#{short_id}"
-
-    env = [
-      {"SPOTTER_REVIEW_MODE", "1"},
-      {"SPOTTER_REVIEW_TOKEN", token},
-      {"SPOTTER_PORT", to_string(port)}
-    ]
-
-    case System.cmd(
-           "tmux",
-           ["new-session", "-d", "-s", name, "claude"],
-           stderr_to_stdout: true,
-           env: env
-         ) do
-      {_, 0} -> {:ok, name}
-      {output, _} -> {:error, String.trim(output)}
-    end
-  rescue
-    e in ErlangError -> {:error, Exception.message(e)}
-  end
-
-  @doc """
   Kills a tmux session by name. Returns `:ok` regardless of outcome.
   """
   def kill_session(name) do

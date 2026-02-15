@@ -2,7 +2,8 @@ defmodule Spotter.Transcripts do
   @moduledoc "Domain for indexing and querying Claude Code session transcripts."
   use Ash.Domain,
     extensions: [
-      AshJsonApi.Domain
+      AshJsonApi.Domain,
+      AshAi
     ]
 
   json_api do
@@ -91,6 +92,25 @@ defmodule Spotter.Transcripts do
         get :read
         index :read
       end
+    end
+  end
+
+  tools do
+    tool :list_projects, Spotter.Transcripts.Project, :read do
+      description "List Spotter projects (use to pick project_id for review)."
+    end
+
+    tool :list_sessions, Spotter.Transcripts.Session, :read do
+      description "List sessions (filter by project_id for review scoping)."
+    end
+
+    tool :list_review_annotations, Spotter.Transcripts.Annotation, :read do
+      description "List review annotations (filter by state/purpose/session_id scope; includes refs)."
+      load [:subagent, :file_refs, message_refs: :message]
+    end
+
+    tool :resolve_annotation, Spotter.Transcripts.Annotation, :resolve do
+      description "Resolve a review annotation (records resolution metadata and closes it)."
     end
   end
 

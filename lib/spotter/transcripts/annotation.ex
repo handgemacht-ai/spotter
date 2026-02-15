@@ -46,6 +46,38 @@ defmodule Spotter.Transcripts.Annotation do
       accept []
       change set_attribute(:state, :closed)
     end
+
+    update :resolve do
+      accept []
+      require_atomic? false
+
+      argument :resolution, :string, allow_nil?: false
+
+      argument :resolution_kind, :atom,
+        allow_nil?: true,
+        constraints: [
+          one_of: [:code_change, :process_change, :tooling_change, :doc_change, :wont_fix]
+        ]
+
+      change set_attribute(:state, :closed)
+
+      change fn changeset, _context ->
+        resolution = Ash.Changeset.get_argument(changeset, :resolution)
+        kind = Ash.Changeset.get_argument(changeset, :resolution_kind)
+
+        existing = Ash.Changeset.get_data(changeset, :metadata) || %{}
+
+        merged =
+          existing
+          |> Map.put("resolution", resolution)
+          |> Map.put("resolved_at", DateTime.utc_now() |> DateTime.to_iso8601())
+          |> then(fn m ->
+            if kind, do: Map.put(m, "resolution_kind", Atom.to_string(kind)), else: m
+          end)
+
+        Ash.Changeset.change_attribute(changeset, :metadata, merged)
+      end
+    end
   end
 
   attributes do
