@@ -254,21 +254,33 @@ defmodule SpotterWeb.ProductLive do
   # -- Components --------------------------------------------------------------
 
   defp spec_badge(assigns) do
+    assigns = assign(assigns, :run_status, normalize_run_status(assigns.run))
+
     ~H"""
-    <span :if={@run == nil} class="product-spec-badge is-none">none</span>
-    <span :if={@run != nil && @run.status == :ok && @run.dolt_commit_hash == nil} class="product-spec-badge is-ok">
+    <span :if={@run_status == :none} class="product-spec-badge is-none">none</span>
+    <span :if={@run_status == :ok_no_changes} class="product-spec-badge is-ok">
       ok (no changes)
     </span>
-    <span :if={@run != nil && !(@run.status == :ok && @run.dolt_commit_hash == nil)} class={"product-spec-badge is-#{@run.status}"}>
-      {@run.status}
+    <span
+      :if={@run_status not in [:none, :ok_no_changes]}
+      class={"product-spec-badge is-#{@run_status}"}
+    >
+      {@run_status}
     </span>
     """
   end
 
+  defp normalize_run_status(nil), do: :none
+  defp normalize_run_status(%{status: :ok, dolt_commit_hash: nil}), do: :ok_no_changes
+  defp normalize_run_status(%{status: status})
+       when status in [:pending, :running, :ok, :error, :skipped],
+       do: status
+  defp normalize_run_status(_), do: :none
+
   defp detail_diff(assigns) do
     ~H"""
-    <div :if={@error == :no_spec_run} class="product-detail-message">
-      <p>Spec not available for this commit yet.</p>
+    <div :if={@error != nil} class="product-detail-message">
+      <p>{error_message(@error)}</p>
     </div>
 
     <div :if={@error == nil and @content != nil and @content[:kind] == :no_changes} class="product-detail-message">
@@ -344,8 +356,8 @@ defmodule SpotterWeb.ProductLive do
 
   defp detail_snapshot(assigns) do
     ~H"""
-    <div :if={@error == :no_spec_run} class="product-detail-message">
-      <p>Spec not available for this commit yet.</p>
+    <div :if={@error != nil} class="product-detail-message">
+      <p>{error_message(@error)}</p>
     </div>
 
     <div :if={@error == nil and @content != nil and @content.tree == [] and @content.effective_dolt_commit_hash == nil} class="product-detail-message">
@@ -517,10 +529,10 @@ defmodule SpotterWeb.ProductLive do
       {:ok, diff} ->
         assign(socket, detail_content: diff, detail_error: nil, tree: [], commit_id_cache: %{})
 
-      {:error, :no_spec_run} ->
+      {:error, reason} ->
         assign(socket,
           detail_content: nil,
-          detail_error: :no_spec_run,
+          detail_error: reason,
           tree: [],
           commit_id_cache: %{}
         )
@@ -528,7 +540,7 @@ defmodule SpotterWeb.ProductLive do
   rescue
     e ->
       Tracer.set_status(:error, Exception.message(e))
-      assign(socket, detail_content: nil, detail_error: :error, tree: [], commit_id_cache: %{})
+      assign(socket, detail_content: nil, detail_error: {:error, Exception.message(e)}, tree: [], commit_id_cache: %{})
   end
 
   defp load_detail_for_view(socket, :snapshot, project_id, commit) do
@@ -544,10 +556,10 @@ defmodule SpotterWeb.ProductLive do
           commit_id_cache: cache
         )
 
-      {:error, :no_spec_run} ->
+      {:error, reason} ->
         assign(socket,
           detail_content: nil,
-          detail_error: :no_spec_run,
+          detail_error: reason,
           tree: [],
           commit_id_cache: %{}
         )
@@ -555,8 +567,22 @@ defmodule SpotterWeb.ProductLive do
   rescue
     e ->
       Tracer.set_status(:error, Exception.message(e))
-      assign(socket, detail_content: nil, detail_error: :error, tree: [], commit_id_cache: %{})
+      assign(socket, detail_content: nil, detail_error: {:error, Exception.message(e)}, tree: [], commit_id_cache: %{})
   end
+
+  defp error_message(:no_spec_run) do
+    "Spec not available for this commit yet."
+  end
+
+  defp error_message({:dolt_query_failed, reason}) do
+    "Unable to load product spec from Dolt snapshot: #{reason}"
+  end
+
+  defp error_message({:error, reason}) do
+    "Failed to load product spec: #{reason}"
+  end
+
+  defp error_message(_), do: "Failed to load product spec."
 
   # -- Helpers -----------------------------------------------------------------
 

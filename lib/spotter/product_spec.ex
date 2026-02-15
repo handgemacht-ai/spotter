@@ -113,20 +113,26 @@ defmodule Spotter.ProductSpec do
 
   Returns the same shape as `tree/1`.
   """
-  @spec tree_at(String.t(), String.t()) :: [map()]
+  @spec tree_at(String.t(), String.t()) ::
+          {:ok, [map()]} | {:error, {:dolt_query_failed, String.t()} | {:error, String.t()}}
   def tree_at(project_id, dolt_commit_hash) do
     Tracer.with_span "spotter.product_spec.tree_at" do
       Tracer.set_attribute("spotter.project_id", project_id)
       Tracer.set_attribute("spotter.dolt_commit_hash", dolt_commit_hash)
 
-      domains = query_domains_at(project_id, dolt_commit_hash)
-      features = query_features_at(project_id, dolt_commit_hash)
-      requirements = query_requirements_at(project_id, dolt_commit_hash)
+      with {:ok, domains} <- query_domains_at(project_id, dolt_commit_hash),
+           {:ok, features} <- query_features_at(project_id, dolt_commit_hash),
+           {:ok, requirements} <- query_requirements_at(project_id, dolt_commit_hash) do
+        features_by_domain = Enum.group_by(features, & &1.domain_id)
+        requirements_by_feature = Enum.group_by(requirements, & &1.feature_id)
 
-      features_by_domain = Enum.group_by(features, & &1.domain_id)
-      requirements_by_feature = Enum.group_by(requirements, & &1.feature_id)
-
-      Enum.map(domains, &attach_features(&1, features_by_domain, requirements_by_feature))
+        {:ok,
+         Enum.map(domains, &attach_features(&1, features_by_domain, requirements_by_feature))}
+      else
+        {:error, reason} ->
+          Tracer.set_status(:error, to_string(reason))
+          {:error, reason}
+      end
     end
   end
 
@@ -141,7 +147,7 @@ defmodule Spotter.ProductSpec do
   """
   @spec tree_for_commit(String.t(), String.t()) ::
           {:ok, %{tree: [map()], effective_dolt_commit_hash: String.t() | nil}}
-          | {:error, :no_spec_run}
+          | {:error, :no_spec_run | {:dolt_query_failed, String.t()} | {:error, String.t()}}
   def tree_for_commit(project_id, commit_hash) do
     Tracer.with_span "spotter.product_spec.tree_for_commit" do
       Tracer.set_attribute("spotter.project_id", project_id)
@@ -156,11 +162,13 @@ defmodule Spotter.ProductSpec do
           effective_hash = run.dolt_commit_hash || find_previous_dolt_hash(project_id, run)
 
           if effective_hash do
-            {:ok,
-             %{
-               tree: tree_at(project_id, effective_hash),
-               effective_dolt_commit_hash: effective_hash
-             }}
+            case tree_at(project_id, effective_hash) do
+              {:ok, tree} ->
+                {:ok, %{tree: tree, effective_dolt_commit_hash: effective_hash}}
+
+              {:error, reason} ->
+                {:error, reason}
+            end
           else
             {:ok, %{tree: [], effective_dolt_commit_hash: nil}}
           end
@@ -177,7 +185,7 @@ defmodule Spotter.ProductSpec do
   - `{:ok, diff_result}` with the semantic diff
   """
   @spec diff_for_commit(String.t(), String.t()) ::
-          {:ok, map()} | {:error, :no_spec_run}
+          {:ok, map()} | {:error, :no_spec_run | {:dolt_query_failed, String.t()} | {:error, String.t()}}
   def diff_for_commit(project_id, commit_hash) do
     Tracer.with_span "spotter.product_spec.diff_for_commit" do
       Tracer.set_attribute("spotter.project_id", project_id)
@@ -193,9 +201,18 @@ defmodule Spotter.ProductSpec do
 
         run ->
           base_hash = find_previous_dolt_hash(project_id, run)
-          from_tree = if base_hash, do: tree_at(project_id, base_hash), else: []
-          to_tree = tree_at(project_id, run.dolt_commit_hash)
-          {:ok, SpecDiff.diff(from_tree, to_tree)}
+
+          case {if(base_hash, do: tree_at(project_id, base_hash), else: {:ok, []}),
+                tree_at(project_id, run.dolt_commit_hash)} do
+            {{:ok, from_tree}, {:ok, to_tree}} ->
+              {:ok, SpecDiff.diff(from_tree, to_tree)}
+
+            {{:error, reason}, _} ->
+              {:error, reason}
+
+            {_, {:error, reason}} ->
+              {:error, reason}
+          end
       end
     end
   end
@@ -232,103 +249,114 @@ defmodule Spotter.ProductSpec do
   # -- Dolt time-travel helpers ------------------------------------------------
 
   defp query_domains_at(project_id, dolt_commit_hash) do
-    {:ok, result} =
-      SQL.query(
-        Repo,
-        """
-        SELECT id, project_id, spec_key, name, description,
-               updated_by_git_commit, inserted_at, updated_at
-        FROM `product_domains` AS OF ?
-        WHERE project_id = ?
-        ORDER BY name ASC
-        """,
-        [dolt_commit_hash, project_id]
-      )
-
-    Enum.map(result.rows, fn [id, proj_id, spec_key, name, desc, git_commit, ins, upd] ->
-      %{
-        id: id,
-        project_id: proj_id,
-        spec_key: spec_key,
-        name: name,
-        description: desc,
-        updated_by_git_commit: git_commit,
-        inserted_at: ins,
-        updated_at: upd
-      }
-    end)
+    with {:ok, result} <-
+           query_at(
+             """
+             SELECT id, project_id, spec_key, name, description,
+                    updated_by_git_commit, inserted_at, updated_at
+             FROM `product_domains` AS OF ?
+             WHERE project_id = ?
+             ORDER BY name ASC
+             """,
+             [dolt_commit_hash, project_id]
+           ) do
+      {:ok,
+       Enum.map(result.rows, fn [id, proj_id, spec_key, name, desc, git_commit, ins, upd] ->
+         %{
+           id: id,
+           project_id: proj_id,
+           spec_key: spec_key,
+           name: name,
+           description: desc,
+           updated_by_git_commit: git_commit,
+           inserted_at: ins,
+           updated_at: upd
+         }
+       end)}
+    end
   end
 
   defp query_features_at(project_id, dolt_commit_hash) do
-    {:ok, result} =
-      SQL.query(
-        Repo,
-        """
-        SELECT id, project_id, domain_id, spec_key, name, description,
-               updated_by_git_commit, inserted_at, updated_at
-        FROM `product_features` AS OF ?
-        WHERE project_id = ?
-        ORDER BY name ASC
-        """,
-        [dolt_commit_hash, project_id]
-      )
-
-    Enum.map(result.rows, fn [id, proj_id, dom_id, spec_key, name, desc, git_commit, ins, upd] ->
-      %{
-        id: id,
-        project_id: proj_id,
-        domain_id: dom_id,
-        spec_key: spec_key,
-        name: name,
-        description: desc,
-        updated_by_git_commit: git_commit,
-        inserted_at: ins,
-        updated_at: upd
-      }
-    end)
+    with {:ok, result} <-
+           query_at(
+             """
+             SELECT id, project_id, domain_id, spec_key, name, description,
+                    updated_by_git_commit, inserted_at, updated_at
+             FROM `product_features` AS OF ?
+             WHERE project_id = ?
+             ORDER BY name ASC
+             """,
+             [dolt_commit_hash, project_id]
+           ) do
+      {:ok,
+       Enum.map(result.rows, fn [id, proj_id, dom_id, spec_key, name, desc, git_commit, ins, upd] ->
+         %{
+           id: id,
+           project_id: proj_id,
+           domain_id: dom_id,
+           spec_key: spec_key,
+           name: name,
+           description: desc,
+           updated_by_git_commit: git_commit,
+           inserted_at: ins,
+           updated_at: upd
+         }
+       end)}
+    end
   end
 
   defp query_requirements_at(project_id, dolt_commit_hash) do
-    {:ok, result} =
-      SQL.query(
-        Repo,
-        """
-        SELECT id, project_id, feature_id, spec_key, statement, rationale,
-               acceptance_criteria, priority, updated_by_git_commit, inserted_at, updated_at
-        FROM `product_requirements` AS OF ?
-        WHERE project_id = ?
-        ORDER BY spec_key ASC
-        """,
-        [dolt_commit_hash, project_id]
-      )
+    with {:ok, result} <-
+           query_at(
+             """
+             SELECT id, project_id, feature_id, spec_key, statement, rationale,
+                    acceptance_criteria, priority, updated_by_git_commit, inserted_at, updated_at
+             FROM `product_requirements` AS OF ?
+             WHERE project_id = ?
+             ORDER BY spec_key ASC
+             """,
+             [dolt_commit_hash, project_id]
+           ) do
+      {:ok,
+       Enum.map(result.rows, fn [
+                                 id,
+                                 proj_id,
+                                 feat_id,
+                                 spec_key,
+                                 stmt,
+                                 rat,
+                                 ac,
+                                 pri,
+                                 git_commit,
+                                 ins,
+                                 upd
+                               ] ->
+         %{
+           id: id,
+           project_id: proj_id,
+           feature_id: feat_id,
+           spec_key: spec_key,
+           statement: stmt,
+           rationale: rat,
+           acceptance_criteria: ac,
+           priority: pri,
+           updated_by_git_commit: git_commit,
+           inserted_at: ins,
+           updated_at: upd
+         }
+       end)}
+    end
+  end
 
-    Enum.map(result.rows, fn [
-                               id,
-                               proj_id,
-                               feat_id,
-                               spec_key,
-                               stmt,
-                               rat,
-                               ac,
-                               pri,
-                               git_commit,
-                               ins,
-                               upd
-                             ] ->
-      %{
-        id: id,
-        project_id: proj_id,
-        feature_id: feat_id,
-        spec_key: spec_key,
-        statement: stmt,
-        rationale: rat,
-        acceptance_criteria: ac,
-        priority: pri,
-        updated_by_git_commit: git_commit,
-        inserted_at: ins,
-        updated_at: upd
-      }
-    end)
+  defp query_at(query, params) do
+    try do
+      case SQL.query(Repo, query, params) do
+        {:ok, result} -> {:ok, result}
+        {:error, error} -> {:error, {:dolt_query_failed, inspect(error)}}
+      end
+    rescue
+      e -> {:error, {:dolt_query_failed, Exception.message(e)}}
+    end
   end
 
   # -- Spec run helpers -------------------------------------------------------
