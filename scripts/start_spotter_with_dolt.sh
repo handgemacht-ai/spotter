@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-${REPO_ROOT}/docker-compose.dolt.yml}"
+OTEL_COMPOSE_FILE="${OTEL_COMPOSE_FILE:-${REPO_ROOT}/docker-compose.otel.yml}"
 COMPOSE_WAIT_TIMEOUT_SECONDS="${COMPOSE_WAIT_TIMEOUT_SECONDS:-30}"
 
 DOLT_HOST="${SPOTTER_DOLT_HOST:-127.0.0.1}"
@@ -64,7 +65,15 @@ export SPOTTER_DOLT_PORT="$DOLT_HOST_PORT"
 
 cd "$REPO_ROOT"
 
-docker compose -f "$COMPOSE_FILE" up -d dolt
+compose_args=(
+  -f "$COMPOSE_FILE"
+)
+
+if [ -f "$OTEL_COMPOSE_FILE" ]; then
+  compose_args+=(-f "$OTEL_COMPOSE_FILE")
+fi
+
+docker compose "${compose_args[@]}" up -d
 
 echo "Starting Dolt SQL-server from ${COMPOSE_FILE} on ${DOLT_HOST}:${DOLT_HOST_PORT}..."
 
