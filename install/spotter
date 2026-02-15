@@ -2,7 +2,11 @@
 # Spotter launcher - run Spotter + tmux + Claude Code in Docker Compose.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUNDLE="${HOME}/.local/share/spotter/bundle/main"
+if [ -d "${SCRIPT_DIR}/bundle" ]; then
+  BUNDLE="${SCRIPT_DIR}/bundle"
+fi
 CONSENT_FILE="${HOME}/.local/share/spotter/consent-v1"
 
 # --- Helpers ---
@@ -33,10 +37,14 @@ open_browser() {
 resolve_repo() {
   local repo="${OPT_REPO:-}"
   if [ -n "$repo" ]; then
-    echo "$repo"
+    if [ ! -d "$repo" ]; then
+      die "Repository path does not exist: $repo"
+    fi
+    (cd "$repo" && pwd -P)
     return
   fi
-  if git rev-parse --show-toplevel 2>/dev/null; then
+  if repo="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+    echo "$repo"
     return
   fi
   die "Not inside a git repo. Run inside a repo or pass --repo PATH."
@@ -143,7 +151,10 @@ parse_args() {
     esac
   done
   # Default command
-  [ -z "$COMMAND" ] && COMMAND="up"
+  if [ -z "$COMMAND" ]; then
+    COMMAND="up"
+  fi
+  return 0
 }
 
 # --- Commands ---

@@ -2,6 +2,7 @@ services:
   spotter:
     image: ghcr.io/marot/spotter-live:${SPOTTER_IMAGE_TAG:-main}
     environment:
+      SHELL: /bin/bash
       SPOTTER_ANTHROPIC_API_KEY: ${SPOTTER_ANTHROPIC_API_KEY:?SPOTTER_ANTHROPIC_API_KEY must be set}
       HOME: /home/spotter
       SPOTTER_SQLITE_DB: /var/lib/spotter/spotter.db
@@ -41,11 +42,13 @@ services:
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
+    user: "0:0"
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     depends_on:
       - jaeger
     volumes:
       - ./otel/collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - spotter_otel:/var/lib/spotter-otel
 
   jaeger:
     image: jaegertracing/all-in-one:latest
@@ -55,3 +58,4 @@ services:
 volumes:
   spotter_sqlite:
   spotter_dolt_data:
+  spotter_otel:

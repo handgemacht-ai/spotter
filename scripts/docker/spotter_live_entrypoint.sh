@@ -7,6 +7,11 @@ if [ -z "${SPOTTER_ANTHROPIC_API_KEY:-}" ]; then
   exit 1
 fi
 
+# Ensure mix tools exist for the runtime user
+mkdir -p "${HOME}/.mix"
+mix local.hex --force
+mix local.rebar --force
+
 # Ensure Claude home dirs exist
 mkdir -p "${HOME}/.claude/projects"
 
