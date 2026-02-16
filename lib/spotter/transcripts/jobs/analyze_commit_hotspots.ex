@@ -17,6 +17,7 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
     CommitDiffExtractor,
     CommitHotspotAgent,
     CommitHotspotFilters,
+    CommitHotspotMetrics,
     CommitPatchExtractor
   }
 
@@ -122,6 +123,13 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
     started_at = DateTime.utc_now() |> DateTime.to_iso8601()
 
     with {:ok, diff_context} <- extract_diff_context(repo_path, commit.commit_hash),
+         {:ok, metrics_candidates} <-
+           CommitHotspotMetrics.build_candidate_metrics(%{
+             commit_hash: commit.commit_hash,
+             diff_stats: diff_context.diff_stats,
+             patch_files: diff_context.patch_files,
+             git_cwd: repo_path
+           }),
          {:ok, result} <-
            CommitHotspotAgent.run(%{
              project_id: project_id,
@@ -129,16 +137,25 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
              commit_subject: commit.subject || "",
              diff_stats: diff_context.diff_stats,
              patch_files: diff_context.patch_files,
-             git_cwd: repo_path
+             git_cwd: repo_path,
+             metrics_candidates: metrics_candidates
            }) do
+      {scored_hotspots, v2_meta} =
+        CommitHotspotAgent.apply_scoring_v2(result.hotspots, metrics_candidates)
+
       metadata =
-        Map.merge(result.metadata, %{
-          strategy: "tool_loop_v1",
+        result.metadata
+        |> Map.merge(%{
+          strategy: "tool_loop_v2",
           eligible_files: length(diff_context.patch_files),
-          started_at: started_at
+          started_at: started_at,
+          scoring_version: v2_meta.scoring_version,
+          rejected_candidates: v2_meta.rejected_candidates
         })
 
-      persist_hotspots(project_id, commit, %{result | metadata: metadata})
+      scored_result = %{result | hotspots: scored_hotspots, metadata: metadata}
+
+      persist_hotspots(project_id, commit, scored_result)
       mark_success(commit, metadata)
       %{project_id: project_id} |> ReindexProject.new() |> Oban.insert()
     else
@@ -275,6 +292,11 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
     now = DateTime.utc_now()
 
     Enum.each(result.hotspots, fn h ->
+      hotspot_metadata =
+        result.metadata
+        |> maybe_put_metrics(h)
+        |> maybe_put_base_score(h)
+
       Ash.create(CommitHotspot, %{
         project_id: project_id,
         commit_id: commit.id,
@@ -288,7 +310,7 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
         rubric: h.rubric,
         model_used: result.metadata[:model_used] || "unknown",
         analyzed_at: now,
-        metadata: result.metadata
+        metadata: hotspot_metadata
       })
     end)
 
@@ -393,6 +415,20 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
       :diff_extract_failed -> "diff_extract_failed"
       {:agent_timeout, _} -> "agent_timeout"
       _ -> "agent_error"
+    end
+  end
+
+  defp maybe_put_metrics(metadata, hotspot) do
+    case Map.get(hotspot, :deterministic_metrics) do
+      nil -> metadata
+      metrics -> Map.put(metadata, :metrics, metrics)
+    end
+  end
+
+  defp maybe_put_base_score(metadata, hotspot) do
+    case Map.get(hotspot, :base_score) do
+      nil -> metadata
+      score -> Map.put(metadata, :base_score, score)
     end
   end
 

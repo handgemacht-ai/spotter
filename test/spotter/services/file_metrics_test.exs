@@ -131,6 +131,51 @@ defmodule Spotter.Services.FileMetricsTest do
       p = create_project("fm-hs-empty")
       assert FileMetrics.list_hotspots(p.id) == []
     end
+
+    test "hotspot metadata includes scoring_v2 fields when persisted" do
+      p = create_project("fm-hs-v2-meta")
+
+      commit =
+        Ash.create!(Commit, %{
+          commit_hash: String.duplicate("e", 40),
+          subject: "V2 metadata commit"
+        })
+
+      v2_metadata = %{
+        "scoring_version" => "hotspot_v2",
+        "strategy" => "tool_loop_v2",
+        "metrics" => %{
+          "complexity_score" => 55.0,
+          "change_churn_score" => 30.0,
+          "blast_radius_score" => 40.0,
+          "test_exposure_score" => 70.0,
+          "blast_radius_confidence" => "medium"
+        },
+        "base_score" => 45.25
+      }
+
+      Ash.create!(CommitHotspot, %{
+        project_id: p.id,
+        commit_id: commit.id,
+        relative_path: "lib/v2.ex",
+        snippet: "def v2, do: :ok",
+        line_start: 5,
+        line_end: 15,
+        overall_score: 50.3,
+        reason: "Scored with v2",
+        rubric: %{"complexity" => 55},
+        model_used: "claude-opus-4-6",
+        analyzed_at: DateTime.utc_now(),
+        metadata: v2_metadata
+      })
+
+      [%{hotspot: hotspot}] = FileMetrics.list_hotspots(p.id)
+
+      assert hotspot.metadata["scoring_version"] == "hotspot_v2"
+      assert hotspot.metadata["metrics"]["complexity_score"] == 55.0
+      assert hotspot.metadata["metrics"]["blast_radius_confidence"] == "medium"
+      assert hotspot.metadata["base_score"] == 45.25
+    end
   end
 
   describe "list_co_change_rows/2" do

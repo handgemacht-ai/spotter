@@ -415,6 +415,87 @@ defmodule SpotterWeb.FileMetricsLiveTest do
     end
   end
 
+  describe "hotspot score components" do
+    test "renders score components when metadata has metrics" do
+      project = create_project("fm-hs-score-v2")
+
+      commit =
+        Ash.create!(Commit, %{
+          commit_hash: String.duplicate("c", 40),
+          subject: "Score v2 commit"
+        })
+
+      Ash.create!(CommitHotspot, %{
+        project_id: project.id,
+        commit_id: commit.id,
+        relative_path: "lib/scored.ex",
+        snippet: "def scored, do: :ok",
+        line_start: 5,
+        line_end: 15,
+        overall_score: 55.0,
+        reason: "High blast radius",
+        rubric: %{"complexity" => 60},
+        model_used: "claude-opus-4-6",
+        analyzed_at: DateTime.utc_now(),
+        metadata: %{
+          "scoring_version" => "hotspot_v2",
+          "metrics" => %{
+            "complexity_score" => 60.0,
+            "change_churn_score" => 40.0,
+            "blast_radius_score" => 80.0,
+            "test_exposure_score" => 70.0,
+            "blast_radius_confidence" => "high"
+          }
+        }
+      })
+
+      {:ok, _view, html} =
+        live(build_conn(), "/file-metrics?project_id=#{project.id}&tab=hotspots")
+
+      assert html =~ "Score Components"
+      assert html =~ "Complexity"
+      assert html =~ "60.0"
+      assert html =~ "Churn"
+      assert html =~ "40.0"
+      assert html =~ "Blast radius"
+      assert html =~ "80.0"
+      assert html =~ "Test exposure"
+      assert html =~ "70.0"
+      assert html =~ "confidence-high"
+    end
+
+    test "does not render score components when metadata lacks metrics" do
+      project = create_project("fm-hs-no-v2")
+
+      commit =
+        Ash.create!(Commit, %{
+          commit_hash: String.duplicate("d", 40),
+          subject: "Legacy commit"
+        })
+
+      Ash.create!(CommitHotspot, %{
+        project_id: project.id,
+        commit_id: commit.id,
+        relative_path: "lib/legacy.ex",
+        snippet: "def legacy, do: :ok",
+        line_start: 1,
+        line_end: 5,
+        overall_score: 45.0,
+        reason: "Old style",
+        rubric: %{},
+        model_used: "claude-opus-4-6",
+        analyzed_at: DateTime.utc_now(),
+        metadata: %{"strategy" => "tool_loop_v1"}
+      })
+
+      {:ok, _view, html} =
+        live(build_conn(), "/file-metrics?project_id=#{project.id}&tab=hotspots")
+
+      assert html =~ "lib/legacy.ex"
+      refute html =~ "Score Components"
+    end
+  end
+
   describe "empty states" do
     test "heatmap empty state renders" do
       project = create_project("fm-empty-hm")

@@ -497,6 +497,46 @@ defmodule SpotterWeb.FileMetricsLive do
     end
   end
 
+  defp has_score_components?(metadata) when is_map(metadata) do
+    case metadata do
+      %{"metrics" => m} when is_map(m) -> true
+      %{metrics: m} when is_map(m) -> true
+      _ -> false
+    end
+  end
+
+  defp has_score_components?(_), do: false
+
+  defp get_metrics(metadata) do
+    case metadata do
+      %{"metrics" => m} when is_map(m) -> m
+      %{metrics: m} when is_map(m) -> m
+      _ -> %{}
+    end
+  end
+
+  defp format_metric(metadata, key) do
+    metrics = get_metrics(metadata)
+
+    case Map.get(metrics, key) || Map.get(metrics, String.to_existing_atom(key)) do
+      nil -> "N/A"
+      val when is_number(val) -> "#{Float.round(val * 1.0, 1)}"
+      _ -> "N/A"
+    end
+  rescue
+    _ -> "N/A"
+  end
+
+  defp blast_confidence(metadata) do
+    metrics = get_metrics(metadata)
+
+    case Map.get(metrics, "blast_radius_confidence") ||
+           Map.get(metrics, :blast_radius_confidence) do
+      val when val in ["high", "medium", "low"] -> val
+      _ -> "unknown"
+    end
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -706,6 +746,46 @@ defmodule SpotterWeb.FileMetricsLive do
                     </div>
                   </div>
                   <span class="rubric-value">{round(score)}</span>
+                </div>
+              </div>
+
+              <div
+                :if={has_score_components?(entry.metadata)}
+                class="score-components"
+                data-testid="score-components"
+              >
+                <h4 class="score-components-heading">Score Components</h4>
+                <div class="score-components-grid">
+                  <div class="score-component">
+                    <span class="score-component-label">Complexity</span>
+                    <span class="score-component-value">
+                      {format_metric(entry.metadata, "complexity_score")}
+                    </span>
+                  </div>
+                  <div class="score-component">
+                    <span class="score-component-label">Churn</span>
+                    <span class="score-component-value">
+                      {format_metric(entry.metadata, "change_churn_score")}
+                    </span>
+                  </div>
+                  <div class="score-component">
+                    <span class="score-component-label">Blast radius</span>
+                    <span class="score-component-value">
+                      {format_metric(entry.metadata, "blast_radius_score")}
+                    </span>
+                  </div>
+                  <div class="score-component">
+                    <span class="score-component-label">Test exposure</span>
+                    <span class="score-component-value">
+                      {format_metric(entry.metadata, "test_exposure_score")}
+                    </span>
+                  </div>
+                  <div class="score-component">
+                    <span class="score-component-label">Confidence</span>
+                    <span class={"confidence-badge confidence-#{blast_confidence(entry.metadata)}"}>
+                      {blast_confidence(entry.metadata)}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -1106,6 +1186,51 @@ defmodule SpotterWeb.FileMetricsLive do
         font-size: 0.8rem;
         max-height: 300px;
       }
+
+      .score-components {
+        margin-bottom: 0.75rem;
+        padding: 0.5rem 0.75rem;
+        background: #111827;
+        border-radius: 6px;
+        border: 1px solid #1f2937;
+      }
+      .score-components-heading {
+        margin: 0 0 0.4rem 0;
+        font-size: 0.75rem;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .score-components-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem 1.5rem;
+      }
+      .score-component {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+      .score-component-label {
+        font-size: 0.8rem;
+        color: #9ca3af;
+      }
+      .score-component-value {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #d1d5db;
+        font-family: monospace;
+      }
+      .confidence-badge {
+        font-size: 0.7rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+        font-weight: 600;
+      }
+      .confidence-high { background: #065f46; color: #6ee7b7; }
+      .confidence-medium { background: #78350f; color: #fcd34d; }
+      .confidence-low { background: #1f2937; color: #9ca3af; }
+      .confidence-unknown { background: #1f2937; color: #6b7280; }
     </style>
     """
   end

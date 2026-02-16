@@ -40,6 +40,12 @@ defmodule Spotter.Services.CommitHotspotAgent do
      file path, and line range (use line_start/line_end with context).
   4. Analyze the fetched code and identify hotspots worth reviewing.
 
+  ## Scope Rules
+
+  **Prefer function/symbol-scoped snippets over file-level entries.**
+  Each hotspot must target a specific function, macro, or code block — not
+  an entire file. Keep snippets to at most 12 lines showing the core issue.
+
   ## Rubric
 
   Score each hotspot on (0-100):
@@ -49,7 +55,10 @@ defmodule Spotter.Services.CommitHotspotAgent do
   - **test_coverage**: Likelihood of being untested
   - **change_risk**: Risk of introducing bugs
 
-  Provide an **overall_score** (0-100) representing review priority.
+  Deterministic pre-scores are provided in the user prompt. Use them as
+  context. Return an **llm_adjustment** (-10 to 10) for each hotspot
+  representing your additional insight beyond the deterministic score.
+  Positive values raise priority, negative values lower it.
 
   Include:
   - The enclosing function/symbol name when identifiable
@@ -77,6 +86,7 @@ defmodule Spotter.Services.CommitHotspotAgent do
             "snippet",
             "reason",
             "overall_score",
+            "llm_adjustment",
             "rubric"
           ],
           "properties" => %{
@@ -87,6 +97,7 @@ defmodule Spotter.Services.CommitHotspotAgent do
             "snippet" => %{"type" => "string"},
             "reason" => %{"type" => "string"},
             "overall_score" => %{"type" => "number"},
+            "llm_adjustment" => %{"type" => "number"},
             "rubric" => %{
               "type" => "object",
               "required" => [
@@ -118,6 +129,7 @@ defmodule Spotter.Services.CommitHotspotAgent do
           snippet: String.t(),
           reason: String.t(),
           overall_score: float(),
+          llm_adjustment: float(),
           rubric: map()
         }
 
@@ -177,7 +189,16 @@ defmodule Spotter.Services.CommitHotspotAgent do
         agent_kind: "hotspot"
       })
 
-      user_prompt = build_user_prompt(commit_hash, commit_subject, diff_stats, patch_files)
+      metrics_candidates = Map.get(input, :metrics_candidates, [])
+
+      user_prompt =
+        build_user_prompt(
+          commit_hash,
+          commit_subject,
+          diff_stats,
+          patch_files,
+          metrics_candidates
+        )
 
       sdk_opts =
         %ClaudeAgentSDK.Options{
@@ -264,9 +285,29 @@ defmodule Spotter.Services.CommitHotspotAgent do
 
   # --- Prompt building ---
 
-  defp build_user_prompt(commit_hash, commit_subject, diff_stats, patch_files) do
+  defp build_user_prompt(
+         commit_hash,
+         commit_subject,
+         diff_stats,
+         patch_files,
+         metrics_candidates
+       ) do
     stats_json = Jason.encode!(diff_stats)
     patches_json = Jason.encode!(Enum.map(patch_files, &summarize_patch_file/1))
+
+    metrics_section =
+      if metrics_candidates != [] do
+        metrics_json = Jason.encode!(Enum.map(metrics_candidates, &summarize_metrics_candidate/1))
+
+        """
+
+        ## Deterministic Pre-Scores
+        These are computed deterministically. Use them as context for your llm_adjustment.
+        #{metrics_json}
+        """
+      else
+        ""
+      end
 
     """
     Commit: #{String.slice(commit_hash, 0, 8)} — #{commit_subject}
@@ -277,7 +318,18 @@ defmodule Spotter.Services.CommitHotspotAgent do
 
     ## Patch Files (eligible hunks)
     #{patches_json}
+    #{metrics_section}
     """
+  end
+
+  defp summarize_metrics_candidate(candidate) do
+    %{
+      path: candidate.relative_path,
+      line_start: candidate.line_start,
+      line_end: candidate.line_end,
+      symbol_name: candidate.symbol_name,
+      scores: candidate.metrics
+    }
   end
 
   defp summarize_patch_file(file) do
@@ -323,6 +375,7 @@ defmodule Spotter.Services.CommitHotspotAgent do
       snippet: h["snippet"] || "",
       reason: h["reason"] || "",
       overall_score: clamp(h["overall_score"] || 0),
+      llm_adjustment: clamp_adjustment(h["llm_adjustment"] || 0),
       rubric: parse_rubric(h["rubric"])
     }
   end
@@ -342,6 +395,151 @@ defmodule Spotter.Services.CommitHotspotAgent do
     |> Enum.group_by(&{&1.relative_path, &1.line_start, &1.line_end, &1.symbol_name})
     |> Enum.map(fn {_key, group} -> Enum.max_by(group, & &1.overall_score) end)
   end
+
+  # --- Scoring V2 integration ---
+
+  @v2_weights %{
+    complexity: 0.30,
+    churn: 0.25,
+    blast_radius: 0.30,
+    test_exposure: 0.15
+  }
+
+  @max_snippet_span 80
+  @max_snippet_lines 12
+  @max_file_loc_for_whole_file 120
+
+  @doc """
+  Merges deterministic metrics into agent-produced hotspots using weighted scoring.
+
+  For each hotspot, finds the closest matching deterministic candidate and computes:
+  `overall_score = clamp(base_score + llm_adjustment, 0, 100)`
+
+  Returns hotspots with updated `overall_score` and `metadata.scoring_version`.
+  """
+  @spec apply_scoring_v2([hotspot()], [map()]) :: {[hotspot()], map()}
+  def apply_scoring_v2(hotspots, metrics_candidates) do
+    Tracer.with_span "spotter.commit_hotspots.agent.scoring_v2" do
+      Tracer.set_attribute("spotter.scoring_version", "hotspot_v2")
+
+      metrics_index = index_metrics(metrics_candidates)
+
+      {scored, rejected_count} =
+        hotspots
+        |> Enum.map(&merge_candidate_score(&1, metrics_index))
+        |> enforce_snippet_constraints()
+
+      Tracer.set_attribute("spotter.llm_adjustment_applied", length(scored))
+      Tracer.set_attribute("spotter.rejected_candidates", rejected_count)
+
+      {scored, %{scoring_version: "hotspot_v2", rejected_candidates: rejected_count}}
+    end
+  end
+
+  defp index_metrics(candidates) do
+    Map.new(candidates, fn c ->
+      {{c.relative_path, c.line_start, c.line_end}, c.metrics}
+    end)
+  end
+
+  defp merge_candidate_score(hotspot, metrics_index) do
+    metrics = find_matching_metrics(hotspot, metrics_index)
+
+    if metrics do
+      base_score = compute_base_score(metrics)
+      adj = hotspot.llm_adjustment
+      final = clamp_score(base_score + adj)
+
+      %{hotspot | overall_score: final}
+      |> Map.put(:deterministic_metrics, metrics)
+      |> Map.put(:base_score, Float.round(base_score, 2))
+    else
+      hotspot
+    end
+  end
+
+  defp find_matching_metrics(hotspot, metrics_index) do
+    # Exact match first
+    exact_key = {hotspot.relative_path, hotspot.line_start, hotspot.line_end}
+
+    case Map.get(metrics_index, exact_key) do
+      nil -> find_overlapping_metrics(hotspot, metrics_index)
+      metrics -> metrics
+    end
+  end
+
+  defp find_overlapping_metrics(hotspot, metrics_index) do
+    # Find best overlapping candidate for the same file
+    metrics_index
+    |> Enum.filter(fn {{path, m_start, m_end}, _} ->
+      path == hotspot.relative_path and
+        ranges_overlap?(hotspot.line_start, hotspot.line_end, m_start, m_end)
+    end)
+    |> Enum.max_by(
+      fn {{_, m_start, m_end}, _} ->
+        overlap_size(hotspot.line_start, hotspot.line_end, m_start, m_end)
+      end,
+      fn -> nil end
+    )
+    |> case do
+      {_key, metrics} -> metrics
+      nil -> nil
+    end
+  end
+
+  defp ranges_overlap?(a_start, a_end, b_start, b_end),
+    do: a_start <= b_end and b_start <= a_end
+
+  defp overlap_size(a_start, a_end, b_start, b_end),
+    do: max(0, min(a_end, b_end) - max(a_start, b_start) + 1)
+
+  @doc false
+  def compute_base_score(metrics) do
+    w = @v2_weights
+
+    w.complexity * Map.get(metrics, :complexity_score, 0) +
+      w.churn * Map.get(metrics, :change_churn_score, 0) +
+      w.blast_radius * Map.get(metrics, :blast_radius_score, 0) +
+      w.test_exposure * Map.get(metrics, :test_exposure_score, 0)
+  end
+
+  @doc """
+  Enforces snippet-level constraints on hotspot candidates.
+
+  Rejects:
+  - Candidates where `(line_end - line_start + 1) > 80`
+  - Whole-file ranges when file has > 120 LOC (approximated by line_end)
+  - Truncates snippet to 12 lines
+  """
+  @spec enforce_snippet_constraints([hotspot()]) :: {[hotspot()], non_neg_integer()}
+  def enforce_snippet_constraints(hotspots) do
+    {kept, rejected} =
+      Enum.split_with(hotspots, fn h ->
+        span = h.line_end - h.line_start + 1
+        span <= @max_snippet_span and not whole_file_range?(h)
+      end)
+
+    trimmed = Enum.map(kept, &trim_snippet/1)
+    {trimmed, length(rejected)}
+  end
+
+  defp whole_file_range?(hotspot) do
+    hotspot.line_start <= 1 and hotspot.line_end > @max_file_loc_for_whole_file
+  end
+
+  defp trim_snippet(hotspot) do
+    lines = String.split(hotspot.snippet, "\n")
+
+    if length(lines) > @max_snippet_lines do
+      trimmed = lines |> Enum.take(@max_snippet_lines) |> Enum.join("\n")
+      %{hotspot | snippet: trimmed}
+    else
+      hotspot
+    end
+  end
+
+  defp clamp_score(n) when is_number(n), do: n |> max(0.0) |> min(100.0) |> Float.round(1)
+  defp clamp_score(_), do: 0.0
 
   # --- Tool counting ---
 
@@ -404,4 +602,9 @@ defmodule Spotter.Services.CommitHotspotAgent do
 
   defp clamp(n) when is_number(n), do: n |> max(0) |> min(100) |> Kernel.*(1.0) |> Float.round(1)
   defp clamp(_), do: 0.0
+
+  defp clamp_adjustment(n) when is_number(n),
+    do: n |> max(-10) |> min(10) |> Kernel.*(1.0) |> Float.round(1)
+
+  defp clamp_adjustment(_), do: 0.0
 end
