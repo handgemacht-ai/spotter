@@ -174,14 +174,46 @@ defmodule SpotterWeb.ReviewsLiveTest do
       assert html =~ "No open annotations for the selected scope."
     end
 
-    test "excludes closed annotations" do
+    test "shows closed annotations in resolved section" do
       project = create_project("alpha")
       session = create_session(project)
-      create_annotation(session, :closed)
+      ann = create_annotation(session, :open, text: "will-resolve")
+
+      Ash.update!(ann, %{resolution: "Fixed it", resolution_kind: :code_change}, action: :resolve)
 
       {:ok, _view, html} = live(build_conn(), "/reviews?project_id=#{project.id}")
 
-      assert html =~ "No open annotations for the selected scope."
+      assert html =~ "Resolved annotations"
+      assert html =~ "will-resolve"
+      assert html =~ "Resolution note:"
+      assert html =~ "Fixed it"
+    end
+
+    test "resolved annotations do not appear in all-project mode" do
+      project = create_project("alpha")
+      session = create_session(project)
+      ann = create_annotation(session, :open, text: "resolved-hidden")
+
+      Ash.update!(ann, %{resolution: "Done"}, action: :resolve)
+
+      {:ok, _view, html} = live(build_conn(), "/reviews")
+
+      refute html =~ "Resolved annotations"
+      refute html =~ "resolved-hidden"
+    end
+
+    test "project chips and All count remain based on open annotations only" do
+      project = create_project("alpha")
+      session = create_session(project)
+      create_annotation(session, :open, text: "open-one")
+      ann = create_annotation(session, :open, text: "will-close")
+
+      Ash.update!(ann, %{resolution: "Done"}, action: :resolve)
+
+      {:ok, _view, html} = live(build_conn(), "/reviews")
+
+      assert html =~ "All (1)"
+      assert html =~ "alpha (1)"
     end
   end
 

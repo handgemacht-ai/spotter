@@ -78,5 +78,16 @@ defmodule Spotter.Transcripts.AnnotationResolveTest do
       assert second.metadata["resolved_at"] != first_resolved_at
       assert second.state == :closed
     end
+
+    test "rejects blank/whitespace-only resolution", %{annotation: annotation} do
+      assert {:error, _error} =
+               Ash.update(annotation, %{resolution: "   "}, action: :resolve)
+    end
+
+    test "trims whitespace from resolution", %{annotation: annotation} do
+      resolved = Ash.update!(annotation, %{resolution: "  Fixed it  "}, action: :resolve)
+
+      assert resolved.metadata["resolution"] == "Fixed it"
+    end
   end
 end

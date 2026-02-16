@@ -55,7 +55,9 @@ This tool is review-only: it never returns `purpose=explain` annotations, so no 
 
 ### 4. Resolve each annotation
 
-For each annotation, make the necessary code or process changes, then call `mcp__spotter__resolve_annotation`:
+For each annotation, make the necessary code or process changes, then call `mcp__spotter__resolve_annotation`.
+
+The `resolution` field is a **required, non-empty resolution note** (1-3 sentences) describing what was done. This note will be visible under "Resolved annotations" in the Spotter web UI. Blank or whitespace-only values are rejected.
 
 ```json
 {

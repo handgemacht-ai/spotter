@@ -123,7 +123,7 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
       assert html =~ "All (0)"
     end
 
-    test "excludes closed annotations" do
+    test "shows closed annotations in resolved section" do
       {project, session} = create_project_with_session()
 
       ann =
@@ -145,7 +145,53 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
       {:ok, _view, html} = live(conn, reviews_path(project))
 
       assert html =~ "still open"
-      refute html =~ "closed one"
+      assert html =~ "closed one"
+      assert html =~ "Resolved annotations"
+      assert html =~ "resolved-section"
+    end
+
+    test "resolved annotation with resolution note renders it" do
+      {project, session} = create_project_with_session()
+
+      ann =
+        Ash.create!(Annotation, %{
+          session_id: session.id,
+          selected_text: "resolved one",
+          comment: "review this"
+        })
+
+      Ash.update!(
+        ann,
+        %{resolution: "Fixed the bug in controller", resolution_kind: :code_change},
+        action: :resolve
+      )
+
+      conn = build_conn()
+      {:ok, _view, html} = live(conn, reviews_path(project))
+
+      assert html =~ "Resolution note:"
+      assert html =~ "Fixed the bug in controller"
+      assert html =~ "code_change"
+    end
+
+    test "resolved annotation without resolution metadata shows missing" do
+      {project, session} = create_project_with_session()
+
+      ann =
+        Ash.create!(Annotation, %{
+          session_id: session.id,
+          selected_text: "legacy closed",
+          comment: "old"
+        })
+
+      # Close via :close action (no resolution metadata)
+      Ash.update!(ann, %{}, action: :close)
+
+      conn = build_conn()
+      {:ok, _view, html} = live(conn, reviews_path(project))
+
+      assert html =~ "Resolution note:"
+      assert html =~ "(missing)"
     end
   end
 

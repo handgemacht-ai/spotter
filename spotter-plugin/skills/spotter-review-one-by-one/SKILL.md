@@ -22,7 +22,7 @@ Repeat for each annotation, starting with the oldest:
 3. **Plan** the change needed to address the annotation.
 4. **Implement** the code, process, or documentation change.
 5. **Verify** the change compiles and tests pass (if applicable).
-6. **Resolve** the annotation by calling `mcp__spotter__resolve_annotation`:
+6. **Resolve** the annotation by calling `mcp__spotter__resolve_annotation`. The `resolution` field is a **required, non-empty resolution note** (1-3 sentences) that will be visible under "Resolved annotations" in the Spotter web UI. Blank or whitespace-only values are rejected.
    ```json
    {
      "id": "<annotation_id>",

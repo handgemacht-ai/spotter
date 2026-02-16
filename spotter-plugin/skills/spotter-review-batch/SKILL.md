@@ -27,7 +27,7 @@ For each group:
 1. **Plan** all changes for the group before modifying any code.
 2. **Implement** all changes for the group at once.
 3. **Verify** the changes compile and tests pass.
-4. **Resolve** each annotation in the group individually. Resolution must happen per-annotation since `mcp__spotter__resolve_annotation` operates on a single annotation `id`:
+4. **Resolve** each annotation in the group individually. Resolution must happen per-annotation since `mcp__spotter__resolve_annotation` operates on a single annotation `id`. The `resolution` field is a **required, non-empty resolution note** (1-3 sentences) that will be visible under "Resolved annotations" in the Spotter web UI. Blank or whitespace-only values are rejected.
    ```json
    {
      "id": "<annotation_id>",

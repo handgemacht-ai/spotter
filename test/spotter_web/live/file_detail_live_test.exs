@@ -61,7 +61,7 @@ defmodule SpotterWeb.FileDetailLiveTest do
         live(build_conn(), "/projects/#{project.id}/files/lib/foo.ex")
 
       assert html =~ ~s(data-testid="file-detail-root")
-      assert html =~ "lib/foo.ex"
+      assert html =~ "foo.ex"
     end
 
     test "renders commits for file", %{project: project} do

@@ -19,6 +19,7 @@ defmodule SpotterWeb.ReviewsLive do
        project_counts: project_counts,
        selected_project_id: nil,
        open_annotations: [],
+       resolved_annotations: [],
        sessions_by_id: %{},
        projects_by_id: %{}
      )}
@@ -118,8 +119,22 @@ defmodule SpotterWeb.ReviewsLive do
         |> Ash.load!([:subagent, :file_refs, message_refs: :message])
       end
 
+    resolved_annotations =
+      if session_ids == [] || project_id == nil do
+        []
+      else
+        Annotation
+        |> Ash.Query.filter(
+          session_id in ^session_ids and state == :closed and purpose == :review
+        )
+        |> Ash.Query.sort(updated_at: :desc)
+        |> Ash.read!()
+        |> Ash.load!([:subagent, :file_refs, message_refs: :message])
+      end
+
     assign(socket,
       open_annotations: open_annotations,
+      resolved_annotations: resolved_annotations,
       sessions_by_id: sessions_by_id,
       projects_by_id: projects_by_id
     )
@@ -211,6 +226,9 @@ defmodule SpotterWeb.ReviewsLive do
       </div>
       <pre class="annotation-text"><%= @ann.selected_text %></pre>
       <p class="annotation-comment"><%= @ann.comment %></p>
+      <%= if @ann.state == :closed do %>
+        <.resolution_block ann={@ann} />
+      <% end %>
       <div class="annotation-meta">
         <span class="annotation-time">
           <%= Calendar.strftime(@ann.inserted_at, "%H:%M") %>
@@ -222,6 +240,43 @@ defmodule SpotterWeb.ReviewsLive do
     </div>
     """
   end
+
+  defp resolution_block(assigns) do
+    metadata = assigns.ann.metadata || %{}
+
+    assigns =
+      assign(assigns,
+        resolution: metadata["resolution"],
+        resolution_kind: metadata["resolution_kind"],
+        resolved_at: parse_resolved_at(metadata["resolved_at"])
+      )
+
+    ~H"""
+    <div class="resolution-block">
+      <span class="resolution-label">Resolution note:</span>
+      <%= if @resolution && @resolution != "" do %>
+        <span class="resolution-text">{@resolution}</span>
+      <% else %>
+        <span class="resolution-text text-muted">(missing)</span>
+      <% end %>
+      <span :if={@resolution_kind} class="badge badge-muted">{@resolution_kind}</span>
+      <span :if={@resolved_at} class="text-muted text-xs">
+        {Calendar.strftime(@resolved_at, "%Y-%m-%d %H:%M")}
+      </span>
+    </div>
+    """
+  end
+
+  defp parse_resolved_at(nil), do: nil
+
+  defp parse_resolved_at(iso_string) when is_binary(iso_string) do
+    case DateTime.from_iso8601(iso_string) do
+      {:ok, dt, _offset} -> dt
+      _ -> nil
+    end
+  end
+
+  defp parse_resolved_at(_), do: nil
 
   @impl true
   def render(assigns) do
@@ -291,6 +346,18 @@ defmodule SpotterWeb.ReviewsLive do
           <%= for ann <- @open_annotations do %>
             <.annotation_card ann={ann} sessions_by_id={@sessions_by_id} projects_by_id={@projects_by_id} />
           <% end %>
+        <% end %>
+
+        <%= if @resolved_annotations != [] do %>
+          <div class="resolved-section" data-testid="resolved-section">
+            <h3 class="resolved-heading">
+              Resolved annotations
+              <span class="text-muted">({length(@resolved_annotations)})</span>
+            </h3>
+            <%= for ann <- @resolved_annotations do %>
+              <.annotation_card ann={ann} sessions_by_id={@sessions_by_id} projects_by_id={@projects_by_id} />
+            <% end %>
+          </div>
         <% end %>
       <% else %>
         <%= for pc <- @project_counts do %>

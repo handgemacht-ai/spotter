@@ -382,8 +382,6 @@ defmodule Spotter.ProductSpec do
 
   defp query_to_run(query, params), do: {query, params}
 
-  defp maybe_retry_query_with_literal_commit(_query, _params, _error), do: :no_retry
-
   defp maybe_retry_query_with_literal_commit(query, [dolt_commit_hash, project_id], error) do
     literal_query = query_with_literal_commit(query, dolt_commit_hash)
 
@@ -402,6 +400,8 @@ defmodule Spotter.ProductSpec do
       :no_retry
     end
   end
+
+  defp maybe_retry_query_with_literal_commit(_query, _params, _error), do: :no_retry
 
   defp query_with_literal_commit(query, dolt_commit_hash) do
     if String.contains?(query, "AS OF ?") and valid_dolt_commit_hash?(dolt_commit_hash) do

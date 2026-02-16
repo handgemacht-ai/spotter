@@ -74,21 +74,20 @@ defmodule Spotter.Services.FileDetail do
   `kind` is `:directory` or `:file`.
   """
   def list_directory(project_id, relative_path) do
-    with {:ok, repo_root} <- resolve_repo_root(project_id) do
-      relative_dir = relative_path || ""
-      full_path = Path.join(repo_root, relative_dir)
+    with {:ok, repo_root} <- resolve_repo_root(project_id),
+         relative_dir = relative_path || "",
+         full_path = Path.join(repo_root, relative_dir),
+         true <- File.dir?(full_path) do
+      case File.ls(full_path) do
+        {:ok, entries} ->
+          {:ok, build_directory_entries(entries, full_path, relative_dir)}
 
-      if File.dir?(full_path) do
-        case File.ls(full_path) do
-          {:ok, entries} ->
-            {:ok, build_directory_entries(entries, full_path, relative_dir)}
-
-          {:error, reason} ->
-            {:error, reason}
-        end
-      else
-        {:error, :not_a_directory}
+        {:error, reason} ->
+          {:error, reason}
       end
+    else
+      false -> {:error, :not_a_directory}
+      {:error, _} = error -> error
     end
   end
 

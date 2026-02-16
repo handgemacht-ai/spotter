@@ -111,7 +111,7 @@ defmodule Spotter.Transcripts do
     end
 
     tool :resolve_annotation, Spotter.Transcripts.Annotation, :resolve do
-      description "Resolve a review annotation (records resolution metadata and closes it)."
+      description "Resolve a review annotation. `resolution` is a required, non-empty resolution note (1-3 sentences) that will be displayed in the Spotter web UI under Resolved annotations."
     end
   end
 
