@@ -974,6 +974,7 @@ defmodule SpotterWeb.SpecsLive do
   defp test_name(_), do: nil
 
   defp format_changed_field_value(:acceptance_criteria, nil), do: ""
+
   defp format_changed_field_value(:acceptance_criteria, value) do
     value
     |> normalize_acceptance_criteria()
@@ -981,6 +982,7 @@ defmodule SpotterWeb.SpecsLive do
   end
 
   defp format_changed_field_value("acceptance_criteria", nil), do: ""
+
   defp format_changed_field_value("acceptance_criteria", value) do
     value
     |> normalize_acceptance_criteria()
