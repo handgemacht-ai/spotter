@@ -143,8 +143,8 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspotsTest do
   end
 
   describe "timeout/1" do
-    test "returns 6 minutes (360_000 ms)" do
-      assert AnalyzeCommitHotspots.timeout(%Oban.Job{}) == :timer.minutes(6)
+    test "returns 10 minutes (600_000 ms)" do
+      assert AnalyzeCommitHotspots.timeout(%Oban.Job{}) == :timer.minutes(10)
     end
   end
 
