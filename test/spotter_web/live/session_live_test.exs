@@ -573,6 +573,64 @@ defmodule SpotterWeb.SessionLiveTest do
     end
   end
 
+  describe "file reference linkification" do
+    test "linkify_file_refs returns plain text when no project_id" do
+      line = %{line: "See lib/foo.ex for details", file_ref_relative_path: nil}
+      result = SpotterWeb.TranscriptComponents.linkify_file_refs(line, nil, nil)
+      assert result == "See lib/foo.ex for details"
+    end
+
+    test "linkify_file_refs returns plain text when no existing_files" do
+      line = %{line: "See lib/foo.ex for details", file_ref_relative_path: nil}
+      result = SpotterWeb.TranscriptComponents.linkify_file_refs(line, "proj-1", nil)
+      assert result == "See lib/foo.ex for details"
+    end
+
+    test "linkify_file_refs wraps structured file ref in anchor when file exists" do
+      files = MapSet.new(["lib/foo.ex"])
+
+      line = %{
+        line: "● Read(lib/foo.ex)",
+        file_ref_relative_path: "lib/foo.ex",
+        file_ref_source: :tool_use
+      }
+
+      result = SpotterWeb.TranscriptComponents.linkify_file_refs(line, "proj-1", files)
+      html = Phoenix.HTML.safe_to_string(result)
+      assert html =~ ~s(href="/projects/proj-1/files/lib/foo.ex")
+      assert html =~ "file-ref-link"
+    end
+
+    test "linkify_file_refs wraps plain-text file token in anchor when file exists" do
+      files = MapSet.new(["lib/bar.ex"])
+      line = %{line: "Check lib/bar.ex for the bug", file_ref_relative_path: nil}
+      result = SpotterWeb.TranscriptComponents.linkify_file_refs(line, "proj-1", files)
+      html = Phoenix.HTML.safe_to_string(result)
+      assert html =~ ~s(href="/projects/proj-1/files/lib/bar.ex")
+      assert html =~ "file-ref-link"
+      assert html =~ "Check"
+      assert html =~ "for the bug"
+    end
+
+    test "linkify_file_refs leaves non-existent file as plain text" do
+      files = MapSet.new(["lib/existing.ex"])
+      line = %{line: "See lib/missing.ex please", file_ref_relative_path: nil}
+      result = SpotterWeb.TranscriptComponents.linkify_file_refs(line, "proj-1", files)
+      html = Phoenix.HTML.safe_to_string(result)
+      refute html =~ "file-ref-link"
+      refute html =~ "<a "
+      assert html =~ "lib/missing.ex"
+    end
+
+    test "linkify_file_refs handles paths with line:col suffix" do
+      files = MapSet.new(["lib/app.ex"])
+      line = %{line: "Error at lib/app.ex:42:5", file_ref_relative_path: nil}
+      result = SpotterWeb.TranscriptComponents.linkify_file_refs(line, "proj-1", files)
+      html = Phoenix.HTML.safe_to_string(result)
+      assert html =~ ~s(href="/projects/proj-1/files/lib/app.ex")
+    end
+  end
+
   describe "row_classes/3 for new transcript kinds" do
     alias SpotterWeb.TranscriptComponents
 

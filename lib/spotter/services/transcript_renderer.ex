@@ -801,6 +801,8 @@ defmodule Spotter.Services.TranscriptRenderer do
         nil
       end
 
+    file_ref = extract_file_ref(block, session_cwd)
+
     line_meta = %{
       line: "● #{name}(#{preview})",
       kind: :tool_use,
@@ -811,6 +813,8 @@ defmodule Spotter.Services.TranscriptRenderer do
       render_mode: :plain,
       source_line_number: nil
     }
+
+    line_meta = maybe_put_file_ref(line_meta, file_ref, :tool_use)
 
     if command_status do
       [Map.put(line_meta, :command_status, command_status)]
@@ -852,8 +856,10 @@ defmodule Spotter.Services.TranscriptRenderer do
     tool_name = tool_name_for_result(tool_use_id, tool_use_index)
     resolved_content = resolve_tool_result_content(tool_name, block["content"], msg)
     block = Map.put(block, "content", resolved_content)
+    file_ref = file_ref_from_tool_use_index(tool_use_id, tool_use_index, session_cwd)
 
     dispatch_tool_result(tool_name, block, msg, session_cwd, tool_use_index)
+    |> Enum.map(&maybe_put_file_ref(&1, file_ref, :tool_result))
   end
 
   defp render_user_block_enriched(
@@ -1160,6 +1166,46 @@ defmodule Spotter.Services.TranscriptRenderer do
       _ ->
         nil
     end
+  end
+
+  # ── File reference metadata for linking ─────────────────────────
+
+  @file_ref_tools ~w(Read Write Edit Glob Grep)
+
+  defp extract_file_ref(%{"name" => name, "input" => %{"file_path" => path}}, session_cwd)
+       when name in @file_ref_tools and is_binary(path) do
+    to_relative_path(path, session_cwd)
+  end
+
+  defp extract_file_ref(%{"name" => name, "input" => %{"path" => path}}, session_cwd)
+       when name in @file_ref_tools and is_binary(path) do
+    to_relative_path(path, session_cwd)
+  end
+
+  defp extract_file_ref(_block, _session_cwd), do: nil
+
+  defp file_ref_from_tool_use_index(nil, _tool_use_index, _session_cwd), do: nil
+
+  defp file_ref_from_tool_use_index(tool_use_id, tool_use_index, session_cwd) do
+    case Map.get(tool_use_index, tool_use_id) do
+      %{name: name, input: %{"file_path" => path}}
+      when name in @file_ref_tools and is_binary(path) ->
+        to_relative_path(path, session_cwd)
+
+      %{name: name, input: %{"path" => path}} when name in @file_ref_tools and is_binary(path) ->
+        to_relative_path(path, session_cwd)
+
+      _ ->
+        nil
+    end
+  end
+
+  defp maybe_put_file_ref(line_meta, nil, _source), do: line_meta
+
+  defp maybe_put_file_ref(line_meta, relative_path, source) do
+    line_meta
+    |> Map.put(:file_ref_relative_path, relative_path)
+    |> Map.put(:file_ref_source, source)
   end
 
   defp render_diff_rows(patches, tool_use_id, file_path) do

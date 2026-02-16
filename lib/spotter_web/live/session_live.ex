@@ -11,6 +11,7 @@ defmodule SpotterWeb.SessionLive do
     ReviewUpdates,
     SessionRegistry,
     Tmux,
+    TranscriptFileLinks,
     TranscriptSync
   }
 
@@ -61,6 +62,7 @@ defmodule SpotterWeb.SessionLive do
     commit_links = load_commit_links(session_id)
     subagent_labels = load_subagent_labels(session_record)
     session_cwd = if session_record, do: session_record.cwd, else: nil
+    {link_project_id, link_fileset} = resolve_file_link_context(session_record)
 
     socket =
       socket
@@ -88,7 +90,9 @@ defmodule SpotterWeb.SessionLive do
         show_transcript: true,
         clicked_subagent: nil,
         active_sidebar_tab: :commits,
-        explain_streams: %{}
+        explain_streams: %{},
+        transcript_link_project_id: link_project_id,
+        transcript_link_fileset: link_fileset
       )
       |> mount_computers(%{
         transcript_view: %{messages: messages, session_cwd: session_cwd}
@@ -486,6 +490,7 @@ defmodule SpotterWeb.SessionLive do
     {session_record, messages} = load_session_data(session_id)
 
     session_cwd = if session_record, do: session_record.cwd, else: nil
+    {link_project_id, link_fileset} = resolve_file_link_context(session_record)
 
     errors = load_errors(session_record)
     rework_events = load_rework_events(session_record)
@@ -498,7 +503,9 @@ defmodule SpotterWeb.SessionLive do
         errors: errors,
         rework_events: rework_events,
         commit_links: commit_links,
-        subagent_labels: load_subagent_labels(session_record)
+        subagent_labels: load_subagent_labels(session_record),
+        transcript_link_project_id: link_project_id,
+        transcript_link_fileset: link_fileset
       )
       |> update_computer_inputs(:transcript_view, %{
         messages: messages,
@@ -511,6 +518,17 @@ defmodule SpotterWeb.SessionLive do
     socket
     |> assign(breakpoint_map: breakpoint_map, anchors: anchors)
     |> push_sync_events()
+  end
+
+  defp resolve_file_link_context(nil), do: {nil, nil}
+
+  defp resolve_file_link_context(session_record) do
+    project_id = to_string(session_record.project_id)
+
+    case TranscriptFileLinks.for_session(session_record.cwd) do
+      {:ok, %{files: files}} -> {project_id, files}
+      {:error, _} -> {project_id, nil}
+    end
   end
 
   defp load_session_data(session_id) do
@@ -693,6 +711,8 @@ defmodule SpotterWeb.SessionLive do
             subagent_labels={@subagent_labels}
             show_debug={@transcript_view_show_debug}
             anchors={@anchors}
+            project_id={@transcript_link_project_id}
+            existing_files={@transcript_link_fileset}
             empty_message="No transcript available for this session."
           />
         </div>

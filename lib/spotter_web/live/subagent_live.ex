@@ -5,7 +5,7 @@ defmodule SpotterWeb.SubagentLive do
   import SpotterWeb.TranscriptComponents
   import SpotterWeb.AnnotationComponents
 
-  alias Spotter.Services.{ExplainAnnotations, ReviewUpdates}
+  alias Spotter.Services.{ExplainAnnotations, ReviewUpdates, TranscriptFileLinks}
 
   alias Spotter.Transcripts.{
     Annotation,
@@ -24,6 +24,7 @@ defmodule SpotterWeb.SubagentLive do
     case load_subagent_data(session_id, agent_id) do
       {:ok, session_record, subagent, messages, annotations} ->
         session_cwd = session_record.cwd
+        {link_project_id, link_fileset} = resolve_file_link_context(session_record)
 
         socket =
           socket
@@ -36,7 +37,9 @@ defmodule SpotterWeb.SubagentLive do
             selected_text: nil,
             selection_message_ids: [],
             explain_streams: %{},
-            not_found: false
+            not_found: false,
+            transcript_link_project_id: link_project_id,
+            transcript_link_fileset: link_fileset
           )
           |> mount_computers(%{
             transcript_view: %{messages: messages, session_cwd: session_cwd}
@@ -200,6 +203,15 @@ defmodule SpotterWeb.SubagentLive do
     Application.get_env(:spotter, :explain_annotations_module, ExplainAnnotations)
   end
 
+  defp resolve_file_link_context(session_record) do
+    project_id = to_string(session_record.project_id)
+
+    case TranscriptFileLinks.for_session(session_record.cwd) do
+      {:ok, %{files: files}} -> {project_id, files}
+      {:error, _} -> {project_id, nil}
+    end
+  end
+
   defp load_subagent_data(session_id, agent_id) do
     with {:ok, %Session{} = session_record} <-
            Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one(),
@@ -293,6 +305,8 @@ defmodule SpotterWeb.SubagentLive do
             session_id={@session_id}
             current_agent_id={@agent_id}
             show_debug={@transcript_view_show_debug}
+            project_id={@transcript_link_project_id}
+            existing_files={@transcript_link_fileset}
             empty_message="No transcript available for this agent."
           />
         </div>

@@ -23,6 +23,7 @@ defmodule Spotter.Application do
         Spotter.Services.SessionRegistry,
         Spotter.Services.ActiveSessionRegistry,
         Spotter.Services.ReviewSessionRegistry,
+        Spotter.Services.TranscriptFileLinks,
         Spotter.Observability.FlowHub,
         {Registry, keys: :unique, name: Spotter.Services.TranscriptTailRegistry},
         Spotter.Services.TranscriptTailSupervisor,

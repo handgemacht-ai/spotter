@@ -35,6 +35,8 @@ defmodule SpotterWeb.TranscriptComponents do
   attr(:show_debug, :boolean, default: false)
   attr(:anchors, :list, default: [])
   attr(:panel_id, :string, default: "transcript-messages")
+  attr(:project_id, :string, default: nil)
+  attr(:existing_files, :any, default: nil)
   attr(:empty_message, :string, default: "No transcript available.")
 
   def transcript_panel(assigns) do
@@ -67,6 +69,8 @@ defmodule SpotterWeb.TranscriptComponents do
             show_debug={@show_debug}
             anchors={@anchors}
             tool_hook_controls={@tool_hook_controls}
+            project_id={@project_id}
+            existing_files={@existing_files}
           />
           <%= if @show_debug do %>
             <div class="transcript-debug-sidecar" data-render-mode="code">
@@ -97,6 +101,8 @@ defmodule SpotterWeb.TranscriptComponents do
   attr(:show_debug, :boolean, default: false)
   attr(:anchors, :list, default: [])
   attr(:tool_hook_controls, :map, default: %{})
+  attr(:project_id, :string, default: nil)
+  attr(:existing_files, :any, default: nil)
 
   def transcript_row(assigns) do
     ~H"""
@@ -152,7 +158,7 @@ defmodule SpotterWeb.TranscriptComponents do
             <span
               class="row-text"
               data-render-markdown={if markdown_line?(@line), do: "true", else: "false"}
-            ><%= @line.line %></span>
+            ><%= linkify_file_refs(@line, @project_id, @existing_files) %></span>
           <% end %>
         </span>
         <span :if={has_row_meta?(@line, @tool_hook_controls)} class="row-meta">
@@ -307,6 +313,78 @@ defmodule SpotterWeb.TranscriptComponents do
 
   defp markdown_line?(line) do
     line[:render_mode] == :plain and line[:kind] in [:text, :thinking]
+  end
+
+  # ── File reference linkification ────────────────────────────────────
+
+  @file_ext_pattern ~r/(?:^|(?<=[\s("'`]))([a-zA-Z0-9_\-\.\/]+\.(?:ex|exs|heex|eex|leex|json|jsonl|js|jsx|ts|tsx|py|rb|rs|go|yml|yaml|toml|md|html|css|sql|sh|bash|diff|txt|conf|cfg|xml|csv))(?::(\d+)(?::(\d+))?)?(?=$|[\s)"'`.,;!?])/
+
+  def linkify_file_refs(line, nil, _existing_files), do: line.line
+  def linkify_file_refs(line, _project_id, nil), do: line.line
+
+  def linkify_file_refs(line, project_id, existing_files) do
+    if line[:file_ref_relative_path] &&
+         MapSet.member?(existing_files, line[:file_ref_relative_path]) do
+      linkify_structured_ref(line, project_id)
+    else
+      linkify_plain_text(line.line, project_id, existing_files)
+    end
+  end
+
+  defp linkify_structured_ref(line, project_id) do
+    path = line.file_ref_relative_path
+    href = "/projects/#{project_id}/files/#{path}"
+
+    Phoenix.HTML.raw(
+      String.replace(
+        Phoenix.HTML.html_escape(line.line) |> Phoenix.HTML.safe_to_string(),
+        Phoenix.HTML.html_escape(path) |> Phoenix.HTML.safe_to_string(),
+        ~s(<a href="#{href}" class="file-ref-link">#{Phoenix.HTML.html_escape(path) |> Phoenix.HTML.safe_to_string()}</a>),
+        global: false
+      )
+    )
+  end
+
+  defp linkify_plain_text(text, project_id, existing_files) do
+    case Regex.split(@file_ext_pattern, text, include_captures: true) do
+      [^text] ->
+        text
+
+      parts ->
+        parts
+        |> Enum.map_join("", &linkify_part(&1, project_id, existing_files))
+        |> Phoenix.HTML.raw()
+    end
+  end
+
+  defp linkify_part(part, project_id, existing_files) do
+    case Regex.run(@file_ext_pattern, part) do
+      [_full, path | _rest] ->
+        render_file_ref_part(part, path, project_id, existing_files)
+
+      _ ->
+        escape_to_string(part)
+    end
+  end
+
+  defp render_file_ref_part(part, path, project_id, existing_files) do
+    if MapSet.member?(existing_files, path) do
+      href = "/projects/#{project_id}/files/#{path}"
+      escaped_path = escape_to_string(path)
+
+      String.replace(
+        escape_to_string(part),
+        escaped_path,
+        ~s(<a href="#{href}" class="file-ref-link">#{escaped_path}</a>),
+        global: false
+      )
+    else
+      escape_to_string(part)
+    end
+  end
+
+  defp escape_to_string(text) do
+    text |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
   end
 
   # ── Hook control computation for tool headers ───────────────────────────────────
