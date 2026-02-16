@@ -8,6 +8,8 @@ defmodule Spotter.Agents.DistillationTools do
 
   use ClaudeAgentSDK.Tool
 
+  alias Spotter.Observability.AgentRunScope
+
   # ── Limits ──
 
   @max_what_changed 12
@@ -135,9 +137,11 @@ defmodule Spotter.Agents.DistillationTools do
             )
 
             Tracer.set_attribute("spotter.key_file_count", length(payload.key_files))
+            DT.store_result({:ok, :session, payload})
             DT.text_result(%{ok: true, kind: "session", payload: payload})
 
           {:error, details} ->
+            DT.store_result({:error, details})
             DT.text_result(%{ok: false, error: "validation_error", details: details})
         end
       end
@@ -256,9 +260,11 @@ defmodule Spotter.Agents.DistillationTools do
               length(payload.notable_commits)
             )
 
+            DT.store_result({:ok, :project_rollup, payload})
             DT.text_result(%{ok: true, kind: "project_rollup", payload: payload})
 
           {:error, details} ->
+            DT.store_result({:error, details})
             DT.text_result(%{ok: false, error: "validation_error", details: details})
         end
       end
@@ -277,6 +283,56 @@ defmodule Spotter.Agents.DistillationTools do
   @doc false
   def text_result(data) do
     {:ok, %{"content" => [%{"type" => "text", "text" => Jason.encode!(data)}]}}
+  end
+
+  @distillation_result_table Spotter.Observability.AgentRunScope
+
+  @doc """
+  Stores a distillation result in the shared ETS table, keyed by the
+  current process's agent scope registry pid. Called from tool handlers
+  which run in spawned processes.
+  """
+  def store_result(result) do
+    AgentRunScope.ensure_table_exists()
+
+    case resolve_registry_pid() do
+      pid when is_pid(pid) ->
+        :ets.insert(@distillation_result_table, {{:distillation_result, pid}, result})
+
+      nil ->
+        :ok
+    end
+  end
+
+  defp resolve_registry_pid do
+    case Process.get(:claude_agent_sdk_tool_registry_pid) do
+      pid when is_pid(pid) ->
+        pid
+
+      _ ->
+        (Process.get(:"$ancestors", []) ++ Process.get(:"$callers", []))
+        |> Enum.find(fn pid -> is_pid(pid) and AgentRunScope.get(pid) != :error end)
+    end
+  end
+
+  @doc """
+  Fetches and deletes the distillation result stored by a tool handler.
+  Called from the agent runner after the SDK query completes.
+  """
+  def fetch_result(registry_pid) do
+    AgentRunScope.ensure_table_exists()
+    key = {:distillation_result, registry_pid}
+
+    case :ets.lookup(@distillation_result_table, key) do
+      [{^key, result}] ->
+        :ets.delete(@distillation_result_table, key)
+        result
+
+      _ ->
+        nil
+    end
+  rescue
+    ArgumentError -> nil
   end
 
   # ── Session Validation ──

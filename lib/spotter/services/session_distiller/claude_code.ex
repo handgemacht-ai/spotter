@@ -5,6 +5,7 @@ defmodule Spotter.Services.SessionDistiller.ClaudeCode do
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
+  alias Spotter.Agents.DistillationTools
   alias Spotter.Agents.DistillationToolServer
   alias Spotter.Config.Runtime
   alias Spotter.Observability.AgentRunScope
@@ -60,6 +61,7 @@ defmodule Spotter.Services.SessionDistiller.ClaudeCode do
           ErrorReport.set_trace_error("distill_exit", msg, "services.session_distiller")
           {:error, {:agent_exit, exit_reason}}
       after
+        DistillationTools.fetch_result(server.registry_pid)
         AgentRunScope.delete(server.registry_pid)
       end
     end
@@ -92,92 +94,35 @@ defmodule Spotter.Services.SessionDistiller.ClaudeCode do
     Tracer.set_attribute("spotter.model_used", actual_model)
     Tracer.set_attribute("spotter.tool_calls_total", count_tool_calls(messages))
 
-    extract_distillation(messages, actual_model)
-  end
+    case DistillationTools.fetch_result(server.registry_pid) do
+      {:ok, :session, payload} ->
+        snippet_count = length(Map.get(payload, :important_snippets, []))
+        Tracer.set_attribute("spotter.snippets_count", snippet_count)
 
-  @doc false
-  def extract_distillation(messages, model_used) do
-    case extract_last_tool_result(messages, @tool_name) do
+        summary_json = stringify_keys(payload)
+        summary_text = format_summary_text(summary_json)
+        raw_text = Jason.encode!(summary_json)
+
+        {:ok,
+         %{
+           summary_json: summary_json,
+           summary_text: summary_text,
+           model_used: actual_model,
+           raw_response_text: raw_text
+         }}
+
+      {:error, details} ->
+        {:error, {:invalid_distillation_payload, "validation_failed", inspect(details)}}
+
       nil ->
-        log_missing_tool_diagnostics(messages, @tool_name, model_used)
+        Logger.warning(
+          "SessionDistiller: tool not called — model=#{actual_model} tool_calls=#{count_tool_calls(messages)}"
+        )
+
+        Tracer.set_status(:error, "no_distillation_tool_output")
         {:error, :no_distillation_tool_output}
-
-      raw_json ->
-        case Jason.decode(raw_json) do
-          {:ok, %{"ok" => true, "kind" => "session", "payload" => payload}} ->
-            snippet_count = length(Map.get(payload, "important_snippets", []))
-            Tracer.set_attribute("spotter.snippets_count", snippet_count)
-
-            summary_json = payload
-            summary_text = format_summary_text(payload)
-            raw_text = Jason.encode!(summary_json)
-
-            {:ok,
-             %{
-               summary_json: summary_json,
-               summary_text: summary_text,
-               model_used: model_used,
-               raw_response_text: raw_text
-             }}
-
-          {:ok, %{"ok" => false} = err} ->
-            {:error, {:invalid_distillation_payload, "validation_failed", Jason.encode!(err)}}
-
-          {:ok, other} ->
-            {:error, {:invalid_distillation_payload, "unexpected_shape", Jason.encode!(other)}}
-
-          {:error, decode_err} ->
-            {:error, {:invalid_distillation_payload, "json_decode_error", inspect(decode_err)}}
-        end
     end
   end
-
-  @doc false
-  def extract_last_tool_result(messages, tool_name) do
-    messages
-    |> Enum.flat_map(&extract_tool_results/1)
-    |> Enum.filter(fn {name, _content} -> name == tool_name end)
-    |> List.last()
-    |> case do
-      {_name, content} -> content
-      nil -> nil
-    end
-  end
-
-  defp extract_tool_results(%ClaudeAgentSDK.Message{type: :tool_result, data: data}) do
-    extract_tool_result_pairs(data)
-  end
-
-  defp extract_tool_results(%{type: :tool_result, data: data}) do
-    extract_tool_result_pairs(data)
-  end
-
-  defp extract_tool_results(_), do: []
-
-  defp extract_tool_result_pairs(data) when is_map(data) do
-    tool_name = data[:tool_name] || data["tool_name"]
-    content = data[:content] || data["content"]
-
-    if tool_name && content do
-      [{tool_name, extract_text_content(content)}]
-    else
-      []
-    end
-  end
-
-  defp extract_tool_result_pairs(_), do: []
-
-  defp extract_text_content(content) when is_binary(content), do: content
-
-  defp extract_text_content(content) when is_list(content) do
-    Enum.find_value(content, "", fn
-      %{"type" => "text", "text" => text} -> text
-      %{type: "text", text: text} -> text
-      _ -> nil
-    end)
-  end
-
-  defp extract_text_content(_), do: ""
 
   @doc false
   def format_summary_text(json) do
@@ -259,27 +204,12 @@ defmodule Spotter.Services.SessionDistiller.ClaudeCode do
 
   defp extract_assistant_tool_uses(_), do: []
 
-  defp log_missing_tool_diagnostics(messages, expected_tool, model_used) do
-    tool_results = Enum.flat_map(messages, &extract_tool_results/1)
-    tool_use_count = count_tool_calls(messages)
-    observed_names = tool_results |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
-
-    diag = %{
-      expected_tool: expected_tool,
-      model_used: model_used,
-      assistant_tool_use_count: tool_use_count,
-      tool_result_count: length(tool_results),
-      observed_tool_names: observed_names
-    }
-
-    Logger.warning("SessionDistiller: no_distillation_tool_output — #{inspect(diag)}")
-
-    Tracer.set_attribute("spotter.distill.expected_tool", expected_tool)
-    Tracer.set_attribute("spotter.distill.tool_use_count", tool_use_count)
-    Tracer.set_attribute("spotter.distill.tool_result_count", length(tool_results))
-    Tracer.set_attribute("spotter.distill.observed_tools", Enum.join(observed_names, ","))
-    Tracer.set_status(:error, "no_distillation_tool_output")
+  defp stringify_keys(map) when is_map(map) do
+    Map.new(map, fn {k, v} -> {to_string(k), stringify_keys(v)} end)
   end
+
+  defp stringify_keys(list) when is_list(list), do: Enum.map(list, &stringify_keys/1)
+  defp stringify_keys(other), do: other
 
   @doc false
   def enforce_tool_contract(prompt) do
