@@ -795,10 +795,47 @@ defmodule SpotterWeb.PaneListLive do
     subagents_by_session = load_subagents_for_sessions(session_ids)
 
     socket
+    |> assign(session_data_projects: projects)
+    |> ensure_default_project_filter_for_projects()
     |> assign(subagents_by_session: subagents_by_session)
     |> update_computer_inputs(:session_data, %{projects: projects})
     |> update_computer_inputs(:tool_call_stats, %{session_ids: session_ids})
     |> update_computer_inputs(:rework_stats, %{session_ids: session_ids})
+  end
+
+  defp ensure_default_project_filter(socket) do
+    socket
+    |> assign(session_data_projects: socket.assigns.session_data_projects || [])
+    |> ensure_default_project_filter_for_projects()
+  end
+
+  defp ensure_default_project_filter_for_projects(socket) do
+    selected_project_id =
+      normalize_project_filter_id(
+        socket.assigns.session_data_projects,
+        socket.assigns.project_filter_selected_project_id
+      )
+
+    update_computer_inputs(socket, :project_filter, %{selected_project_id: selected_project_id})
+  end
+
+  defp normalize_project_filter_id(projects, project_id) when is_nil(project_id),
+    do: first_project_id(projects)
+
+  defp normalize_project_filter_id(projects, project_id) do
+    if project_exists?(projects, project_id) do
+      project_id
+    else
+      first_project_id(projects)
+    end
+  end
+
+  defp project_exists?(projects, project_id) do
+    Enum.any?(projects, &(&1.id == project_id))
+  end
+
+  defp first_project_id(projects) do
+    List.first(projects) |> then(& &1 && &1.id)
   end
 
   defp append_session_page(socket, project_id, visibility) do
@@ -1215,13 +1252,6 @@ defmodule SpotterWeb.PaneListLive do
         <% else %>
           <div :if={length(@session_data_projects) > 1} class="filter-bar">
             <button
-              phx-click="filter_project"
-              phx-value-project-id="all"
-              class={"filter-btn#{if @project_filter_selected_project_id == nil, do: " is-active"}"}
-            >
-              All ({Enum.sum(Enum.map(@session_data_projects, &length(&1.visible_sessions)))})
-            </button>
-            <button
               :for={project <- @session_data_projects}
               phx-click="filter_project"
               phx-value-project-id={project.id}
@@ -1233,7 +1263,7 @@ defmodule SpotterWeb.PaneListLive do
 
           <div
             :for={project <- @session_data_projects}
-            :if={@project_filter_selected_project_id == nil or @project_filter_selected_project_id == project.id}
+            :if={@project_filter_selected_project_id == project.id}
             class="project-section"
           >
             <div class="project-header">

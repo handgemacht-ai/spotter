@@ -17,7 +17,7 @@ defmodule SpotterWeb.ReviewsLive do
      socket
      |> assign(
        project_counts: project_counts,
-       selected_project_id: nil,
+       selected_project_id: first_project_id(project_counts),
        open_annotations: [],
        resolved_annotations: [],
        sessions_by_id: %{},
@@ -27,7 +27,7 @@ defmodule SpotterWeb.ReviewsLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    project_id = parse_project_id(params["project_id"])
+    project_id = normalize_project_id(socket.assigns.project_counts, parse_project_id(params["project_id"]))
 
     socket =
       socket
@@ -39,7 +39,7 @@ defmodule SpotterWeb.ReviewsLive do
 
   @impl true
   def handle_event("filter_project", %{"project-id" => raw_id}, socket) do
-    project_id = parse_project_id(raw_id)
+    project_id = normalize_project_id(socket.assigns.project_counts, parse_project_id(raw_id))
     path = if project_id, do: "/reviews?project_id=#{project_id}", else: "/reviews"
 
     {:noreply, push_patch(socket, to: path)}
@@ -87,6 +87,23 @@ defmodule SpotterWeb.ReviewsLive do
       {:ok, _} -> id
       _ -> nil
     end
+  end
+
+  defp first_project_id(project_counts) do
+    List.first(project_counts) |> then(& &1 && &1.project_id)
+  end
+
+  defp normalize_project_id(project_counts, project_id) do
+    first = first_project_id(project_counts)
+
+    case project_id do
+      nil -> first
+      _ -> if project_exists?(project_counts, project_id), do: project_id, else: first
+    end
+  end
+
+  defp project_exists?(project_counts, project_id) do
+    Enum.any?(project_counts, &(&1.project_id == project_id))
   end
 
   defp load_review_data(socket) do
@@ -151,10 +168,6 @@ defmodule SpotterWeb.ReviewsLive do
     |> Ash.Query.filter(project_id == ^project_id)
     |> Ash.Query.sort(started_at: :desc)
     |> Ash.read!()
-  end
-
-  defp total_open_count(project_counts) do
-    Enum.sum(Enum.map(project_counts, & &1.open_count))
   end
 
   defp session_label(session) do
@@ -301,13 +314,6 @@ defmodule SpotterWeb.ReviewsLive do
           <label class="filter-label">Project</label>
           <div class="filter-bar">
             <button
-              phx-click="filter_project"
-              phx-value-project-id="all"
-              class={"filter-btn#{if @selected_project_id == nil, do: " is-active"}"}
-            >
-              All ({total_open_count(@project_counts)})
-            </button>
-            <button
               :for={pc <- @project_counts}
               phx-click="filter_project"
               phx-value-project-id={pc.project_id}
@@ -362,22 +368,9 @@ defmodule SpotterWeb.ReviewsLive do
           </div>
         <% end %>
       <% else %>
-        <%= for pc <- @project_counts do %>
-          <% project_annotations = annotations_for_project(pc.project_id, @open_annotations, @sessions_by_id) %>
-          <div class="project-section">
-            <div class="project-header">
-              <span class="project-name">{pc.project_name}</span>
-              <span class="project-count">({pc.open_count} open)</span>
-            </div>
-            <%= if project_annotations == [] do %>
-              <div class="text-muted text-sm">No open annotations.</div>
-            <% else %>
-              <%= for ann <- project_annotations do %>
-                <.annotation_card ann={ann} sessions_by_id={@sessions_by_id} projects_by_id={@projects_by_id} />
-              <% end %>
-            <% end %>
-          </div>
-        <% end %>
+        <div class="empty-state">
+          No project selected.
+        </div>
       <% end %>
     </div>
     """

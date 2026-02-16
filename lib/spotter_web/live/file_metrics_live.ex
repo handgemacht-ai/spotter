@@ -28,7 +28,7 @@ defmodule SpotterWeb.FileMetricsLive do
     {:ok,
      assign(socket,
        projects: projects,
-       selected_project_id: nil,
+       selected_project_id: first_project_id(projects),
        active_tab: :heatmap,
        # Heat map state
        hm_min_score: 0,
@@ -56,7 +56,7 @@ defmodule SpotterWeb.FileMetricsLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    project_id = parse_project_id(params["project_id"])
+    project_id = normalize_project_id(socket.assigns.projects, parse_project_id(params["project_id"]))
     tab = parse_tab(params["tab"])
 
     socket =
@@ -69,7 +69,7 @@ defmodule SpotterWeb.FileMetricsLive do
 
   @impl true
   def handle_event("filter_project", %{"project-id" => raw_id}, socket) do
-    project_id = parse_project_id(raw_id)
+    project_id = normalize_project_id(socket.assigns.projects, parse_project_id(raw_id))
     {:noreply, push_patch(socket, to: tab_path(project_id, socket.assigns.active_tab))}
   end
 
@@ -380,6 +380,21 @@ defmodule SpotterWeb.FileMetricsLive do
   defp parse_project_id(""), do: nil
   defp parse_project_id(id), do: id
 
+  defp normalize_project_id(projects, project_id) do
+    first = first_project_id(projects)
+
+    case project_id do
+      nil -> first
+      _ -> if project_exists?(projects, project_id), do: project_id, else: first
+    end
+  end
+
+  defp project_exists?(projects, project_id) do
+    Enum.any?(projects, &(&1.id == project_id))
+  end
+
+  defp first_project_id(projects), do: List.first(projects) |> then(& &1 && &1.id)
+
   defp parse_min_score(raw) when is_binary(raw) do
     case Integer.parse(raw) do
       {n, _} -> max(0, min(n, 100))
@@ -487,21 +502,14 @@ defmodule SpotterWeb.FileMetricsLive do
         <div>
           <label class="filter-label">Project</label>
           <div class="filter-bar">
-            <button
-              phx-click="filter_project"
-              phx-value-project-id="all"
-              class={"filter-btn#{if @selected_project_id == nil, do: " is-active"}"}
-            >
-              All
-            </button>
-            <button
-              :for={project <- @projects}
-              phx-click="filter_project"
-              phx-value-project-id={project.id}
-              class={"filter-btn#{if @selected_project_id == project.id, do: " is-active"}"}
-            >
-              {project.name}
-            </button>
+          <button
+            :for={project <- @projects}
+            phx-click="filter_project"
+            phx-value-project-id={project.id}
+            class={"filter-btn#{if @selected_project_id == project.id, do: " is-active"}"}
+          >
+            {project.name}
+          </button>
           </div>
         </div>
       </div>
