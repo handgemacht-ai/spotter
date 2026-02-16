@@ -68,6 +68,31 @@ defmodule Spotter.Services.FileDetail do
   end
 
   @doc """
+  Lists files and folders at a project-relative directory.
+
+  Returns `{:ok, entries}` where each entry has `name`, `relative_path`, and `kind`.
+  `kind` is `:directory` or `:file`.
+  """
+  def list_directory(project_id, relative_path) do
+    with {:ok, repo_root} <- resolve_repo_root(project_id) do
+      relative_dir = relative_path || ""
+      full_path = Path.join(repo_root, relative_dir)
+
+      if File.dir?(full_path) do
+        case File.ls(full_path) do
+          {:ok, entries} ->
+            {:ok, build_directory_entries(entries, full_path, relative_dir)}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+      else
+        {:error, :not_a_directory}
+      end
+    end
+  end
+
+  @doc """
   Loads file content by reading directly from the working tree on disk.
 
   Returns `{:ok, content}` or `{:error, reason}`.
@@ -196,6 +221,7 @@ defmodule Spotter.Services.FileDetail do
     "go" => "go",
     "css" => "css",
     "html" => "html",
+    "svelte" => "javascript",
     "heex" => "html",
     "json" => "json",
     "md" => "markdown",
@@ -236,6 +262,29 @@ defmodule Spotter.Services.FileDetail do
       }
     ]
   end
+
+  defp build_directory_entries(entries, full_path, relative_path) do
+    entries
+    |> Enum.reject(fn entry ->
+      entry in [".", "..", ".git"]
+    end)
+    |> Enum.map(fn entry ->
+      entry_full = Path.join(full_path, entry)
+
+      %{
+        name: entry,
+        relative_path: build_relative_path(relative_path, entry),
+        kind: if(File.dir?(entry_full), do: :directory, else: :file)
+      }
+    end)
+    |> Enum.sort_by(fn %{kind: kind, name: name} ->
+      {if(kind == :directory, do: 0, else: 1), String.downcase(name)}
+    end)
+  end
+
+  defp build_relative_path("", entry), do: entry
+  defp build_relative_path(nil, entry), do: entry
+  defp build_relative_path(relative_path, entry), do: Path.join(relative_path, entry)
 
   defp ext_to_language(""), do: "plaintext"
   defp ext_to_language(ext), do: Map.get(@language_map, ext, ext)

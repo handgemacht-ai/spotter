@@ -55,9 +55,45 @@ defmodule SpotterWeb.Live.FileDetailComputers do
       depends_on([:project, :project_id])
     end
 
+    val :is_directory do
+      compute(fn
+        %{repo_root: nil} ->
+          false
+
+        %{relative_path: nil} ->
+          false
+
+        %{repo_root: repo_root, relative_path: relative_path} ->
+          File.dir?(Path.join(repo_root, relative_path))
+      end)
+
+      depends_on([:repo_root, :relative_path])
+    end
+
+    val :directory_entries do
+      compute(fn
+        %{project_id: nil} ->
+          []
+
+        %{relative_path: nil} ->
+          []
+
+        %{project_id: project_id, relative_path: relative_path} ->
+          case Spotter.Services.FileDetail.list_directory(project_id, relative_path) do
+            {:ok, entries} -> entries
+            _ -> []
+          end
+      end)
+
+      depends_on([:project_id, :relative_path, :is_directory])
+    end
+
     val :file_content do
       compute(fn
         %{project: nil} ->
+          nil
+
+        %{is_directory: true} ->
           nil
 
         %{project_id: _project_id, relative_path: nil} ->
@@ -78,6 +114,9 @@ defmodule SpotterWeb.Live.FileDetailComputers do
 
     val :blame_rows do
       compute(fn
+        %{is_directory: true} ->
+          nil
+
         %{repo_root: nil} ->
           nil
 
@@ -86,7 +125,15 @@ defmodule SpotterWeb.Live.FileDetailComputers do
 
         %{repo_root: repo_root, relative_path: relative_path} ->
           case Spotter.Services.FileBlame.load_blame(repo_root, relative_path) do
-            {:ok, rows} -> rows
+            {:ok, rows} ->
+              rows
+              |> Enum.reduce({[], nil, 0}, fn row, {acc, prev_session_id, band} ->
+                session_id = get_in(row, [:session_link, :session_id])
+                new_band = if session_id == prev_session_id, do: band, else: 1 - band
+                row_with_band = Map.put(row, :session_band, new_band)
+                {[row_with_band | acc], session_id, new_band}
+              end)
+              |> then(fn {acc, _prev_session_id, _band} -> Enum.reverse(acc) end)
             _ -> nil
           end
       end)
@@ -118,6 +165,9 @@ defmodule SpotterWeb.Live.FileDetailComputers do
     val :file_error do
       compute(fn
         %{project: nil} ->
+          nil
+
+        %{is_directory: true} ->
           nil
 
         %{relative_path: nil} ->
@@ -158,6 +208,9 @@ defmodule SpotterWeb.Live.FileDetailComputers do
 
     val :commit_rows do
       compute(fn
+        %{is_directory: true} ->
+          []
+
         %{relative_path: nil} ->
           []
 
@@ -170,6 +223,9 @@ defmodule SpotterWeb.Live.FileDetailComputers do
 
     val :linked_sessions do
       compute(fn
+        %{is_directory: true} ->
+          []
+
         %{relative_path: nil} ->
           []
 
@@ -228,4 +284,5 @@ defmodule SpotterWeb.Live.FileDetailComputers do
       depends_on([:project, :project_id])
     end
   end
+
 end

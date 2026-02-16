@@ -6,6 +6,7 @@ import { FitAddon } from "@xterm/addon-fit"
 import { WebLinksAddon } from "@xterm/addon-web-links"
 import hljs from "highlight.js/lib/core"
 import elixir from "highlight.js/lib/languages/elixir"
+import javascript from "highlight.js/lib/languages/javascript"
 import bash from "highlight.js/lib/languages/bash"
 import json from "highlight.js/lib/languages/json"
 import diff from "highlight.js/lib/languages/diff"
@@ -15,6 +16,7 @@ import DOMPurify from "dompurify"
 import { createFlowGraphHook } from "./flow_graph"
 
 hljs.registerLanguage("elixir", elixir)
+hljs.registerLanguage("javascript", javascript)
 hljs.registerLanguage("bash", bash)
 hljs.registerLanguage("json", json)
 hljs.registerLanguage("diff", diff)
