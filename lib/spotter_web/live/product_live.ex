@@ -602,7 +602,10 @@ defmodule SpotterWeb.ProductLive do
 
   defp error_reason_to_string(reason) when is_binary(reason), do: reason
   defp error_reason_to_string(reason) when is_atom(reason), do: Atom.to_string(reason)
-  defp error_reason_to_string({:dolt_query_failed, reason}), do: "dolt_query_failed: #{error_reason_to_string(reason)}"
+
+  defp error_reason_to_string({:dolt_query_failed, reason}),
+    do: "dolt_query_failed: #{error_reason_to_string(reason)}"
+
   defp error_reason_to_string({:error, reason}), do: "error: #{error_reason_to_string(reason)}"
   defp error_reason_to_string(reason), do: inspect(reason)
 

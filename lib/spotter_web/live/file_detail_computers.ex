@@ -134,7 +134,9 @@ defmodule SpotterWeb.Live.FileDetailComputers do
                 {[row_with_band | acc], session_id, new_band}
               end)
               |> then(fn {acc, _prev_session_id, _band} -> Enum.reverse(acc) end)
-            _ -> nil
+
+            _ ->
+              nil
           end
       end)
 
@@ -284,5 +286,4 @@ defmodule SpotterWeb.Live.FileDetailComputers do
       depends_on([:project, :project_id])
     end
   end
-
 end

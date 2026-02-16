@@ -265,6 +265,7 @@ defmodule SpotterWeb.FileDetailLive do
 
   defp directory_parent(nil), do: nil
   defp directory_parent(""), do: nil
+
   defp directory_parent(relative_path) do
     parts = String.split(relative_path, "/", trim: true)
 
@@ -277,7 +278,9 @@ defmodule SpotterWeb.FileDetailLive do
 
   defp file_detail_url(project_id, nil), do: "/projects/#{project_id}/files"
   defp file_detail_url(project_id, ""), do: "/projects/#{project_id}/files"
-  defp file_detail_url(project_id, relative_path), do: "/projects/#{project_id}/files/#{relative_path}"
+
+  defp file_detail_url(project_id, relative_path),
+    do: "/projects/#{project_id}/files/#{relative_path}"
 
   defp path_segments(nil), do: []
   defp path_segments(""), do: []
@@ -629,5 +632,4 @@ defmodule SpotterWeb.FileDetailLive do
     </div>
     """
   end
-
 end
