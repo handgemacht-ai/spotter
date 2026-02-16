@@ -39,6 +39,11 @@ defmodule Spotter.Observability.AgentRunScope do
   end
 
   @doc """
+  Ensures the ETS table exists. Safe to call multiple times.
+  """
+  def ensure_table_exists, do: ensure_table()
+
+  @doc """
   Stores a scope map keyed by the given registry pid.
   """
   @spec put(pid(), scope_map()) :: :ok
@@ -46,6 +51,8 @@ defmodule Spotter.Observability.AgentRunScope do
     ensure_table()
     :ets.insert(@table, {registry_pid, scope_map})
     :ok
+  rescue
+    ArgumentError -> :ok
   end
 
   @doc """

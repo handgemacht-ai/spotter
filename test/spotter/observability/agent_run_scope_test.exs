@@ -111,6 +111,10 @@ defmodule Spotter.Observability.AgentRunScopeTest do
     end
 
     test "concurrent put/delete does not raise" do
+      # Ensure table exists before spawning concurrent tasks,
+      # so it's owned by the test process (not a short-lived Task).
+      AgentRunScope.ensure_table_exists()
+
       tasks =
         for i <- 1..10 do
           Task.async(fn ->

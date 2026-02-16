@@ -331,13 +331,26 @@ defmodule SpotterWeb.PaneListLiveTest do
     end
 
     test "session rows are ordered by last updated descending", %{
+      project: project,
       older_session: older,
       newer_session: newer
     } do
-      {:ok, _view, html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/")
 
-      newer_pos = :binary.match(html, newer.session_id |> to_string())
-      older_pos = :binary.match(html, older.session_id |> to_string())
+      # Select the correct project
+      html =
+        view
+        |> element(~s{button[phx-click="filter_project"][phx-value-project-id="#{project.id}"]})
+        |> render_click()
+
+      newer_id = to_string(newer.session_id)
+      older_id = to_string(older.session_id)
+
+      newer_pos = :binary.match(html, newer_id)
+      older_pos = :binary.match(html, older_id)
+
+      assert newer_pos != :nomatch, "newer session_id not found in HTML"
+      assert older_pos != :nomatch, "older session_id not found in HTML"
 
       # newer source_modified_at should appear first (earlier position in HTML)
       assert elem(newer_pos, 0) < elem(older_pos, 0)
