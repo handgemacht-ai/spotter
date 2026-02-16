@@ -16,7 +16,7 @@ defmodule SpotterWeb.PaneListLive do
     ToolCall
   }
 
-  alias Spotter.Services.Tmux
+  alias Spotter.Services.{FileDetail, Tmux}
 
   alias Spotter.Transcripts.Jobs.{
     DistillProjectRollingSummary,
@@ -891,6 +891,15 @@ defmodule SpotterWeb.PaneListLive do
     if trimmed == "", do: "No commit message body.", else: trimmed
   end
 
+  defp snippet_language(relative_path), do: FileDetail.language_class(relative_path)
+
+  defp snippet_line_numbers(line_start, line_end)
+       when is_integer(line_start) and is_integer(line_end) do
+    line_start..line_end |> Enum.map_join("\n", &to_string/1)
+  end
+
+  defp snippet_line_numbers(_, _), do: ""
+
   defp relative_time(nil), do: "\u2014"
 
   defp relative_time(dt) do
@@ -1054,6 +1063,9 @@ defmodule SpotterWeb.PaneListLive do
                     <% end %>
                   </div>
                   <div class="study-hotspot-reason">{current_entry.hotspot.reason}</div>
+                  <div class="hotspot-snippet">
+                    <pre><span class="snippet-line-numbers">{snippet_line_numbers(current_entry.hotspot.line_start, current_entry.hotspot.line_end)}</span><code class={"language-#{snippet_language(current_entry.hotspot.relative_path)}"}>{current_entry.hotspot.snippet}</code></pre>
+                  </div>
                   <div class="study-hotspot-score">
                     Score: {current_entry.hotspot.overall_score}
                   </div>
@@ -1063,10 +1075,14 @@ defmodule SpotterWeb.PaneListLive do
                   <div :if={current_entry.flashcard.question} class="study-flashcard-question text-sm font-medium mb-1">
                     {current_entry.flashcard.question}
                   </div>
-                  <div class="study-flashcard-snippet">{current_entry.flashcard.front_snippet}</div>
+                  <div class="hotspot-snippet">
+                    <pre><code class="language-elixir">{current_entry.flashcard.front_snippet}</code></pre>
+                  </div>
                   <details class="study-flashcard-answer mt-2">
                     <summary>Show answer</summary>
-                    <div class="mt-1">{current_entry.flashcard.answer}</div>
+                    <div class="hotspot-snippet mt-1">
+                      <pre><code class="language-elixir">{current_entry.flashcard.answer}</code></pre>
+                    </div>
                   </details>
                 <% end %>
               </div>
@@ -1191,10 +1207,8 @@ defmodule SpotterWeb.PaneListLive do
                   <thead>
                     <tr>
                       <th>Session</th>
-                      <th>Status</th>
                       <th>Branch</th>
                       <th>Messages</th>
-                      <th>Lines</th>
                       <th>Tools</th>
                       <th>Rework</th>
                       <th>Last updated</th>
@@ -1209,9 +1223,6 @@ defmodule SpotterWeb.PaneListLive do
                           <div>{SessionPresenter.primary_label(session)}</div>
                           <div class="text-muted text-xs">{SessionPresenter.secondary_label(session)}</div>
                         </td>
-                        <td>
-                          <.session_status_badge status={Map.get(@active_status_map, session.session_id)} />
-                        </td>
                         <td>{session.git_branch || "—"}</td>
                         <td>
                           {session.message_count || 0}
@@ -1225,9 +1236,6 @@ defmodule SpotterWeb.PaneListLive do
                               <%= if Map.get(@expanded_subagents, session.id, false), do: "▼", else: "▶" %>
                             </span>
                           <% end %>
-                        </td>
-                        <td>
-                          <.line_stats session={session} />
                         </td>
                         <td>
                           <% stats = Map.get(@tool_call_stats_stats, session.id) %>
@@ -1270,9 +1278,7 @@ defmodule SpotterWeb.PaneListLive do
                         <tr :for={sa <- subagents} class="subagent-row">
                           <td>{sa.slug || String.slice(sa.agent_id, 0, 7)}</td>
                           <td></td>
-                          <td></td>
                           <td>{sa.message_count || 0}</td>
-                          <td></td>
                           <td></td>
                           <td></td>
                           <td>{relative_time(sa.started_at)}</td>
@@ -1320,10 +1326,8 @@ defmodule SpotterWeb.PaneListLive do
                       <thead>
                         <tr>
                           <th>Session</th>
-                          <th>Status</th>
                           <th>Branch</th>
                           <th>Messages</th>
-                          <th>Lines</th>
                           <th>Tools</th>
                           <th>Rework</th>
                           <th>Last updated</th>
@@ -1338,9 +1342,6 @@ defmodule SpotterWeb.PaneListLive do
                               <div>{SessionPresenter.primary_label(session)}</div>
                               <div class="text-muted text-xs">{SessionPresenter.secondary_label(session)}</div>
                             </td>
-                            <td>
-                              <.session_status_badge status={Map.get(@active_status_map, session.session_id)} />
-                            </td>
                             <td>{session.git_branch || "—"}</td>
                             <td>
                               {session.message_count || 0}
@@ -1354,9 +1355,6 @@ defmodule SpotterWeb.PaneListLive do
                                   <%= if Map.get(@expanded_subagents, session.id, false), do: "▼", else: "▶" %>
                                 </span>
                               <% end %>
-                            </td>
-                            <td>
-                              <.line_stats session={session} />
                             </td>
                             <td>
                               <% stats = Map.get(@tool_call_stats_stats, session.id) %>
@@ -1396,9 +1394,7 @@ defmodule SpotterWeb.PaneListLive do
                             <tr :for={sa <- subagents} class="subagent-row">
                               <td>{sa.slug || String.slice(sa.agent_id, 0, 7)}</td>
                               <td></td>
-                              <td></td>
                               <td>{sa.message_count || 0}</td>
-                              <td></td>
                               <td></td>
                               <td></td>
                               <td>{relative_time(sa.started_at)}</td>
@@ -1434,44 +1430,6 @@ defmodule SpotterWeb.PaneListLive do
       </div>
 
     </div>
-    """
-  end
-
-  defp session_status_badge(%{status: :active} = assigns) do
-    ~H"""
-    <span class="badge session-status-active">active</span>
-    """
-  end
-
-  defp session_status_badge(%{status: :inactive} = assigns) do
-    ~H"""
-    <span class="badge session-status-inactive">inactive</span>
-    """
-  end
-
-  defp session_status_badge(%{status: :ended} = assigns) do
-    ~H"""
-    <span class="badge session-status-ended">ended</span>
-    """
-  end
-
-  defp session_status_badge(assigns) do
-    ~H"""
-    """
-  end
-
-  defp line_stats(%{session: %{lines_added: added, lines_removed: removed}} = assigns)
-       when added > 0 or removed > 0 do
-    assigns = assign(assigns, added: added, removed: removed)
-
-    ~H"""
-    <span class="text-success">+{@added}</span> / <span class="text-error">-{@removed}</span>
-    """
-  end
-
-  defp line_stats(assigns) do
-    ~H"""
-    <span>—</span>
     """
   end
 end
