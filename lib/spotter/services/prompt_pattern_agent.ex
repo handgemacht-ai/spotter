@@ -11,6 +11,8 @@ defmodule Spotter.Services.PromptPatternAgent do
 
   alias Spotter.Services.ClaudeCode.Client
 
+  @max_turns 4
+
   @system_prompt """
   You are a prompt pattern analyst. Given a list of user prompts from Claude Code sessions,
   identify repeated *substring* patterns ("needles") that appear across multiple prompts.
@@ -62,12 +64,14 @@ defmodule Spotter.Services.PromptPatternAgent do
 
       Tracer.set_attribute("spotter.model_requested", model)
       Tracer.set_attribute("spotter.prompts_count", length(prompts))
+      Tracer.set_attribute("spotter.max_turns", @max_turns)
 
       user_input = build_user_input(prompts, patterns_max)
 
       case Client.query_json_schema(@system_prompt, user_input, @json_schema,
              model: model,
-             timeout_ms: 30_000
+             timeout_ms: 30_000,
+             max_turns: @max_turns
            ) do
         {:ok, %{output: output, model_used: model_used, messages: _messages}} ->
           Tracer.set_attribute("spotter.model_used", model_used || model)

@@ -182,6 +182,7 @@ defmodule SpotterWeb.PaneListLive do
       )
       |> mount_computers()
       |> load_session_data()
+      |> ensure_default_project_filter()
 
     if connected?(socket), do: maybe_enqueue_commit_ingest(socket)
 
@@ -190,7 +191,10 @@ defmodule SpotterWeb.PaneListLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    pp_project_id = params["prompt_patterns_project_id"] || "all"
+    pp_project_id =
+      params["prompt_patterns_project_id"] ||
+        default_prompt_patterns_project_id(socket.assigns.session_data_projects)
+
     pp_timespan = normalize_prompt_patterns_timespan(params["prompt_patterns_timespan"])
 
     socket =
@@ -249,6 +253,8 @@ defmodule SpotterWeb.PaneListLive do
           "" -> nil
           id -> id
         end
+
+      parsed_id = normalize_project_filter_id(socket.assigns.session_data_projects, parsed_id)
 
       Tracer.set_attribute("spotter.project_id", parsed_id || "all")
 
@@ -467,6 +473,9 @@ defmodule SpotterWeb.PaneListLive do
   defp pp_path(project_id, timespan) do
     "/?prompt_patterns_project_id=#{project_id}&prompt_patterns_timespan=#{timespan}"
   end
+
+  defp default_prompt_patterns_project_id([project]), do: project.id
+  defp default_prompt_patterns_project_id(_projects), do: "all"
 
   defp normalize_prompt_patterns_timespan(nil), do: "30"
 

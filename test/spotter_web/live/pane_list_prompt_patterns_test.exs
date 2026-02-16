@@ -33,6 +33,12 @@ defmodule SpotterWeb.PaneListPromptPatternsTest do
       assert html =~ ~s(data-testid="analyze-patterns-btn")
     end
 
+    test "defaults to the only project when no prompt-pattern project param is provided", ctx do
+      {:ok, _view, html} = live(build_conn(), "/")
+
+      assert html =~ ~s(phx-value-id="#{ctx.project.id}" class="filter-btn is-active")
+    end
+
     test "shows empty state with remaining session count when no runs exist" do
       {:ok, _view, html} = live(build_conn(), "/")
 
@@ -86,7 +92,8 @@ defmodule SpotterWeb.PaneListPromptPatternsTest do
         confidence: 0.85
       })
 
-      {:ok, _view, html} = live(build_conn(), "/?prompt_patterns_timespan=30")
+      {:ok, _view, html} =
+        live(build_conn(), "/?prompt_patterns_project_id=all&prompt_patterns_timespan=30")
 
       assert html =~ "Bug fix requests"
       assert html =~ "fix the bug"
@@ -105,7 +112,8 @@ defmodule SpotterWeb.PaneListPromptPatternsTest do
 
       Ash.update!(run, %{error: "missing_api_key"}, action: :fail)
 
-      {:ok, _view, html} = live(build_conn(), "/?prompt_patterns_timespan=30")
+      {:ok, _view, html} =
+        live(build_conn(), "/?prompt_patterns_project_id=all&prompt_patterns_timespan=30")
 
       assert html =~ "Analysis failed"
       assert html =~ "missing_api_key"
