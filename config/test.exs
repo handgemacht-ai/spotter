@@ -30,5 +30,6 @@ config :spotter, SpotterWeb.SpotterMcpPlug,
   sse_keepalive_ms: 10,
   sse_max_duration_ms: 25
 
-# Dolt repo for product spec - use a test-friendly pool size
+# Dolt repos - use a test-friendly pool size
 config :spotter, Spotter.ProductSpec.Repo, pool_size: 2
+config :spotter, Spotter.TestSpec.Repo, pool_size: 2

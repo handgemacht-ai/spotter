@@ -26,6 +26,37 @@ config :spotter, Spotter.ProductSpec.Repo,
   password: System.get_env("SPOTTER_DOLT_PASSWORD", "spotter"),
   pool_size: 5
 
+# Test Spec (Dolt) configuration — falls back to product-spec Dolt values when unset
+config :spotter, Spotter.TestSpec.Repo,
+  hostname:
+    System.get_env(
+      "SPOTTER_TEST_SPEC_DOLT_HOST",
+      System.get_env("SPOTTER_DOLT_HOST", "localhost")
+    ),
+  port:
+    String.to_integer(
+      System.get_env(
+        "SPOTTER_TEST_SPEC_DOLT_PORT",
+        System.get_env("SPOTTER_DOLT_PORT", "13307")
+      )
+    ),
+  database:
+    System.get_env(
+      "SPOTTER_TEST_SPEC_DOLT_DATABASE",
+      "spotter_tests"
+    ),
+  username:
+    System.get_env(
+      "SPOTTER_TEST_SPEC_DOLT_USERNAME",
+      System.get_env("SPOTTER_DOLT_USERNAME", "spotter")
+    ),
+  password:
+    System.get_env(
+      "SPOTTER_TEST_SPEC_DOLT_PASSWORD",
+      System.get_env("SPOTTER_DOLT_PASSWORD", "spotter")
+    ),
+  pool_size: 5
+
 if config_env() == :prod do
   alias Spotter.Config.EnvParser
 

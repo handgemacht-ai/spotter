@@ -33,7 +33,8 @@ defmodule Spotter.Application do
            Application.fetch_env!(:spotter, Oban)
          )},
         SpotterWeb.Endpoint,
-        Spotter.ProductSpec.Supervisor
+        Spotter.ProductSpec.Supervisor,
+        Spotter.TestSpec.Supervisor
       ]
 
     opts = [strategy: :one_for_one, name: Spotter.Supervisor]

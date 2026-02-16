@@ -4,7 +4,7 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTestsTest do
   alias Ecto.Adapters.SQL.Sandbox
   alias Spotter.Repo
 
-  alias Spotter.Transcripts.{Commit, CommitTestRun, Project, Session, TestCase}
+  alias Spotter.Transcripts.{Commit, CommitTestRun, Project, Session}
   alias Spotter.Transcripts.Jobs.AnalyzeCommitTests
 
   require Ash.Query
@@ -97,6 +97,8 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTestsTest do
   end
 
   describe "perform/1 - deleted file" do
+    @describetag :live_dolt
+
     test "deletes existing tests for the file", %{project: project} do
       Application.put_env(:spotter, :commit_test_agent_module, StubAgent)
       tmp_dir = setup_git_repo()
@@ -116,30 +118,53 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTestsTest do
       commit = Ash.create!(Commit, %{commit_hash: hash})
       create_session(project, tmp_dir)
 
-      # Create test cases that should be deleted
-      Ash.create!(TestCase, %{
-        project_id: project.id,
-        relative_path: "test/old_test.exs",
-        framework: "ExUnit",
-        test_name: "old test 1"
-      })
+      # Seed test_specs in Dolt that should be deleted
+      alias Spotter.TestSpec.Agent.ToolHelpers, as: DoltH
 
-      Ash.create!(TestCase, %{
-        project_id: project.id,
-        relative_path: "test/old_test.exs",
-        framework: "ExUnit",
-        test_name: "old test 2"
-      })
+      DoltH.dolt_query!(
+        "INSERT INTO test_specs (project_id, test_key, relative_path, framework, describe_path_json, test_name, given_json, when_json, then_json, metadata_json, updated_by_git_commit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+          project.id,
+          "ExUnit|test/old_test.exs||old test 1",
+          "test/old_test.exs",
+          "ExUnit",
+          "[]",
+          "old test 1",
+          "[]",
+          "[]",
+          "[]",
+          "{}",
+          hash
+        ]
+      )
+
+      DoltH.dolt_query!(
+        "INSERT INTO test_specs (project_id, test_key, relative_path, framework, describe_path_json, test_name, given_json, when_json, then_json, metadata_json, updated_by_git_commit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+          project.id,
+          "ExUnit|test/old_test.exs||old test 2",
+          "test/old_test.exs",
+          "ExUnit",
+          "[]",
+          "old test 2",
+          "[]",
+          "[]",
+          "[]",
+          "{}",
+          hash
+        ]
+      )
 
       perform_job(project.id, hash)
 
-      # Verify tests were deleted
-      remaining =
-        TestCase
-        |> Ash.Query.filter(project_id == ^project.id and relative_path == "test/old_test.exs")
-        |> Ash.read!()
+      # Verify tests were deleted from Dolt
+      {:ok, remaining} =
+        DoltH.dolt_query(
+          "SELECT COUNT(*) FROM test_specs WHERE project_id = ? AND relative_path = ?",
+          [project.id, "test/old_test.exs"]
+        )
 
-      assert remaining == []
+      assert remaining.rows == [[0]]
 
       # Verify commit is marked ok
       updated = Ash.get!(Commit, commit.id)
@@ -156,6 +181,8 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTestsTest do
   end
 
   describe "perform/1 - agent success path" do
+    @describetag :live_dolt
+
     test "creates test cases via stub agent", %{project: project} do
       Application.put_env(:spotter, :commit_test_agent_module, StubAgentWithCreate)
       tmp_dir = setup_git_repo()

@@ -192,6 +192,43 @@ If Dolt is unavailable, the app boots normally — product spec features are sim
 
 Tests run without Dolt. Integration tests require Dolt: `mix test --include live_dolt`.
 
+## Test Specifications (Dolt)
+
+Spotter extracts structured test specifications from commits using Claude agents, storing them in a Dolt database (`spotter_tests`). The `/tests` page provides a read-only view of the versioned test tree.
+
+### How it works
+
+1. When commits are ingested (via hooks or `IngestRecentCommits`), `AnalyzeCommitTests` is enqueued for commits with test file changes.
+2. The agent reads each changed test file at the analyzed commit and extracts test metadata (framework, describe path, test name, given/when/then) into Dolt.
+3. Each analysis run creates a Dolt commit snapshot. The snapshot hash is stored in `CommitTestRun.dolt_commit_hash`.
+4. The `/tests` page uses time-travel queries (`AS OF`) to show the test tree at any commit, and computes semantic diffs between snapshots.
+
+### `/tests` page
+
+- **Timeline**: project-scoped commit list with test-run status badges (none, queued, running, ok, ok (no changes), error)
+- **Diff view**: shows added, changed, and removed tests for a commit
+- **Snapshot view**: full test tree grouped by file, with search and expand/collapse controls
+
+### Configuration
+
+| Variable | Default | Description |
+|---|---|---|
+| `SPOTTER_TEST_SPEC_DOLT_HOST` | `SPOTTER_DOLT_HOST` | Test spec Dolt hostname |
+| `SPOTTER_TEST_SPEC_DOLT_PORT` | `SPOTTER_DOLT_PORT` | Test spec Dolt port |
+| `SPOTTER_TEST_SPEC_DOLT_DATABASE` | `spotter_tests` | Test spec Dolt database |
+| `SPOTTER_TEST_SPEC_DOLT_USERNAME` | `SPOTTER_DOLT_USERNAME` | Test spec Dolt username |
+| `SPOTTER_TEST_SPEC_DOLT_PASSWORD` | `SPOTTER_DOLT_PASSWORD` | Test spec Dolt password |
+
+If Dolt is unavailable, the app boots normally — test spec features show a callout and disable data loading.
+
+### Rollout checklist
+
+1. Start Dolt: `docker compose -f docker-compose.dolt.yml up -d`
+2. Boot or restart the app (schema is created automatically on startup)
+3. Verify hook enqueue: trigger a commit with test changes and check that `AnalyzeCommitTests` jobs appear
+4. Verify `/tests` timeline shows commits with test-run badges
+5. Verify no-change commits show "ok (no changes)" badge (no Dolt snapshot created)
+
 ## Local E2E (Docker + Playwright + Live Claude)
 
 Spotter includes a local-only E2E harness that runs:

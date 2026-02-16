@@ -34,7 +34,7 @@ defmodule Spotter.Transcripts.CommitTestRun do
 
     update :complete do
       require_atomic? false
-      accept [:model_used, :input_stats, :output_stats]
+      accept [:model_used, :input_stats, :output_stats, :dolt_commit_hash]
 
       change set_attribute(:status, :completed)
       change set_attribute(:completed_at, &DateTime.utc_now/0)
@@ -62,6 +62,7 @@ defmodule Spotter.Transcripts.CommitTestRun do
     attribute :model_used, :string
     attribute :input_stats, :map, allow_nil?: false, default: %{}
     attribute :output_stats, :map, allow_nil?: false, default: %{}
+    attribute :dolt_commit_hash, :string, constraints: [max_length: 64]
     attribute :error, :string
 
     attribute :started_at, :utc_datetime_usec

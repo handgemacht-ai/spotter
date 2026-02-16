@@ -11,7 +11,9 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTests do
   require OpenTelemetry.Tracer, as: Tracer
 
   alias Spotter.Services.GitRunner
-  alias Spotter.Transcripts.{Commit, CommitTestRun, Session, TestCase}
+  alias Spotter.TestSpec.Agent.ToolHelpers, as: DoltHelpers
+  alias Spotter.TestSpec.DoltVersioning
+  alias Spotter.Transcripts.{Commit, CommitTestRun, Session}
 
   @test_path_patterns [
     ~r{(^|/)test/},
@@ -90,10 +92,19 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTests do
 
       model_used = results |> List.first() |> then(fn r -> r && r[:model_used] end)
 
+      dolt_commit_hash = commit_dolt_snapshot(project_id, commit.commit_hash)
+
+      Tracer.set_attribute("spotter.dolt_changed", dolt_commit_hash != nil)
+
+      if dolt_commit_hash do
+        Tracer.set_attribute("spotter.dolt_commit_hash", dolt_commit_hash)
+      end
+
       Ash.update!(
         test_run,
         %{
           model_used: model_used,
+          dolt_commit_hash: dolt_commit_hash,
           input_stats: %{
             files_total: length(changes),
             files_candidate: length(candidates),
@@ -104,7 +115,7 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTests do
         action: :complete
       )
 
-      mark_commit_success(commit, totals, skipped)
+      mark_commit_success(commit, totals, skipped, dolt_commit_hash)
     rescue
       e ->
         reason = Exception.message(e)
@@ -255,13 +266,16 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTests do
   end
 
   defp delete_tests_for_path(project_id, path) do
-    tests =
-      TestCase
-      |> Ash.Query.filter(project_id == ^project_id and relative_path == ^path)
-      |> Ash.read!()
+    result =
+      DoltHelpers.dolt_query(
+        "DELETE FROM test_specs WHERE project_id = ? AND relative_path = ?",
+        [project_id, path]
+      )
 
-    Enum.each(tests, &Ash.destroy!/1)
-    length(tests)
+    case result do
+      {:ok, %{num_rows: n}} -> n
+      _ -> 0
+    end
   end
 
   # -- Aggregation --
@@ -282,14 +296,24 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTests do
 
   # -- Commit status --
 
-  defp mark_commit_success(commit, totals, skipped) do
+  defp commit_dolt_snapshot(project_id, commit_hash) do
+    message = "tests: sync #{project_id} #{commit_hash}"
+
+    case DoltVersioning.commit_if_dirty(message) do
+      {:ok, hash} -> hash
+      {:error, reason} -> raise "Dolt commit failed: #{inspect(reason)}"
+    end
+  end
+
+  defp mark_commit_success(commit, totals, skipped, dolt_commit_hash) do
     Ash.update(commit, %{
       tests_status: :ok,
       tests_analyzed_at: DateTime.utc_now(),
       tests_error: nil,
       tests_metadata: %{
         tool_counts: totals,
-        skipped_files: skipped
+        skipped_files: skipped,
+        dolt_commit_hash: dolt_commit_hash
       }
     })
 

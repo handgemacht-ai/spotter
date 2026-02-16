@@ -42,7 +42,11 @@ defmodule Spotter.Services.CommitTestAgentTest do
       assert prompt =~ "3. Review the current file content"
       assert prompt =~ "4. Ensure the database mirrors"
       assert prompt =~ "5. For each test, set given, when, and then"
-      assert prompt =~ "6. End by printing a short JSON summary"
+
+      assert prompt =~
+               "6. IMPORTANT: Every create_test and update_test call MUST include source_commit_hash"
+
+      assert prompt =~ "7. End by printing a short JSON summary"
     end
 
     test "embeds diff in fenced code block" do

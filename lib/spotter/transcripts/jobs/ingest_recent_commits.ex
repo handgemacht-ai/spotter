@@ -13,7 +13,7 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
   alias Spotter.ProductSpec.Jobs.UpdateRollingSpec
   alias Spotter.Services.GitCommitReader
   alias Spotter.Transcripts.{Commit, ProjectIngestState, ReviewItem, Session}
-  alias Spotter.Transcripts.Jobs.AnalyzeCommitHotspots
+  alias Spotter.Transcripts.Jobs.{AnalyzeCommitHotspots, AnalyzeCommitTests}
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"project_id" => project_id} = args}) do
@@ -113,6 +113,7 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
       {:ok, commit} ->
         ensure_commit_message_review_item(project_id, commit)
         maybe_enqueue_analyze(project_id, commit)
+        maybe_enqueue_analyze_tests(project_id, commit)
         maybe_enqueue_rolling_spec(project_id, commit)
 
       {:error, reason} ->
@@ -148,6 +149,14 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
     if commit.hotspots_status == :pending do
       %{project_id: project_id, commit_hash: commit.commit_hash}
       |> AnalyzeCommitHotspots.new()
+      |> Oban.insert()
+    end
+  end
+
+  defp maybe_enqueue_analyze_tests(project_id, commit) do
+    if commit.tests_status == :pending do
+      %{project_id: project_id, commit_hash: commit.commit_hash}
+      |> AnalyzeCommitTests.new()
       |> Oban.insert()
     end
   end

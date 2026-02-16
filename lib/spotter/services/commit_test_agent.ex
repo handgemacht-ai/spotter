@@ -144,7 +144,8 @@ defmodule Spotter.Services.CommitTestAgent do
     3. Review the current file content below.
     4. Ensure the database mirrors the actual tests in the file by calling create_test, update_test, and delete_test tools as needed.
     5. For each test, set given, when, and then lists (empty lists are allowed if not inferable from context).
-    6. End by printing a short JSON summary (no markdown fences):
+    6. IMPORTANT: Every create_test and update_test call MUST include source_commit_hash="#{commit_hash}".
+    7. End by printing a short JSON summary (no markdown fences):
        { "recognized_tests": N, "created": n, "updated": n, "deleted": n }
 
     ## Diff
