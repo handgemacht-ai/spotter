@@ -4,15 +4,15 @@
 <section class="how-it-works">
   <div class="hiw-header">
     <h2 class="section-label">How It Works</h2>
-    <p class="hiw-title">Three steps. No config files.</p>
+    <p class="hiw-title">Three steps. MCP-first execution.</p>
   </div>
 
   <div class="hiw-steps">
     <div class="hiw-step">
       <div class="hiw-number">01</div>
       <div class="hiw-content">
-        <h3>Install hooks &amp; start the server</h3>
-        <p>One command sets up Git hooks and boots the Spotter server. Your workflow stays exactly the same.</p>
+        <h3>Install Spotter and enable hooks</h3>
+        <p>One command boots Spotter, enables deterministic hook capture, and keeps your Claude workflow unchanged.</p>
         <div class="hiw-terminal">
           <span class="hiw-prompt">$</span>
           git clone https://github.com/marot/spotter && cd spotter && mix setup && mix phx.server
@@ -23,11 +23,11 @@
     <div class="hiw-step">
       <div class="hiw-number">02</div>
       <div class="hiw-content">
-        <h3>Use Claude Code normally</h3>
-        <p>Spotter captures transcripts, terminal output, and commits in the background. Zero friction.</p>
+        <h3>Triage in the Spotter review UI</h3>
+        <p>Filter by project, hide noise, inspect transcript + terminal timelines, and prioritize with hotspots and freshness metadata.</p>
         <div class="hiw-terminal">
           <span class="hiw-prompt">$</span>
-          claude "refactor the auth module"
+          open http://localhost:1100/reviews
         </div>
       </div>
     </div>
@@ -35,11 +35,11 @@
     <div class="hiw-step">
       <div class="hiw-number">03</div>
       <div class="hiw-content">
-        <h3>Review, annotate, improve</h3>
-        <p>Browse transcripts, annotate decisions, trace commits to conversations. Start improvement sessions to refine your rules and hooks. Use spaced repetition to stay on top of past changes.</p>
+        <h3>Execute fixes from Claude via MCP</h3>
+        <p>Run Spotter review workflows in Claude over MCP, resolve annotations with notes, and keep an auditable trail synced back to Spotter.</p>
         <div class="hiw-terminal">
           <span class="hiw-prompt">$</span>
-          open http://localhost:4000
+          claude "run spotter-review on open annotations"
         </div>
       </div>
     </div>

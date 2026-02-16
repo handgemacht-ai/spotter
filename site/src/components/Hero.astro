@@ -14,8 +14,8 @@
       </h1>
 
       <p class="hero-sub">
-        Spotter visualizes Claude Code transcripts, links commits to conversations,
-        and helps you stay on top of every change &mdash; even across 4+ parallel agents.
+        Spotter turns review into one loop: inspect sessions and commits in the UI,
+        then execute fixes directly from Claude through Spotter MCP.
       </p>
 
       <div class="copy-command" data-command="git clone https://github.com/marot/spotter && cd spotter && mix setup && mix phx.server">
@@ -35,10 +35,10 @@
     </div>
 
     <div class="hero-right">
-      <div class="screenshot-placeholder">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="32" height="32"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
-        <span>Screenshot: Spotter Dashboard</span>
-      </div>
+      <figure class="hero-shot">
+        <img src="/screenshots/dashboard.png" alt="Spotter dashboard with session queue and study queue due items" loading="eager" />
+        <figcaption>Live dashboard: session queue, freshness, and study queue.</figcaption>
+      </figure>
     </div>
   </div>
 </section>
@@ -220,20 +220,27 @@
     transform: rotate(1.5deg);
   }
 
-  .screenshot-placeholder {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-    aspect-ratio: 16 / 10;
-    border: 1px dashed rgba(212, 145, 94, 0.3);
+  .hero-shot {
+    margin: 0;
+    border: 1px solid var(--border);
     border-radius: 12px;
-    background: linear-gradient(135deg, rgba(212, 145, 94, 0.03), rgba(212, 145, 94, 0.01));
-    color: var(--muted);
-    font-size: 0.75rem;
+    background: var(--bg-elevated);
+    overflow: hidden;
+  }
+
+  .hero-shot img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+  }
+
+  .hero-shot figcaption {
+    border-top: 1px solid var(--border);
+    padding: 0.65rem 0.85rem;
+    font-size: 0.72rem;
     font-family: var(--font-mono);
-    opacity: 0.6;
+    color: var(--muted);
   }
 
   @media (max-width: 768px) {

@@ -7,7 +7,8 @@
     <p class="flow-title">From idea to continuous improvement.</p>
     <p class="flow-sub">
       Spotter tracks the full lifecycle of every AI-assisted change &mdash; from
-      the initial prompt through review and back into your tooling.
+      the initial prompt through review and back into your tooling. The same graph
+      is visible live in <code>/flows</code> for debugging hooks, jobs, and MCP-driven runs.
     </p>
   </div>
 
@@ -149,6 +150,12 @@
     color: var(--muted);
     line-height: 1.7;
     font-size: 0.95rem;
+  }
+
+  .flow-sub code {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    color: #f0f3f8;
   }
 
   .flow-svg-wrap {

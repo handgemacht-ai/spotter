@@ -44,41 +44,40 @@
       </div>
 
       <div class="sr-screenshot">
-        <div class="screenshot-placeholder">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="32" height="32"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
-          <span>Screenshot: Spaced Repetition Dashboard</span>
-        </div>
+        <figure class="sr-shot">
+          <img src="/screenshots/dashboard.png" alt="Dashboard study queue with due review cards and severity breakdown" loading="lazy" />
+          <figcaption>Study queue due cards stay visible in the main dashboard.</figcaption>
+        </figure>
       </div>
     </div>
 
     <!-- Right: Copy -->
     <div class="sr-right">
-      <h2 class="section-label">Spaced Repetition</h2>
+      <h2 class="section-label">Explain + Study Queue</h2>
       <p class="sr-title">
-        Stay on top of everything.
-        <span class="text-gradient">Even across projects.</span>
+        Review once. Retain it.
+        <span class="text-gradient">Across every project.</span>
       </p>
       <p class="sr-body">
-        When you're running multiple agents across multiple projects, it's impossible to
-        remember everything that was changed. Code gets merged, reviewed once, and forgotten.
+        Resolve an annotation, then generate an explanation card from that context.
+        Spotter turns the explanation into scheduled review material instead of letting it disappear in chat logs.
       </p>
       <p class="sr-body">
-        Spotter's spaced repetition system surfaces past changes on a schedule &mdash; the same
-        technique used for learning languages, applied to code review. Changes you've seen
-        recently fade to the back. Changes you haven't reviewed in a while come forward.
+        The study queue adapts intervals as you review. Recent topics back off,
+        older or error-prone topics resurface, and cross-project memory stays fresh.
       </p>
       <div class="sr-badges">
         <div class="sr-badge">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <span>Scheduled review cards</span>
+          <span>Explain-generated cards</span>
         </div>
         <div class="sr-badge">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <span>Adaptive intervals</span>
+          <span>Adaptive due dates</span>
         </div>
         <div class="sr-badge">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M12 2a7 7 0 017 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 01-2 2h-4a2 2 0 01-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 017-7z"/><line x1="9" y1="21" x2="15" y2="21"/></svg>
-          <span>Cross-project tracking</span>
+          <span>Cross-project queue</span>
         </div>
       </div>
     </div>
@@ -207,20 +206,27 @@
     flex-shrink: 0;
   }
 
-  .screenshot-placeholder {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-    aspect-ratio: 16 / 10;
-    border: 1px dashed rgba(212, 145, 94, 0.3);
+  .sr-shot {
+    margin: 0;
+    border: 1px solid var(--border);
     border-radius: 12px;
-    background: linear-gradient(135deg, rgba(212, 145, 94, 0.03), rgba(212, 145, 94, 0.01));
-    color: var(--muted);
-    font-size: 0.75rem;
+    background: var(--bg-elevated);
+    overflow: hidden;
+  }
+
+  .sr-shot img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+  }
+
+  .sr-shot figcaption {
+    border-top: 1px solid var(--border);
+    padding: 0.65rem 0.85rem;
+    font-size: 0.72rem;
     font-family: var(--font-mono);
-    opacity: 0.6;
+    color: var(--muted);
   }
 
   @media (max-width: 768px) {
