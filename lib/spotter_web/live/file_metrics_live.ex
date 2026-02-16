@@ -56,7 +56,9 @@ defmodule SpotterWeb.FileMetricsLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    project_id = normalize_project_id(socket.assigns.projects, parse_project_id(params["project_id"]))
+    project_id =
+      normalize_project_id(socket.assigns.projects, parse_project_id(params["project_id"]))
+
     tab = parse_tab(params["tab"])
 
     socket =
@@ -393,7 +395,7 @@ defmodule SpotterWeb.FileMetricsLive do
     Enum.any?(projects, &(&1.id == project_id))
   end
 
-  defp first_project_id(projects), do: List.first(projects) |> then(& &1 && &1.id)
+  defp first_project_id(projects), do: List.first(projects) |> then(&(&1 && &1.id))
 
   defp parse_min_score(raw) when is_binary(raw) do
     case Integer.parse(raw) do

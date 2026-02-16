@@ -878,7 +878,7 @@ defmodule SpotterWeb.PaneListLive do
   end
 
   defp first_project_id(projects) do
-    List.first(projects) |> then(& &1 && &1.id)
+    List.first(projects) |> then(&(&1 && &1.id))
   end
 
   defp append_session_page(socket, project_id, visibility) do

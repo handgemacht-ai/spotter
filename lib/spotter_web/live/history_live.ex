@@ -25,7 +25,8 @@ defmodule SpotterWeb.HistoryLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    project_id = normalize_project_id(socket.assigns.projects, parse_project_id(params["project_id"]))
+    project_id =
+      normalize_project_id(socket.assigns.projects, parse_project_id(params["project_id"]))
 
     branch =
       if Map.has_key?(params, "branch") do
@@ -118,7 +119,7 @@ defmodule SpotterWeb.HistoryLive do
   defp parse_project_id(""), do: nil
   defp parse_project_id(id), do: id
 
-  defp first_project_id(projects), do: List.first(projects) |> then(& &1 && &1.id)
+  defp first_project_id(projects), do: List.first(projects) |> then(&(&1 && &1.id))
 
   defp normalize_project_id(projects, project_id) do
     first = first_project_id(projects)

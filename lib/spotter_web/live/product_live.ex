@@ -48,7 +48,8 @@ defmodule SpotterWeb.ProductLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    project_id = normalize_project_id(socket.assigns.projects, parse_project_id(params["project_id"]))
+    project_id =
+      normalize_project_id(socket.assigns.projects, parse_project_id(params["project_id"]))
 
     commit_id = params["commit_id"]
     search_q = params["q"]
@@ -766,7 +767,7 @@ defmodule SpotterWeb.ProductLive do
     end
   end
 
-  defp first_project_id(projects), do: List.first(projects) |> then(& &1 && &1.id)
+  defp first_project_id(projects), do: List.first(projects) |> then(&(&1 && &1.id))
 
   defp normalize_project_id(projects, project_id) do
     first = first_project_id(projects)
