@@ -382,6 +382,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 | Exporter connection errors | OTLP endpoint unreachable | Verify `OTEL_EXPORTER_OTLP_ENDPOINT` is correct |
 | Duplicate telemetry handlers after code reload | Handler re-attachment | `LiveviewOtel.setup/0` detaches before re-attaching |
 | Ash action spans missing | Tracer not configured | Verify `config :ash, tracer: [OpentelemetryAsh]` in config |
+| Hotspot/test/spec agent crash `FunctionClauseError` on `{:transport_stderr, _}` | Upstream SDK missing stderr handler | Using vendored SDK at `vendor/claude_agent_sdk` with fix. Remove when upstream `claude_agent_sdk` >= 0.15 includes the fix |
 
 ## `.spotterignore` (co-change filtering)
 

@@ -183,7 +183,13 @@ defmodule Spotter.Services.CommitHotspotAgent do
           reason = Exception.message(e)
           Logger.warning("CommitHotspotAgent: failed: #{reason}")
           Tracer.set_status(:error, reason)
-          {:error, reason}
+          {:error, {:agent_error, reason}}
+      catch
+        :exit, reason ->
+          msg = "CommitHotspotAgent: SDK process exited: #{inspect(reason)}"
+          Logger.warning(msg)
+          Tracer.set_status(:error, msg)
+          {:error, {:agent_exit, reason}}
       after
         HotspotTools.Helpers.set_git_cwd(nil)
       end
