@@ -142,6 +142,12 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspotsTest do
     end
   end
 
+  describe "timeout/1" do
+    test "returns 6 minutes (360_000 ms)" do
+      assert AnalyzeCommitHotspots.timeout(%Oban.Job{}) == :timer.minutes(6)
+    end
+  end
+
   defp get_real_commit_hash do
     {hash, 0} = System.cmd("git", ["rev-parse", "HEAD"])
     String.trim(hash)

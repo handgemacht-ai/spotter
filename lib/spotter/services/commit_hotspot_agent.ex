@@ -227,13 +227,17 @@ defmodule Spotter.Services.CommitHotspotAgent do
                }
              }}
 
-          {:error, _} = err ->
-            err
+          {:error, _} ->
+            {:error, :invalid_structured_output}
         end
 
       {:error, _} ->
         {:error, :no_structured_output}
     end
+  rescue
+    e ->
+      Logger.warning("CommitHotspotAgent: build_result crashed: #{Exception.message(e)}")
+      {:error, :invalid_structured_output}
   end
 
   # --- Prompt building ---
@@ -272,7 +276,8 @@ defmodule Spotter.Services.CommitHotspotAgent do
   # --- Response validation ---
 
   defp validate_main_output(%{"hotspots" => hotspots}) when is_list(hotspots) do
-    {:ok, Enum.map(hotspots, &normalize_hotspot/1)}
+    normalized = hotspots |> Enum.map(&normalize_hotspot/1) |> Enum.reject(&is_nil/1)
+    {:ok, normalized}
   end
 
   defp validate_main_output(_), do: {:error, :invalid_main_response}
@@ -287,7 +292,7 @@ defmodule Spotter.Services.CommitHotspotAgent do
 
   def parse_main_response(%{} = map), do: validate_main_output(map)
 
-  defp normalize_hotspot(h) do
+  defp normalize_hotspot(h) when is_map(h) do
     %{
       relative_path: h["relative_path"] || "",
       symbol_name: h["symbol_name"],
@@ -299,6 +304,8 @@ defmodule Spotter.Services.CommitHotspotAgent do
       rubric: parse_rubric(h["rubric"])
     }
   end
+
+  defp normalize_hotspot(_), do: nil
 
   defp parse_rubric(nil), do: %{}
 
@@ -317,14 +324,18 @@ defmodule Spotter.Services.CommitHotspotAgent do
   # --- Tool counting ---
 
   @doc false
-  def extract_tool_counts(messages) do
+  def extract_tool_counts(messages) when is_list(messages) do
     allowed = MapSet.new(HotspotToolServer.allowed_tools())
 
     messages
     |> Enum.flat_map(&extract_tool_names/1)
     |> Enum.filter(&MapSet.member?(allowed, &1))
     |> Enum.frequencies()
+  rescue
+    _ -> %{}
   end
+
+  def extract_tool_counts(_), do: %{}
 
   defp extract_tool_names(%{type: "assistant", message: %{content: content}})
        when is_list(content) do

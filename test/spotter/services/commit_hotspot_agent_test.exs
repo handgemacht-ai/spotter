@@ -123,5 +123,53 @@ defmodule Spotter.Services.CommitHotspotAgentTest do
     test "returns empty map for empty messages" do
       assert CommitHotspotAgent.extract_tool_counts([]) == %{}
     end
+
+    test "returns empty map for non-list input" do
+      assert CommitHotspotAgent.extract_tool_counts(nil) == %{}
+      assert CommitHotspotAgent.extract_tool_counts("bad") == %{}
+    end
+
+    test "handles unexpected message shapes without crashing" do
+      messages = [
+        %{type: "assistant", message: nil},
+        %{type: "assistant", message: %{content: "string_not_list"}},
+        %{type: "assistant"},
+        nil,
+        42
+      ]
+
+      assert CommitHotspotAgent.extract_tool_counts(messages) == %{}
+    end
+  end
+
+  describe "parse_main_response/1 shape hardening" do
+    test "non-map hotspot items are filtered out" do
+      map = %{
+        "hotspots" => [
+          %{"relative_path" => "a.ex", "line_start" => 1, "line_end" => 5},
+          "not a map",
+          nil,
+          42
+        ]
+      }
+
+      assert {:ok, hotspots} = CommitHotspotAgent.parse_main_response(map)
+      assert length(hotspots) == 1
+      assert hd(hotspots).relative_path == "a.ex"
+    end
+
+    test "hotspots with missing fields get defaults" do
+      map = %{"hotspots" => [%{}]}
+      assert {:ok, [h]} = CommitHotspotAgent.parse_main_response(map)
+      assert h.relative_path == ""
+      assert h.line_start == 0
+      assert h.overall_score == 0.0
+      assert h.rubric == %{}
+    end
+
+    test "invalid JSON returns error" do
+      assert {:error, {:json_parse_error, _}} =
+               CommitHotspotAgent.parse_main_response("not json {")
+    end
   end
 end
