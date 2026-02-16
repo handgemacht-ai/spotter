@@ -11,7 +11,7 @@ defmodule Spotter.Transcripts.Jobs.ComputePromptPatterns do
 
   alias Spotter.Config.Runtime
   alias Spotter.Services.{LlmCredentials, PromptCollector}
-  alias Spotter.Transcripts.{PromptPattern, PromptPatternRun}
+  alias Spotter.Transcripts.{PromptPattern, PromptPatternMatch, PromptPatternRun}
 
   @impl Oban.Worker
   def timeout(_job), do: :timer.minutes(5)
@@ -112,15 +112,28 @@ defmodule Spotter.Transcripts.Jobs.ComputePromptPatterns do
         |> Enum.take(5)
         |> Enum.map(& &1.prompt)
 
-      Ash.create!(PromptPattern, %{
-        run_id: run.id,
-        needle: needle,
-        label: pattern["label"],
-        count_total: count_total,
-        project_counts: project_counts,
-        examples: %{"items" => examples},
-        confidence: pattern["confidence"]
-      })
+      pattern_record =
+        Ash.create!(PromptPattern, %{
+          run_id: run.id,
+          needle: needle,
+          label: pattern["label"],
+          count_total: count_total,
+          project_counts: project_counts,
+          examples: %{"items" => examples},
+          confidence: pattern["confidence"]
+        })
+
+      Tracer.with_span "spotter.compute_prompt_patterns.persist_matches" do
+        Tracer.set_attribute("spotter.match_count", length(matching_items))
+
+        Enum.each(matching_items, fn item ->
+          Ash.create!(PromptPatternMatch, %{
+            pattern_id: pattern_record.id,
+            message_id: item.message_id,
+            session_id: item.session_id
+          })
+        end)
+      end
     end)
   end
 

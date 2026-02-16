@@ -92,6 +92,11 @@ defmodule Spotter.Transcripts do
         get :read
         index :read
       end
+
+      base_route "/prompt_pattern_matches", Spotter.Transcripts.PromptPatternMatch do
+        get :read
+        index :read
+      end
     end
   end
 
@@ -140,6 +145,7 @@ defmodule Spotter.Transcripts do
     resource Spotter.Transcripts.ProjectIngestState
     resource Spotter.Transcripts.PromptPatternRun
     resource Spotter.Transcripts.PromptPattern
+    resource Spotter.Transcripts.PromptPatternMatch
     resource Spotter.Transcripts.SessionDistillation
     resource Spotter.Transcripts.ProjectPeriodSummary
     resource Spotter.Transcripts.ProjectRollingSummary

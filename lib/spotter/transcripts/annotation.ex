@@ -99,7 +99,7 @@ defmodule Spotter.Transcripts.Annotation do
       allow_nil? false
       default :terminal
       public? true
-      constraints one_of: [:terminal, :transcript, :file, :commit_message, :code]
+      constraints one_of: [:terminal, :transcript, :file, :commit_message, :code, :prompt_pattern]
     end
 
     attribute :relative_path, :string

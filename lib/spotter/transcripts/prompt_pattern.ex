@@ -61,6 +61,10 @@ defmodule Spotter.Transcripts.PromptPattern do
 
   relationships do
     belongs_to :run, Spotter.Transcripts.PromptPatternRun, allow_nil?: false
+
+    has_many :matches, Spotter.Transcripts.PromptPatternMatch do
+      destination_attribute :pattern_id
+    end
   end
 
   identities do

@@ -220,6 +220,10 @@ defmodule SpotterWeb.PaneListLive do
     {:noreply, load_latest_pp_run(socket)}
   end
 
+  def handle_event("view_pattern_detail", %{"pattern-id" => pattern_id}, socket) do
+    {:noreply, push_navigate(socket, to: "/patterns/#{pattern_id}")}
+  end
+
   def handle_event("set_pp_project", %{"id" => id}, socket) do
     {:noreply,
      push_patch(socket,
@@ -1155,7 +1159,13 @@ defmodule SpotterWeb.PaneListLive do
                 </tr>
               </thead>
               <tbody>
-                <tr :for={pattern <- @pp_patterns} data-testid="pattern-row">
+                <tr
+                  :for={pattern <- @pp_patterns}
+                  data-testid="pattern-row"
+                  class="pattern-table-row"
+                  phx-click="view_pattern_detail"
+                  phx-value-pattern-id={pattern.id}
+                >
                   <td>
                     <div class="text-sm font-medium">{pattern.label}</div>
                     <div class="text-xs text-muted">{pattern.needle}</div>

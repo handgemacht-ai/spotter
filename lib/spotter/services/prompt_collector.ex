@@ -132,7 +132,9 @@ defmodule Spotter.Services.PromptCollector do
     else
       %{
         project_id: message.session.project_id,
-        prompt: String.slice(text, 0, max_chars)
+        prompt: String.slice(text, 0, max_chars),
+        message_id: message.id,
+        session_id: message.session_id
       }
     end
   end
