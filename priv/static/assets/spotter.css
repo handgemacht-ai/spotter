@@ -794,6 +794,7 @@ input::placeholder, textarea::placeholder {
 
 .session-transcript {
   flex: 1;
+  flex: 1.4;
   padding: var(--space-4);
   overflow-y: auto;
   border-left: 1px solid var(--border-default);
@@ -1037,6 +1038,7 @@ input::placeholder, textarea::placeholder {
 
 /* Transcript rows */
 .transcript-row {
+  position: relative;
   padding: 2px 6px;
   border-left: 2px solid transparent;
   font-family: var(--font-mono);
@@ -1046,9 +1048,18 @@ input::placeholder, textarea::placeholder {
 }
 
 .transcript-row .row-main {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.transcript-row .row-content {
   display: flex;
   align-items: flex-start;
   gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .transcript-row.is-active {
@@ -1114,11 +1125,15 @@ input::placeholder, textarea::placeholder {
 
 /* Kind: tool_use – Bash error */
 .transcript-row.is-tool-use.is-bash-error {
-  background: rgba(232, 84, 84, 0.14);
+  background: rgba(232, 84, 84, 0.24);
   border-left-color: var(--accent-red);
 }
 
 .transcript-row.is-tool-use.is-bash-error .row-text {
+  color: var(--accent-red);
+}
+
+.transcript-row.is-tool-use.is-bash-error .row-content {
   color: var(--accent-red);
 }
 
@@ -1167,8 +1182,8 @@ input::placeholder, textarea::placeholder {
 
 /* Kind: tool_result (threaded under tool_use) */
 .transcript-row.is-tool-result {
-  background: var(--surface-2);
-  border-left-color: var(--border-default);
+  background: rgba(91, 156, 245, 0.06);
+  border-left: 2px solid var(--border-default);
   padding-left: 14px;
 }
 
@@ -1200,19 +1215,20 @@ input::placeholder, textarea::placeholder {
 
 /* Kind: hook_group (collapsible summary) */
 .transcript-row.is-hook-group {
-  background: var(--bg-secondary);
-  border-radius: 3px;
+  display: none;
 }
 
 .transcript-row.is-hook-group .row-text {
-  color: var(--text-secondary);
-  font-weight: 500;
+  color: var(--text-tertiary);
+  font-size: 0.75em;
 }
 
 /* Kind: hook_progress (detail rows) */
 .transcript-row.is-hook-progress {
   opacity: 0.85;
-  padding-left: 1.5rem;
+  padding-left: 1.75rem;
+  border-left: 2px dashed rgba(91, 156, 245, 0.35);
+  margin-left: 6px;
 }
 
 .transcript-row.is-hook-progress .row-text {
@@ -1222,7 +1238,9 @@ input::placeholder, textarea::placeholder {
 /* Kind: hook_output (stdout/stderr/exit code) */
 .transcript-row.is-hook-output {
   opacity: 0.8;
-  padding-left: 2rem;
+  padding-left: 2.25rem;
+  border-left: 2px dashed rgba(91, 156, 245, 0.22);
+  margin-left: 6px;
 }
 
 .transcript-row.is-hook-output .row-text {
@@ -1239,12 +1257,37 @@ input::placeholder, textarea::placeholder {
 }
 
 .row-meta {
-  display: flex;
+  margin-left: auto;
+  width: min(34%, 140px);
+  max-width: min(34%, 140px);
+  min-width: 0;
+  align-self: flex-start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: var(--space-2);
-  margin-left: auto;
-  flex-shrink: 0;
-  white-space: nowrap;
+  justify-items: end;
+  white-space: normal;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  pointer-events: auto;
+  background: transparent;
+}
+
+.row-meta > * {
+  min-width: 0;
+  text-align: right;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.row-hook-controls,
+.row-meta .row-hook-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  width: auto;
 }
 
 .row-timestamp {
@@ -1266,7 +1309,47 @@ input::placeholder, textarea::placeholder {
   color: var(--text-tertiary);
   flex-shrink: 0;
   font-size: 0.9em;
+  white-space: normal;
+}
+
+.btn-expand-tool-hook {
   white-space: nowrap;
+  padding: 0 5px;
+}
+
+.transcript-anchor {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 4px;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.row-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 4px;
+  margin-right: 4px;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.row-status-dot.is-success {
+  background: var(--accent-green);
+}
+
+.row-status-dot.is-error {
+  background: var(--accent-red);
+}
+
+.row-status-dot.is-pending {
+  background: var(--text-tertiary);
+}
+
+.row-status-dot.is-default {
+  background: var(--text-secondary);
 }
 
 /* Subagent rows */

@@ -42,7 +42,7 @@ defmodule SpotterWeb.TranscriptComponents do
     assigns =
       assigns
       |> assign(:expand_groups, compute_expand_groups(all_lines, expanded))
-      |> assign(:hook_expand_groups, compute_hook_expand_groups(all_lines, expanded_hooks))
+      |> assign(:tool_hook_controls, compute_tool_hook_controls(all_lines, expanded_hooks))
 
     ~H"""
     <%= if @rendered_lines != [] do %>
@@ -60,6 +60,7 @@ defmodule SpotterWeb.TranscriptComponents do
             clicked_subagent={@clicked_subagent}
             show_debug={@show_debug}
             anchors={@anchors}
+            tool_hook_controls={@tool_hook_controls}
           />
           <%= if @show_debug do %>
             <div class="transcript-debug-sidecar" data-render-mode="code">
@@ -69,10 +70,6 @@ defmodule SpotterWeb.TranscriptComponents do
           <.expand_control
             :if={expand_control_for(line, @expand_groups)}
             group_info={expand_control_for(line, @expand_groups)}
-          />
-          <.expand_control
-            :if={hook_expand_control_for(line, @hook_expand_groups)}
-            group_info={hook_expand_control_for(line, @hook_expand_groups)}
           />
         <% end %>
       </div>
@@ -90,55 +87,65 @@ defmodule SpotterWeb.TranscriptComponents do
   attr(:clicked_subagent, :string, default: nil)
   attr(:show_debug, :boolean, default: false)
   attr(:anchors, :list, default: [])
+  attr(:tool_hook_controls, :map, default: %{})
 
   def transcript_row(assigns) do
     ~H"""
     <div
-      id={"msg-#{@line.line_number}"}
+      id={"msg-" <> Integer.to_string(@line.line_number)}
       data-testid="transcript-row"
       data-message-id={@line.message_id}
       data-line-number={@line.line_number}
-      class={row_classes(@line, @current_message_id, @clicked_subagent)}
       data-render-mode={to_string(@line[:render_mode] || "plain")}
-      data-tool-name={@line[:tool_name]}
-      data-command-status={if @line[:command_status], do: to_string(@line[:command_status])}
-      data-thread-key={@line.thread_key}
-    >
+        data-tool-name={@line[:tool_name]}
+        data-command-status={if @line[:command_status], do: to_string(@line[:command_status])}
+        data-thread-key={@line.thread_key}
+        class={row_classes(@line, @current_message_id, @clicked_subagent) <>
+               if(has_row_meta?(@line, @tool_hook_controls), do: " is-meta-row", else: "")}
+      >
       <div class="row-main">
-        <%= if @show_debug do %>
-          <% anchor = Enum.find(@anchors, &(&1.tl == @line.line_number)) %>
-          <span
-            :if={anchor}
-            style={"display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;background:#{anchor_color(anchor.type)};"}
-            title={"#{anchor.type} → terminal line #{anchor.t}"}
-          />
-        <% end %>
-        <%= if @line[:subagent_ref] do %>
-          <span
-            class="subagent-badge"
-            phx-click="subagent_reference_clicked"
-            phx-value-ref={@line.subagent_ref}
-          >
-            agent
+        <span class="row-content">
+          <%= if @show_debug do %>
+            <% anchor = Enum.find(@anchors, &(&1.tl == @line.line_number)) %>
+            <span
+              :if={anchor}
+              class="transcript-anchor"
+              style={"background:#{anchor_color(anchor.type)};"}
+              title={"#{anchor.type} → terminal line #{anchor.t}"}
+            />
+          <% end %>
+          <%= if @line[:subagent_ref] do %>
+            <span
+              class="subagent-badge"
+              phx-click="subagent_reference_clicked"
+              phx-value-ref={@line.subagent_ref}
+            >
+              agent
+            </span>
+          <% end %>
+          <span :if={@line[:kind] == :thinking} class="thinking-icon">💡</span>
+          <span :if={tool_status_dot_visible?(@line)} class={"row-status-dot #{status_dot_class(@line)}"}></span>
+          <%= if @line[:render_mode] == :code do %>
+            <pre class="row-text row-text-code"><span :if={@line[:source_line_number]} class="source-line-number"><%= @line[:source_line_number] %></span><code class={"language-#{@line[:code_language] || "plaintext"}"}><%= @line.line %></code></pre>
+          <% else %>
+            <span
+              class="row-text"
+              data-render-markdown={if markdown_line?(@line), do: "true", else: "false"}
+            ><%= @line.line %></span>
+          <% end %>
+        </span>
+        <span :if={has_row_meta?(@line, @tool_hook_controls)} class="row-meta">
+          <span :if={tool_hook_controls(@line, @tool_hook_controls) != []} class="row-hook-controls">
+            <%= for hook_control <- tool_hook_controls(@line, @tool_hook_controls) do %>
+              <button
+                class="btn-expand-tool-result btn-expand-tool-hook"
+                phx-click="transcript_view_toggle_hook_group"
+                phx-value-group={hook_control.group}
+              >
+                <%= hook_control_text(hook_control) %>
+              </button>
+            <% end %>
           </span>
-        <% end %>
-        <span :if={@line[:kind] == :thinking} class="thinking-icon">💡</span>
-        <%= if @line[:render_mode] == :code do %>
-          <pre class="row-text row-text-code"><span :if={@line[:source_line_number]} class="source-line-number"><%= @line[:source_line_number] %></span><code class={"language-#{@line[:code_language] || "plaintext"}"}><%= @line.line %></code></pre>
-        <% else %>
-          <span
-            class="row-text"
-            data-render-markdown={if markdown_line?(@line), do: "true", else: "false"}
-          ><%= @line.line %></span>
-        <% end %>
-        <span :if={has_row_meta?(@line)} class="row-meta">
-          <span :if={@line[:timestamp]} class={"row-timestamp #{if @line[:timestamp_delta_slow?], do: "is-slow", else: ""}"} title={DateTime.to_iso8601(@line[:timestamp])}>
-            {format_timestamp(@line[:timestamp])}{format_delta(@line[:timestamp_delta_seconds])}
-          </span>
-          <span :if={@line[:tool_duration_seconds]} class={"row-tool-duration #{if @line[:tool_duration_slow?], do: "is-slow", else: ""}"}>
-            tool {format_duration(@line[:tool_duration_seconds])}
-          </span>
-          <span :if={@line[:token_count_total]} class="row-token-count">{@line[:token_count_total]} tok{format_token_delta(@line[:token_count_delta])}</span>
         </span>
       </div>
     </div>
@@ -161,7 +168,7 @@ defmodule SpotterWeb.TranscriptComponents do
     """
   end
 
-  # ── Expand group computation ────────────────────────────────────────
+  # ── Expand group computation for tool result lines ─────────────────────────────────────
 
   defp compute_expand_groups(all_lines, expanded) do
     all_lines
@@ -208,34 +215,9 @@ defmodule SpotterWeb.TranscriptComponents do
     end
   end
 
-  defp has_row_meta?(line) do
-    line[:timestamp] != nil || line[:tool_duration_seconds] != nil ||
-      line[:token_count_total] != nil
+  defp has_row_meta?(line, tool_hook_controls) do
+    tool_hook_controls(line, tool_hook_controls) != []
   end
-
-  defp format_timestamp(%DateTime{} = dt) do
-    dt
-    |> DateTime.to_time()
-    |> Time.truncate(:second)
-    |> Time.to_string()
-  end
-
-  defp format_delta(nil), do: ""
-
-  defp format_delta(seconds) do
-    " (+" <> format_duration(seconds) <> ")"
-  end
-
-  defp format_duration(seconds) when seconds >= 60 do
-    "#{div(seconds, 60)}m#{rem(seconds, 60)}s"
-  end
-
-  defp format_duration(seconds), do: "#{seconds}s"
-
-  defp format_token_delta(nil), do: ""
-  defp format_token_delta(0), do: " (0)"
-  defp format_token_delta(delta) when delta > 0, do: " (+#{delta})"
-  defp format_token_delta(delta), do: " (#{delta})"
 
   defp expand_button_text(%{is_expanded: true, event: "transcript_view_toggle_hook_group"}),
     do: "Hide hooks"
@@ -306,35 +288,63 @@ defmodule SpotterWeb.TranscriptComponents do
     line[:render_mode] == :plain and line[:kind] in [:text, :thinking]
   end
 
-  # ── Hook group expand computation ──────────────────────────────────
+  # ── Hook control computation for tool headers ───────────────────────────────────
 
-  defp compute_hook_expand_groups(all_lines, expanded_hooks) do
+  defp compute_tool_hook_controls(all_lines, expanded_hooks) do
+    detail_counts =
+      Enum.reduce(all_lines, %{}, fn line, counts ->
+        group = line[:hook_group]
+
+        if group && line[:kind] != :hook_group do
+          Map.update(counts, group, 1, &(&1 + 1))
+        else
+          counts
+        end
+      end)
+
     all_lines
     |> Enum.filter(&(&1[:kind] == :hook_group))
-    |> Map.new(fn summary ->
-      group_key = summary.hook_group
-      is_expanded = MapSet.member?(expanded_hooks, group_key)
-
-      detail_count =
-        Enum.count(all_lines, fn line ->
-          line[:hook_group] == group_key and line[:kind] != :hook_group
+    |> Enum.group_by(& &1.tool_use_id)
+    |> Map.new(fn {tool_use_id, rows} ->
+      controls =
+        Enum.map(rows, fn summary ->
+          %{
+            group: summary.hook_group,
+            is_expanded: MapSet.member?(expanded_hooks, summary.hook_group),
+            hidden_count: Map.get(detail_counts, summary.hook_group, 0)
+          }
         end)
 
-      {group_key,
-       %{
-         group: group_key,
-         hidden_count: detail_count,
-         is_expanded: is_expanded,
-         event: "transcript_view_toggle_hook_group"
-       }}
+      {tool_use_id, controls}
     end)
   end
 
-  defp hook_expand_control_for(%{kind: :hook_group} = line, hook_expand_groups) do
-    Map.get(hook_expand_groups, line[:hook_group])
+  defp tool_hook_controls(line, tool_hook_controls) do
+    if line[:kind] == :tool_use do
+      Map.get(tool_hook_controls, line[:tool_use_id], [])
+    else
+      []
+    end
   end
 
-  defp hook_expand_control_for(_line, _hook_expand_groups), do: nil
+  defp hook_control_text(%{is_expanded: true}), do: "Hide hooks"
+
+  defp hook_control_text(%{hidden_count: count}) when count <= 1, do: "Show 1 hook"
+
+  defp hook_control_text(%{hidden_count: count}), do: "Show #{count} hooks"
+
+  defp tool_status_dot_visible?(line) do
+    Map.get(line, :kind) == :tool_use and Map.has_key?(line, :command_status)
+  end
+
+  defp status_dot_class(line) do
+    case line[:command_status] do
+      :success -> "is-success"
+      :error -> "is-error"
+      :pending -> "is-pending"
+      _ -> "is-default"
+    end
+  end
 
   defp anchor_color(:tool_use), do: "var(--accent-amber)"
   defp anchor_color(:user), do: "var(--accent-blue)"
