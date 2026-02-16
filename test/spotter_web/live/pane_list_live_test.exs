@@ -409,4 +409,73 @@ defmodule SpotterWeb.PaneListLiveTest do
       assert html =~ "What does handle_info do?"
     end
   end
+
+  describe "study queue commit card readability" do
+    setup %{project: project} do
+      commit =
+        Ash.create!(Commit, %{
+          commit_hash: String.duplicate("e", 40),
+          subject: "  feat: add multi-line   support  ",
+          body: "This is line one.\n\nThis is line three with detail.\nAnd line four."
+        })
+
+      Ash.create!(ReviewItem, %{
+        project_id: project.id,
+        target_kind: :commit_message,
+        commit_id: commit.id,
+        importance: :medium,
+        next_due_on: Date.utc_today()
+      })
+
+      %{commit: commit}
+    end
+
+    test "shows project name on commit card", %{project: project} do
+      {:ok, _view, html} = live(build_conn(), "/")
+
+      assert html =~ "Project: #{project.name}"
+    end
+
+    test "shows normalized commit subject without extra whitespace", %{} do
+      {:ok, _view, html} = live(build_conn(), "/")
+
+      assert html =~ "feat: add multi-line support"
+      # The subject element should contain the normalized text, not the raw padded version
+      assert html =~ ~s(class="study-commit-subject")
+      refute html =~ ~s(class="study-commit-subject">\n                    &lt;No subject&gt;)
+    end
+
+    test "shows full commit body text", %{} do
+      {:ok, _view, html} = live(build_conn(), "/")
+
+      assert html =~ "This is line one."
+      assert html =~ "This is line three with detail."
+      assert html =~ "And line four."
+    end
+
+    test "shows fallback text when commit body is blank", %{project: project} do
+      commit_no_body =
+        Ash.create!(Commit, %{
+          commit_hash: String.duplicate("f", 40),
+          subject: "fix: empty body commit"
+        })
+
+      # Suspend the other items so this one shows first
+      ReviewItem
+      |> Ash.read!()
+      |> Enum.each(&Ash.update!(&1, %{suspended_at: DateTime.utc_now()}))
+
+      Ash.create!(ReviewItem, %{
+        project_id: project.id,
+        target_kind: :commit_message,
+        commit_id: commit_no_body.id,
+        importance: :high,
+        next_due_on: Date.utc_today()
+      })
+
+      {:ok, _view, html} = live(build_conn(), "/")
+
+      assert html =~ "No commit message body."
+    end
+  end
 end

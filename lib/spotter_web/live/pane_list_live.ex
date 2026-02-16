@@ -498,6 +498,8 @@ defmodule SpotterWeb.PaneListLive do
     flashcard_ids =
       items |> Enum.map(& &1.flashcard_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
 
+    project_ids = items |> Enum.map(& &1.project_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
     commits =
       if commit_ids != [] do
         Commit |> Ash.Query.filter(id in ^commit_ids) |> Ash.read!() |> Map.new(&{&1.id, &1})
@@ -525,6 +527,16 @@ defmodule SpotterWeb.PaneListLive do
         %{}
       end
 
+    projects =
+      if project_ids != [] do
+        Spotter.Transcripts.Project
+        |> Ash.Query.filter(id in ^project_ids)
+        |> Ash.read!()
+        |> Map.new(&{&1.id, &1})
+      else
+        %{}
+      end
+
     Enum.map(items, fn item ->
       upcoming =
         item.next_due_on != nil and Date.compare(item.next_due_on, today) == :gt
@@ -534,6 +546,7 @@ defmodule SpotterWeb.PaneListLive do
         commit: Map.get(commits, item.commit_id),
         hotspot: Map.get(hotspots, item.commit_hotspot_id),
         flashcard: Map.get(flashcards, item.flashcard_id),
+        project: Map.get(projects, item.project_id),
         upcoming: upcoming
       }
     end)
@@ -829,6 +842,22 @@ defmodule SpotterWeb.PaneListLive do
     |> Enum.group_by(& &1.session_id)
   end
 
+  defp normalize_commit_subject(nil), do: "<No subject>"
+  defp normalize_commit_subject(""), do: "<No subject>"
+
+  defp normalize_commit_subject(subject) do
+    trimmed = subject |> String.trim() |> String.replace(~r/\s+/, " ")
+    if trimmed == "", do: "<No subject>", else: trimmed
+  end
+
+  defp format_commit_body_for_queue(nil), do: "No commit message body."
+  defp format_commit_body_for_queue(""), do: "No commit message body."
+
+  defp format_commit_body_for_queue(body) do
+    trimmed = String.trim(body)
+    if trimmed == "", do: "No commit message body.", else: trimmed
+  end
+
   defp relative_time(nil), do: "\u2014"
 
   defp relative_time(dt) do
@@ -971,13 +1000,30 @@ defmodule SpotterWeb.PaneListLive do
               </div>
 
               <div class="study-card-body">
+                <div
+                  :if={current_entry.project}
+                  class="study-commit-project"
+                  title={"Project: #{current_entry.project.name}"}
+                >
+                  Project: {current_entry.project.name}
+                </div>
+                <div
+                  :if={is_nil(current_entry.project)}
+                  class="study-commit-project"
+                  title="Project unavailable"
+                >
+                  Project unavailable
+                </div>
+
                 <%= if current_entry.item.target_kind == :commit_message and current_entry.commit do %>
                   <div class="study-commit-hash text-muted text-xs">
                     {String.slice(current_entry.commit.commit_hash, 0, 8)}
                   </div>
-                  <div class="study-commit-subject">{current_entry.commit.subject}</div>
-                  <div :if={current_entry.commit.body} class="study-commit-body text-sm text-muted">
-                    {current_entry.commit.body}
+                  <div class="study-commit-subject">
+                    {normalize_commit_subject(current_entry.commit.subject)}
+                  </div>
+                  <div class="study-commit-body">
+                    {format_commit_body_for_queue(current_entry.commit.body)}
                   </div>
                 <% end %>
 

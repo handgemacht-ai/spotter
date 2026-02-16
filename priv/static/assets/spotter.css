@@ -2207,12 +2207,31 @@ input::placeholder, textarea::placeholder {
   margin-bottom: var(--space-3);
 }
 
+.study-commit-project {
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+
 .study-commit-subject {
   font-weight: 500;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  margin-bottom: var(--space-2);
 }
 
 .study-commit-body {
   white-space: pre-wrap;
+  line-height: 1.5;
+  font-size: 0.9em;
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .study-hotspot-reason {
