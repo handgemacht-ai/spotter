@@ -30,8 +30,27 @@ defmodule Spotter.Search.ReindexProjectJobTest do
     commit_id = Ecto.UUID.generate()
 
     Repo.query!(
-      "INSERT INTO commits (id, commit_hash, subject, inserted_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-      [commit_id, "abc123def456", "Fix auth bug", now, now]
+      """
+      INSERT INTO commits (id, commit_hash, subject, changed_files,
+        hotspots_status, hotspots_version, hotspots_metadata,
+        tests_status, tests_version, tests_metadata,
+        inserted_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      """,
+      [
+        commit_id,
+        "abc123def456",
+        "Fix auth bug",
+        "[]",
+        "pending",
+        1,
+        "{}",
+        "pending",
+        1,
+        "{}",
+        now,
+        now
+      ]
     )
 
     Repo.query!(

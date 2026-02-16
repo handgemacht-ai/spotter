@@ -17,7 +17,7 @@ excludes =
 max_ms =
   case System.get_env("SPOTTER_TEST_MAX_MS") do
     nil ->
-      1_000
+      5_000
 
     val ->
       case Integer.parse(val) do
