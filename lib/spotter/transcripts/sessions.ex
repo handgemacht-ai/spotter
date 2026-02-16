@@ -57,9 +57,22 @@ defmodule Spotter.Transcripts.Sessions do
     # Convert cwd to the transcript dir format: /home/marco/projects/spotter -> -home-marco-projects-spotter
     dir_name = String.replace(cwd, "/", "-")
 
-    Enum.find_value(projects, :no_match, fn {name, %{pattern: pattern}} ->
-      if Regex.match?(pattern, dir_name), do: {:ok, name, Regex.source(pattern)}
-    end)
+    projects
+    |> Enum.filter(fn {_name, %{pattern: pattern}} -> Regex.match?(pattern, dir_name) end)
+    |> longest_pattern_match()
+  end
+
+  # When multiple patterns match, pick the longest pattern source (most specific).
+  # This prevents "todo" from shadowing "todo2" when both patterns match.
+  defp longest_pattern_match([]), do: :no_match
+
+  defp longest_pattern_match(matches) do
+    {name, %{pattern: pattern}} =
+      Enum.max_by(matches, fn {_name, %{pattern: pattern}} ->
+        String.length(Regex.source(pattern))
+      end)
+
+    {:ok, name, Regex.source(pattern)}
   end
 
   defp upsert_project(name, pattern) do
