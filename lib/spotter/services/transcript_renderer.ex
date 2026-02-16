@@ -705,21 +705,22 @@ defmodule Spotter.Services.TranscriptRenderer do
   defp render_user_content_enriched(_msg, _session_cwd, _tool_use_index), do: []
 
   defp render_user_block_enriched(
-         %{"type" => "tool_result", "content" => content} = block,
+         %{"type" => "tool_result"} = block,
          msg,
          session_cwd,
          tool_use_index
-       )
-       when is_binary(content) do
+       ) do
     tool_use_id = block["tool_use_id"]
     tool_name = tool_name_for_result(tool_use_id, tool_use_index)
+    resolved_content = resolve_tool_result_content(tool_name, block["content"], msg)
+    block = Map.put(block, "content", resolved_content)
 
     case tool_name do
       "AskUserQuestion" ->
         render_ask_user_answer(block, msg)
 
       "ExitPlanMode" ->
-        render_plan_decision(block, content)
+        render_plan_decision(block, printable_line_content(resolved_content))
 
       "Write" ->
         if plan_write?(tool_use_id, tool_use_index) do
@@ -731,33 +732,8 @@ defmodule Spotter.Services.TranscriptRenderer do
       "Edit" ->
         render_with_diff_or_generic(block, msg, session_cwd, tool_use_index)
 
-      _ ->
+      _ when is_binary(resolved_content) or is_list(resolved_content) ->
         render_generic_tool_result(block, msg, session_cwd, tool_use_index)
-    end
-  end
-
-  defp render_user_block_enriched(
-         %{"type" => "tool_result", "content" => content} = block,
-         msg,
-         session_cwd,
-         tool_use_index
-       )
-       when is_list(content) do
-    render_generic_tool_result(block, msg, session_cwd, tool_use_index)
-  end
-
-  defp render_user_block_enriched(
-         %{"type" => "tool_result"} = block,
-         msg,
-         _session_cwd,
-         tool_use_index
-       ) do
-    tool_use_id = block["tool_use_id"]
-    tool_name = tool_name_for_result(tool_use_id, tool_use_index)
-
-    case tool_name do
-      "AskUserQuestion" ->
-        render_ask_user_answer(block, msg)
 
       _ ->
         thread_key = tool_use_id || "unmatched-result"
@@ -1092,8 +1068,10 @@ defmodule Spotter.Services.TranscriptRenderer do
     tool_use_id = block["tool_use_id"]
     thread_key = tool_use_id || "unmatched-result"
     group_key = tool_use_id || "group-#{:erlang.phash2(content)}"
+    tool_name = tool_name_for_result(tool_use_id, tool_use_index)
     inferred_lang = infer_result_language(tool_use_id, tool_use_index)
     start_line = extract_tool_result_start_line(msg, tool_use_id)
+    force_code_mode = tool_name == "Write"
 
     content
     |> String.split("\n")
@@ -1104,7 +1082,8 @@ defmodule Spotter.Services.TranscriptRenderer do
       {line_without_number, source_line_number} =
         strip_number_prefix(relativized, start_line, idx)
 
-      {render_mode, code_language} = classify_result_line(relativized, inferred_lang)
+      {render_mode, code_language} =
+        classify_result_line(relativized, inferred_lang, force_code_mode)
 
       %{
         line: line_without_number,
@@ -1129,8 +1108,10 @@ defmodule Spotter.Services.TranscriptRenderer do
     tool_use_id = block["tool_use_id"]
     thread_key = tool_use_id || "unmatched-result"
     group_key = tool_use_id || "group-#{:erlang.phash2(content)}"
+    tool_name = tool_name_for_result(tool_use_id, tool_use_index)
     inferred_lang = infer_result_language(tool_use_id, tool_use_index)
     start_line = extract_tool_result_start_line(msg, tool_use_id)
+    force_code_mode = tool_name == "Write"
 
     content
     |> Enum.flat_map(fn
@@ -1144,7 +1125,8 @@ defmodule Spotter.Services.TranscriptRenderer do
       {line_without_number, source_line_number} =
         strip_number_prefix(relativized, start_line, idx)
 
-      {render_mode, code_language} = classify_result_line(relativized, inferred_lang)
+      {render_mode, code_language} =
+        classify_result_line(relativized, inferred_lang, force_code_mode)
 
       %{
         line: line_without_number,
@@ -1185,6 +1167,14 @@ defmodule Spotter.Services.TranscriptRenderer do
   @numbered_line_capture ~r/^\s*(\d+)→\s?(.*)$/u
 
   defp classify_result_line(line, inferred_lang) do
+    classify_result_line(line, inferred_lang, false)
+  end
+
+  defp classify_result_line(_line, inferred_lang, true) do
+    {:code, inferred_lang || "plaintext"}
+  end
+
+  defp classify_result_line(line, inferred_lang, false) do
     if Regex.match?(@numbered_line_pattern, line) do
       {:code, inferred_lang || "plaintext"}
     else
@@ -1257,11 +1247,38 @@ defmodule Spotter.Services.TranscriptRenderer do
     case Map.get(index, tool_use_id) do
       %{name: "Read", input: %{"file_path" => path}} when is_binary(path) ->
         language_from_extension(path)
+      %{name: "Write", input: %{"file_path" => path}} when is_binary(path) ->
+        language_from_extension(path)
+      %{name: "Edit", input: %{"file_path" => path}} when is_binary(path) ->
+        language_from_extension(path)
 
       _ ->
         nil
     end
   end
+
+  defp resolve_tool_result_content(
+         "Write",
+         content,
+         msg
+       ) do
+    case safe_tool_use_result(msg, "content") do
+      content_from_result when is_binary(content_from_result) and content_from_result != "" ->
+        content_from_result
+
+      content_from_result when is_list(content_from_result) and content_from_result != [] ->
+        content_from_result
+
+      _ ->
+        content
+    end
+  end
+
+  defp resolve_tool_result_content(_tool_name, content, _msg), do: content
+
+  defp printable_line_content(content) when is_binary(content), do: content
+
+  defp printable_line_content(content), do: inspect(content)
 
   defp language_from_extension(path) do
     ext = Path.extname(path)

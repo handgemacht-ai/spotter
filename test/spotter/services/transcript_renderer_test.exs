@@ -2005,6 +2005,50 @@ defmodule Spotter.Services.TranscriptRendererTest do
   end
 
   describe "Edit/Write structuredPatch diff rendering" do
+    test "Write tool_result uses toolUseResult.content as code block" do
+      messages = [
+        %{
+          type: :assistant,
+          uuid: "msg-1",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Write",
+                "id" => "toolu_write_payload",
+                "input" => %{"file_path" => "/tmp/config.json", "content" => "{}"}
+              }
+            ]
+          }
+        },
+        %{
+          type: :user,
+          uuid: "msg-2",
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_write_payload",
+                "content" => "File created successfully."
+              }
+            ]
+          },
+          raw_payload: %{
+            "toolUseResult" => %{
+              "content" => "{\n  \"foo\": \"bar\"\n}"
+            }
+          }
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+      tool_result_lines = Enum.filter(result, &(&1.kind == :tool_result))
+
+      assert Enum.map(tool_result_lines, & &1.line) == ["{", "  \"foo\": \"bar\"", "}"]
+      assert Enum.all?(tool_result_lines, &(&1.render_mode == :code))
+      assert Enum.all?(tool_result_lines, &(&1.code_language == "json"))
+    end
+
     test "Edit with structuredPatch emits diff rows" do
       messages = [
         %{
