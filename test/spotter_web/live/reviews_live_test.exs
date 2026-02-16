@@ -45,18 +45,6 @@ defmodule SpotterWeb.ReviewsLiveTest do
       assert html =~ "Project"
     end
 
-    test "renders All chip with total count" do
-      project = create_project("alpha")
-      session = create_session(project)
-      create_annotation(session, :open)
-      create_annotation(session, :open)
-      create_annotation(session, :closed)
-
-      {:ok, _view, html} = live(build_conn(), "/reviews")
-
-      assert html =~ "All (2)"
-    end
-
     test "renders per-project chips with name and count" do
       proj_a = create_project("alpha")
       proj_b = create_project("beta")
@@ -74,10 +62,10 @@ defmodule SpotterWeb.ReviewsLiveTest do
       assert html =~ "beta (2)"
     end
 
-    test "renders All (0) when no projects exist" do
+    test "shows No project selected when no projects exist" do
       {:ok, _view, html} = live(build_conn(), "/reviews")
 
-      assert html =~ "All (0)"
+      assert html =~ "No project selected."
     end
 
     test "includes project with zero open annotations in chips" do
@@ -94,63 +82,40 @@ defmodule SpotterWeb.ReviewsLiveTest do
     end
   end
 
-  describe "all-project mode" do
-    test "hides action buttons and helper text" do
-      {:ok, _view, html} = live(build_conn(), "/reviews")
-
-      refute html =~ "Select a project to open or close a review session."
-      refute html =~ "Run this review in Claude Code"
-      refute html =~ "Close review session"
-    end
-
-    test "renders project section headers with open counts" do
-      proj_a = create_project("alpha")
-      proj_b = create_project("beta")
-      sess_a = create_session(proj_a)
-      sess_b = create_session(proj_b)
-
-      create_annotation(sess_a, :open)
-      create_annotation(sess_b, :open)
-      create_annotation(sess_b, :open)
+  describe "auto-select first project" do
+    test "auto-selects first project and shows action buttons" do
+      project = create_project("alpha")
+      session = create_session(project)
+      create_annotation(session, :open)
 
       {:ok, _view, html} = live(build_conn(), "/reviews")
 
-      assert html =~ "alpha"
-      assert html =~ "(1 open)"
-      assert html =~ "beta"
-      assert html =~ "(2 open)"
+      # Auto-selects first project, so action buttons visible
+      assert html =~ "Run this review in Claude Code"
+      assert html =~ "Close review session"
     end
 
-    test "renders annotations under their respective project sections" do
+    test "shows annotations for auto-selected project" do
       proj_a = create_project("alpha")
       proj_b = create_project("beta")
       sess_a = create_session(proj_a)
       sess_b = create_session(proj_b)
 
       ann_a = create_annotation(sess_a, :open)
-      ann_b = create_annotation(sess_b, :open)
+      _ann_b = create_annotation(sess_b, :open)
 
       {:ok, _view, html} = live(build_conn(), "/reviews")
 
-      # Both annotations appear in the page
+      # Auto-selects first project (alpha), so only alpha's annotations appear
       assert html =~ ann_a.selected_text
-      assert html =~ ann_b.selected_text
-
-      # Both project sections exist
-      assert html =~ "project-section"
     end
 
-    test "shows section-level empty state for project with zero annotations" do
-      proj_a = create_project("alpha")
-      create_project("beta")
-      sess_a = create_session(proj_a)
-      create_annotation(sess_a, :open)
+    test "shows empty state when auto-selected project has no annotations" do
+      create_project("alpha")
 
       {:ok, _view, html} = live(build_conn(), "/reviews")
 
-      assert html =~ "alpha"
-      assert html =~ "beta"
-      assert html =~ "No open annotations."
+      assert html =~ "No open annotations for the selected scope."
     end
   end
 
@@ -189,20 +154,21 @@ defmodule SpotterWeb.ReviewsLiveTest do
       assert html =~ "Fixed it"
     end
 
-    test "resolved annotations do not appear in all-project mode" do
-      project = create_project("alpha")
-      session = create_session(project)
+    test "resolved annotations do not appear for a different project" do
+      proj_a = create_project("alpha")
+      proj_b = create_project("beta")
+      session = create_session(proj_a)
       ann = create_annotation(session, :open, text: "resolved-hidden")
 
       Ash.update!(ann, %{resolution: "Done"}, action: :resolve)
 
-      {:ok, _view, html} = live(build_conn(), "/reviews")
+      {:ok, _view, html} = live(build_conn(), "/reviews?project_id=#{proj_b.id}")
 
       refute html =~ "Resolved annotations"
       refute html =~ "resolved-hidden"
     end
 
-    test "project chips and All count remain based on open annotations only" do
+    test "project chips counts are based on open annotations only" do
       project = create_project("alpha")
       session = create_session(project)
       create_annotation(session, :open, text: "open-one")
@@ -212,7 +178,6 @@ defmodule SpotterWeb.ReviewsLiveTest do
 
       {:ok, _view, html} = live(build_conn(), "/reviews")
 
-      assert html =~ "All (1)"
       assert html =~ "alpha (1)"
     end
   end
@@ -238,28 +203,35 @@ defmodule SpotterWeb.ReviewsLiveTest do
       assert_patched(view, "/reviews?project_id=#{proj_a.id}")
     end
 
-    test "clicking All chip returns to all-project mode" do
-      project = create_project("alpha")
-      session = create_session(project)
-      create_annotation(session, :open)
+    test "clicking a different project chip switches project" do
+      proj_a = create_project("alpha")
+      proj_b = create_project("beta")
+      sess_a = create_session(proj_a)
+      sess_b = create_session(proj_b)
 
-      {:ok, view, _html} = live(build_conn(), "/reviews?project_id=#{project.id}")
+      create_annotation(sess_a, :open)
+      create_annotation(sess_b, :open)
 
-      html = render_click(view, "filter_project", %{"project-id" => "all"})
+      {:ok, view, _html} = live(build_conn(), "/reviews?project_id=#{proj_a.id}")
 
-      refute html =~ "Run this review in Claude Code"
-      refute html =~ "Close review session"
-      assert_patched(view, "/reviews")
+      html = render_click(view, "filter_project", %{"project-id" => proj_b.id})
+
+      assert html =~ "Run this review in Claude Code"
+      assert_patched(view, "/reviews?project_id=#{proj_b.id}")
     end
   end
 
   describe "invalid project_id" do
-    test "falls back to all-project mode" do
+    test "falls back to first project" do
+      project = create_project("alpha")
+      session = create_session(project)
+      create_annotation(session, :open)
+
       {:ok, _view, html} = live(build_conn(), "/reviews?project_id=#{Ash.UUID.generate()}")
 
-      refute html =~ "Select a project to open or close a review session."
-      refute html =~ "Run this review in Claude Code"
-      refute html =~ "Close review session"
+      # Invalid project falls back to first project, so action buttons visible
+      assert html =~ "Run this review in Claude Code"
+      assert html =~ "Close review session"
     end
 
     test "does not crash with non-UUID value" do
@@ -290,7 +262,6 @@ defmodule SpotterWeb.ReviewsLiveTest do
 
       {:ok, _view, html} = live(build_conn(), "/reviews")
 
-      assert html =~ "All (1)"
       assert html =~ "alpha (1)"
     end
 

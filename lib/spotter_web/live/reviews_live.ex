@@ -27,7 +27,8 @@ defmodule SpotterWeb.ReviewsLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    project_id = normalize_project_id(socket.assigns.project_counts, parse_project_id(params["project_id"]))
+    project_id =
+      normalize_project_id(socket.assigns.project_counts, parse_project_id(params["project_id"]))
 
     socket =
       socket
@@ -90,7 +91,7 @@ defmodule SpotterWeb.ReviewsLive do
   end
 
   defp first_project_id(project_counts) do
-    List.first(project_counts) |> then(& &1 && &1.project_id)
+    List.first(project_counts) |> then(&(&1 && &1.project_id))
   end
 
   defp normalize_project_id(project_counts, project_id) do
@@ -195,15 +196,6 @@ defmodule SpotterWeb.ReviewsLive do
       {_, _, %{session_id: sid}} -> "/sessions/#{sid}"
       _ -> "#"
     end
-  end
-
-  defp annotations_for_project(project_id, annotations, sessions_by_id) do
-    Enum.filter(annotations, fn ann ->
-      case Map.get(sessions_by_id, ann.session_id) do
-        %{project_id: ^project_id} -> true
-        _ -> false
-      end
-    end)
   end
 
   defp annotation_card(assigns) do

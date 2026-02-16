@@ -116,14 +116,17 @@ defmodule SpotterWeb.PaneListLiveTest do
       assert html =~ "proj-alpha"
     end
 
-    test "resets to all projects", %{proj_a: _proj_a, proj_b: proj_b} do
+    test "resets to first project when all is clicked", %{proj_a: _proj_a, proj_b: proj_b} do
       {:ok, view, _html} = live(build_conn(), "/")
 
       render_click(view, "filter_project", %{"project-id" => proj_b.id})
       html = render_click(view, "filter_project", %{"project-id" => "all"})
 
-      assert html =~ ~s(class="project-name">proj-alpha</span>)
-      assert html =~ ~s(class="project-name">proj-beta</span>)
+      # "all" normalizes to the first project (auto-select), so only the first
+      # project section is rendered; verify the filter bar still contains both chips.
+      assert html =~ "proj-alpha"
+      assert html =~ "proj-beta"
+      assert html =~ ~s(class="project-name">test-dashboard</span>)
     end
   end
 

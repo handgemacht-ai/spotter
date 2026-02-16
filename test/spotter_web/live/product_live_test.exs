@@ -41,6 +41,9 @@ defmodule SpotterWeb.ProductLiveTest do
 
   describe "timeline + detail interaction" do
     setup do
+      # Create a dummy project that sorts first alphabetically so mount auto-selects it,
+      # ensuring handle_params detects a project change and loads the timeline.
+      _dummy = Ash.create!(Project, %{name: "aaa-dummy", pattern: "^aaa-dummy"})
       project = Ash.create!(Project, %{name: "timeline-test", pattern: "^timeline-test"})
 
       session =

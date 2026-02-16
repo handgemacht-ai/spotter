@@ -123,19 +123,17 @@ defmodule SpotterWeb.HistoryLiveTest do
       create_link(sess_a, commit)
       create_link(sess_b, commit)
 
-      # No branch filter (show all)
-      {:ok, view, _html} = live(build_conn(), "/history?branch=")
+      # No branch filter (show all), auto-selects first project (proj-alpha)
+      {:ok, view, html} = live(build_conn(), "/history?branch=")
 
-      # Both sessions visible initially
-      html = render(view)
+      # First project auto-selected, only alpha visible
       assert html =~ "alpha-session"
+
+      # Switch to proj_b
+      html = render_click(view, "filter_project", %{"project-id" => proj_b.id})
+
       assert html =~ "beta-session"
-
-      # Filter to proj_a
-      html = render_click(view, "filter_project", %{"project-id" => proj_a.id})
-
-      assert html =~ "alpha-session"
-      refute html =~ "beta-session"
+      refute html =~ "alpha-session"
     end
   end
 

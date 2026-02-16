@@ -118,9 +118,9 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
       conn = build_conn()
       {:ok, _view, html} = live(conn, "/reviews?project_id=#{Ash.UUID.generate()}")
 
-      # Invalid project falls back to all-projects grouped mode
+      # Invalid project falls back — with no projects, shows empty state
       assert html =~ "Reviews"
-      assert html =~ "All (0)"
+      assert html =~ "No project selected."
     end
 
     test "shows closed annotations in resolved section" do
