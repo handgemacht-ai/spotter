@@ -9,6 +9,7 @@ defmodule Spotter.Services.ClaudeCode.Client do
 
   require OpenTelemetry.Tracer, as: Tracer
 
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Services.ClaudeCode.Model
   alias Spotter.Services.ClaudeCode.ResultExtractor
   alias Spotter.Services.LlmCredentials
@@ -80,6 +81,7 @@ defmodule Spotter.Services.ClaudeCode.Client do
           reason = Exception.message(e)
           Tracer.set_status(:error, reason)
           set_provider_error_attributes(e)
+          ErrorReport.set_trace_error("sdk_error", reason, "services.claude_code.client")
           {:error, reason}
       end
     end

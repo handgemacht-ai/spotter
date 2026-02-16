@@ -1,6 +1,7 @@
 defmodule Spotter.Services.FileBlame do
   @moduledoc "Loads and parses git blame porcelain output for file detail."
 
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Transcripts.{Commit, SessionCommitLink}
 
   require Ash.Query
@@ -22,7 +23,7 @@ defmodule Spotter.Services.FileBlame do
           {:ok, rows}
 
         {:error, reason} ->
-          OpenTelemetry.Tracer.set_status(:error, "blame_failed")
+          ErrorReport.set_trace_error("blame_failed", "blame_failed", "services.file_blame")
           {:error, reason}
       end
     end

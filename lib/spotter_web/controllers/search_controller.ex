@@ -46,7 +46,11 @@ defmodule SpotterWeb.SearchController do
     Spotter.Search.search(q, project_id: project_id, limit: limit)
   rescue
     e ->
-      OtelTraceHelpers.set_error("fts_search_error", %{"error.message" => inspect(e)})
+      OtelTraceHelpers.set_error("fts_search_error", %{
+        "error.message" => inspect(e),
+        "error.source" => "search_controller"
+      })
+
       []
   end
 
@@ -68,7 +72,11 @@ defmodule SpotterWeb.SearchController do
     end
   rescue
     e ->
-      OtelTraceHelpers.set_error("product_search_error", %{"error.message" => inspect(e)})
+      OtelTraceHelpers.set_error("product_search_error", %{
+        "error.message" => inspect(e),
+        "error.source" => "search_controller"
+      })
+
       []
   end
 

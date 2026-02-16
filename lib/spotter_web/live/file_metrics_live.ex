@@ -1,6 +1,7 @@
 defmodule SpotterWeb.FileMetricsLive do
   use Phoenix.LiveView
 
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Services.FileMetrics
   alias Spotter.Transcripts.{CoChangeGroupCommit, CoChangeGroupMemberStat, Commit, Project}
   alias Spotter.Transcripts.Jobs.IngestRecentCommits
@@ -136,7 +137,12 @@ defmodule SpotterWeb.FileMetricsLive do
            put_flash(socket, :info, "Commit analysis queued (up to 10 recent commits).")}
 
         {:error, reason} ->
-          Tracer.set_status(:error, "enqueue_error: #{inspect(reason)}")
+          ErrorReport.set_trace_error(
+            "enqueue_error",
+            "enqueue_error: #{inspect(reason)}",
+            "live.file_metrics_live"
+          )
+
           {:noreply, put_flash(socket, :error, "Failed to queue commit analysis.")}
       end
     end

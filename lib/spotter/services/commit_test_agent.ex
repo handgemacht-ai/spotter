@@ -12,6 +12,7 @@ defmodule Spotter.Services.CommitTestAgent do
   alias Spotter.Agents.TestToolServer
   alias Spotter.Observability.AgentRunScope
   alias Spotter.Observability.ClaudeAgentFlow
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Observability.FlowKeys
   alias Spotter.Services.ClaudeCode.ResultExtractor
   alias Spotter.Services.CommitTestPermissions
@@ -128,7 +129,7 @@ defmodule Spotter.Services.CommitTestAgent do
           Logger.warning("CommitTestAgent: failed: #{reason}")
           Tracer.set_attribute("spotter.error.kind", "exception")
           Tracer.set_attribute("spotter.error.reason", String.slice(reason, 0, 500))
-          Tracer.set_status(:error, reason)
+          ErrorReport.set_trace_error("agent_error", reason, "services.commit_test_agent")
           {:error, reason}
       catch
         :exit, exit_reason ->
@@ -136,7 +137,7 @@ defmodule Spotter.Services.CommitTestAgent do
           Logger.warning(msg)
           Tracer.set_attribute("spotter.error.kind", "exit")
           Tracer.set_attribute("spotter.error.reason", String.slice(msg, 0, 500))
-          Tracer.set_status(:error, msg)
+          ErrorReport.set_trace_error("agent_exit", msg, "services.commit_test_agent")
           {:error, {:agent_exit, exit_reason}}
       after
         AgentRunScope.delete(server.registry_pid)

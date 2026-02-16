@@ -8,6 +8,7 @@ defmodule Spotter.Services.WaitingSummary do
   """
 
   alias Spotter.Config.Runtime
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Services.ClaudeCode.Client
   alias Spotter.Services.WaitingSummary.SliceBuilder
   alias Spotter.Transcripts.JsonlParser
@@ -77,7 +78,7 @@ defmodule Spotter.Services.WaitingSummary do
         {:error, reason} ->
           Logger.warning("WaitingSummary: LLM call failed: #{inspect(reason)}, using fallback")
 
-          Tracer.set_status(:error, inspect(reason))
+          ErrorReport.set_trace_error("llm_error", inspect(reason), "services.waiting_summary")
           build_fallback_summary(session_id, all_messages)
       end
     end

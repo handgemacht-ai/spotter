@@ -8,6 +8,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Search.Jobs.ReindexProject
   alias Spotter.Transcripts.Config
   alias Spotter.Transcripts.Jobs.ComputeCoChange
@@ -40,13 +41,23 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
           sync_session_file(file_path, opts)
 
         :not_found ->
-          Tracer.set_status(:error, "transcript_not_found")
+          ErrorReport.set_trace_error(
+            "transcript_not_found",
+            "transcript_not_found",
+            "transcripts.jobs.sync_transcripts"
+          )
+
           %{session_id: session_id, ingested_messages: 0, status: :not_found}
       end
     end
   rescue
     error ->
-      Tracer.set_status(:error, Exception.message(error))
+      ErrorReport.set_trace_error(
+        "unexpected_error",
+        Exception.message(error),
+        "transcripts.jobs.sync_transcripts"
+      )
+
       reraise error, __STACKTRACE__
   end
 
@@ -111,14 +122,24 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
           %{session_id: parsed.session_id, ingested_messages: ingested, status: :ok}
 
         {:error, reason} ->
-          Tracer.set_status(:error, "parse_failed")
+          ErrorReport.set_trace_error(
+            "parse_failed",
+            "parse_failed",
+            "transcripts.jobs.sync_transcripts"
+          )
+
           Logger.warning("Failed to parse #{file_path}: #{inspect(reason)}")
           %{session_id: nil, ingested_messages: 0, status: :error}
       end
     end
   rescue
     e ->
-      Tracer.set_status(:error, Exception.message(e))
+      ErrorReport.set_trace_error(
+        "unexpected_error",
+        Exception.message(e),
+        "transcripts.jobs.sync_transcripts"
+      )
+
       Logger.warning("Error syncing #{file_path}: #{Exception.message(e)}")
       %{session_id: nil, ingested_messages: 0, status: :error}
   end
@@ -242,7 +263,12 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
         :ok
       rescue
         e ->
-          Tracer.set_status(:error, Exception.message(e))
+          ErrorReport.set_trace_error(
+            "unexpected_error",
+            Exception.message(e),
+            "transcripts.jobs.sync_transcripts"
+          )
+
           broadcast({:sync_error, %{run_id: run_id, project: name, error: Exception.message(e)}})
           reraise e, __STACKTRACE__
       end

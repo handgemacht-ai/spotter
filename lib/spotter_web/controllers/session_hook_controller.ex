@@ -3,6 +3,7 @@ defmodule SpotterWeb.SessionHookController do
   use Phoenix.Controller, formats: [:json]
 
   alias Spotter.Config.Runtime, warn: false
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Observability.FlowHub
   alias Spotter.Observability.FlowKeys
   alias Spotter.Services.ActiveSessionRegistry
@@ -60,8 +61,29 @@ defmodule SpotterWeb.SessionHookController do
   end
 
   def session_start(conn, _params) do
+    hook_event = get_req_header(conn, "x-spotter-hook-event") |> List.first() || "SessionStart"
+    hook_script = get_req_header(conn, "x-spotter-hook-script") |> List.first() || "unknown"
+
     OtelTraceHelpers.with_span "spotter.hook.session_start", %{} do
-      OtelTraceHelpers.set_error("invalid_params", %{"http.status_code" => 400})
+      error_payload =
+        ErrorReport.hook_flow_error(
+          "invalid_params",
+          "session_id and pane_id are required",
+          400,
+          hook_event,
+          hook_script,
+          %{
+            "error.source" => "session_hook_controller",
+            "reason" => "session_id and pane_id are required"
+          }
+        )
+
+      OtelTraceHelpers.set_error("invalid_params", %{
+        "http.status_code" => 400,
+        "error.source" => "session_hook_controller"
+      })
+
+      emit_hook_outcome("session_start", :error, [FlowKeys.system()], error_payload)
 
       conn
       |> put_status(:bad_request)
@@ -120,8 +142,29 @@ defmodule SpotterWeb.SessionHookController do
   end
 
   def waiting_summary(conn, _params) do
+    hook_event = get_req_header(conn, "x-spotter-hook-event") |> List.first() || "unknown"
+    hook_script = get_req_header(conn, "x-spotter-hook-script") |> List.first() || "unknown"
+
     OtelTraceHelpers.with_span "spotter.hook.waiting_summary", %{} do
-      OtelTraceHelpers.set_error("invalid_params", %{"http.status_code" => 400})
+      error_payload =
+        ErrorReport.hook_flow_error(
+          "invalid_params",
+          "session_id and transcript_path are required",
+          400,
+          hook_event,
+          hook_script,
+          %{
+            "error.source" => "session_hook_controller",
+            "reason" => "session_id and transcript_path are required"
+          }
+        )
+
+      OtelTraceHelpers.set_error("invalid_params", %{
+        "http.status_code" => 400,
+        "error.source" => "session_hook_controller"
+      })
+
+      emit_hook_outcome("waiting_summary", :error, [FlowKeys.system()], error_payload)
 
       conn
       |> put_status(:bad_request)
@@ -163,8 +206,29 @@ defmodule SpotterWeb.SessionHookController do
   end
 
   def session_end(conn, _params) do
+    hook_event = get_req_header(conn, "x-spotter-hook-event") |> List.first() || "Stop"
+    hook_script = get_req_header(conn, "x-spotter-hook-script") |> List.first() || "unknown"
+
     OtelTraceHelpers.with_span "spotter.hook.session_end", %{} do
-      OtelTraceHelpers.set_error("invalid_params", %{"http.status_code" => 400})
+      error_payload =
+        ErrorReport.hook_flow_error(
+          "invalid_params",
+          "session_id is required",
+          400,
+          hook_event,
+          hook_script,
+          %{
+            "error.source" => "session_hook_controller",
+            "reason" => "session_id is required"
+          }
+        )
+
+      OtelTraceHelpers.set_error("invalid_params", %{
+        "http.status_code" => 400,
+        "error.source" => "session_hook_controller"
+      })
+
+      emit_hook_outcome("session_end", :error, [FlowKeys.system()], error_payload)
 
       conn
       |> put_status(:bad_request)
@@ -188,13 +252,28 @@ defmodule SpotterWeb.SessionHookController do
     _ -> :ok
   end
 
-  defp emit_hook_outcome(hook_name, status, flow_keys) do
+  defp emit_hook_outcome(hook_name, status, flow_keys, payload \\ %{}) do
+    payload =
+      if status == :error and payload == %{} do
+        ErrorReport.hook_flow_error(
+          "unknown",
+          "hook outcome error",
+          500,
+          "unknown",
+          "unknown",
+          %{"error.source" => "session_hook_controller"}
+        )
+      else
+        payload
+      end
+
     FlowHub.record(%{
       kind: "hook.#{hook_name}.#{status}",
       status: status,
       flow_keys: flow_keys,
       summary: "Hook #{hook_name} #{status}",
-      traceparent: TraceContext.current_traceparent()
+      traceparent: TraceContext.current_traceparent(),
+      payload: payload
     })
   rescue
     _ -> :ok
@@ -299,7 +378,8 @@ defmodule SpotterWeb.SessionHookController do
   rescue
     error ->
       OtelTraceHelpers.set_error("bootstrap_sync_failed", %{
-        "error.message" => Exception.message(error)
+        "error.message" => Exception.message(error),
+        "error.source" => "session_hook_controller"
       })
 
       :ok

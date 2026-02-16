@@ -9,6 +9,7 @@ defmodule Spotter.Search.Query do
   require Logger
   require OpenTelemetry.Tracer
 
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Repo
   alias Spotter.Search.Result
 
@@ -87,7 +88,7 @@ defmodule Spotter.Search.Query do
   rescue
     e ->
       Logger.warning("FTS5 query failed: #{inspect(e)}")
-      OpenTelemetry.Tracer.set_status(:error, "fts5_query_error")
+      ErrorReport.set_trace_error("fts5_query_error", "fts5_query_error", "search.query")
       {:error, e}
   end
 
@@ -152,13 +153,13 @@ defmodule Spotter.Search.Query do
 
       {:error, reason} ->
         Logger.warning("LIKE search failed: #{inspect(reason)}")
-        OpenTelemetry.Tracer.set_status(:error, "like_query_error")
+        ErrorReport.set_trace_error("like_query_error", "like_query_error", "search.query")
         []
     end
   rescue
     e ->
       Logger.warning("LIKE search failed: #{inspect(e)}")
-      OpenTelemetry.Tracer.set_status(:error, "like_query_error")
+      ErrorReport.set_trace_error("like_query_error", "like_query_error", "search.query")
       []
   end
 

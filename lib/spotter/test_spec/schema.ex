@@ -10,6 +10,7 @@ defmodule Spotter.TestSpec.Schema do
   require OpenTelemetry.Tracer, as: Tracer
 
   alias Ecto.Adapters.SQL
+  alias Spotter.Observability.ErrorReport
   alias Spotter.TestSpec.Repo
 
   @db_name_pattern ~r/\A[a-zA-Z0-9_]+\z/
@@ -79,7 +80,7 @@ defmodule Spotter.TestSpec.Schema do
             {:error, %MyXQL.Error{message: msg}} ->
               Logger.warning("TestSpec DB bootstrap CREATE failed: #{msg}")
               Tracer.set_attribute("spotter.test_spec.db_ensure_result", "skipped_error")
-              Tracer.set_status(:error, msg)
+              ErrorReport.set_trace_error("db_create_error", msg, "test_spec.schema")
               :ok
           end
         after
@@ -92,7 +93,7 @@ defmodule Spotter.TestSpec.Schema do
         )
 
         Tracer.set_attribute("spotter.test_spec.db_ensure_result", "skipped_error")
-        Tracer.set_status(:error, inspect(reason))
+        ErrorReport.set_trace_error("db_connection_error", inspect(reason), "test_spec.schema")
         :ok
     end
   end

@@ -3,7 +3,7 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
 
   use Oban.Worker, queue: :default, max_attempts: 3, unique: [keys: [:annotation_id], period: 300]
 
-  alias Spotter.Observability.{FlowHub, FlowKeys}
+  alias Spotter.Observability.{ErrorReport, FlowHub, FlowKeys}
   alias Spotter.Services.AnnotationExplainPrompt
   alias Spotter.Telemetry.TraceContext
 
@@ -73,22 +73,50 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
             emit_flow_event("agent.run.stop", :ok, flow_keys, traceparent, %{"run_id" => run_id})
 
           {:error, reason} ->
-            emit_flow_event("agent.run.stop", :error, flow_keys, traceparent, %{
-              "run_id" => run_id
-            })
+            error_payload =
+              ErrorReport.trace_error(
+                "annotation_explain_failed",
+                inspect(reason),
+                "transcripts.jobs.explain_annotation",
+                %{
+                  "run_id" => run_id,
+                  "annotation_id" => annotation.id,
+                  "job_id" => job_id
+                }
+              )
+
+            emit_flow_event("agent.run.stop", :error, flow_keys, traceparent, error_payload)
 
             {:error, reason}
         end
 
       {:error, reason} ->
         finalize_error(annotation, reason)
-        emit_flow_event("agent.run.stop", :error, flow_keys, traceparent, %{"run_id" => run_id})
+
+        error_payload =
+          ErrorReport.trace_error(
+            "annotation_explain_failed",
+            if(is_binary(reason), do: reason, else: inspect(reason)),
+            "transcripts.jobs.explain_annotation",
+            %{
+              "run_id" => run_id,
+              "annotation_id" => annotation.id,
+              "job_id" => job_id
+            }
+          )
+
+        emit_flow_event("agent.run.stop", :error, flow_keys, traceparent, error_payload)
         {:error, reason}
     end
   rescue
     e ->
       reason = Exception.message(e)
-      Tracer.set_status(:error, reason)
+
+      ErrorReport.set_trace_error(
+        "unexpected_error",
+        reason,
+        "transcripts.jobs.explain_annotation"
+      )
 
       try do
         annotation = Ash.get!(Annotation, annotation_id)
@@ -244,7 +272,11 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
   end
 
   defp finalize_error(annotation, reason) do
-    Tracer.set_status(:error, reason)
+    ErrorReport.set_trace_error(
+      "annotation_explain_error",
+      reason,
+      "transcripts.jobs.explain_annotation"
+    )
 
     update_explain_metadata(annotation, %{
       "status" => "error",

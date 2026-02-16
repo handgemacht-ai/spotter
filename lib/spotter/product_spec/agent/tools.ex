@@ -12,6 +12,7 @@ defmodule Spotter.ProductSpec.Agent.Tools do
 
   use ClaudeAgentSDK.Tool
 
+  alias Spotter.Observability.ErrorReport
   alias Spotter.ProductSpec.Agent.ToolHelpers, as: H
 
   # ── Domains ──
@@ -610,7 +611,7 @@ defmodule Spotter.ProductSpec.Agent.Tools do
             })
 
           {:error, reason} ->
-            Tracer.set_status(:error, reason)
+            ErrorReport.set_trace_error("git_show_error", reason, "product_spec.agent.tools")
 
             H.text_result(%{
               ok: false,

@@ -2,6 +2,7 @@ defmodule SpotterWeb.HooksController do
   @moduledoc false
   use Phoenix.Controller, formats: [:json]
 
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Observability.FlowHub
   alias Spotter.Observability.FlowKeys
   alias Spotter.ProductSpec.Jobs.UpdateRollingSpec
@@ -67,8 +68,22 @@ defmodule SpotterWeb.HooksController do
         |> json(%{ok: true, ingested: ingested})
       else
         {:error, :too_many} ->
-          OtelTraceHelpers.set_error("too_many_hashes", %{"http.status_code" => 400})
-          emit_hook_outcome("commit_event", :error, flow_keys)
+          error_payload =
+            ErrorReport.hook_flow_error(
+              "too_many_hashes",
+              "too many commit hashes (max 50)",
+              400,
+              hook_event,
+              hook_script,
+              %{"hash_count" => length(hashes), "max_hashes" => @max_commit_hashes}
+            )
+
+          OtelTraceHelpers.set_error("too_many_hashes", %{
+            "http.status_code" => 400,
+            "error.source" => "hooks_controller"
+          })
+
+          emit_hook_outcome("commit_event", :error, flow_keys, error_payload)
 
           conn
           |> put_status(:bad_request)
@@ -76,8 +91,31 @@ defmodule SpotterWeb.HooksController do
           |> json(%{error: "too many commit hashes (max 50)"})
 
         {:error, :invalid_format} ->
-          OtelTraceHelpers.set_error("invalid_format", %{"http.status_code" => 400})
-          emit_hook_outcome("commit_event", :error, flow_keys)
+          invalid_hashes =
+            hashes
+            |> Enum.reject(&Regex.match?(@hash_pattern, &1))
+            |> Enum.take(10)
+
+          error_payload =
+            ErrorReport.hook_flow_error(
+              "invalid_format",
+              "invalid commit hash format",
+              400,
+              hook_event,
+              hook_script,
+              %{
+                "hash_count" => length(hashes),
+                "invalid_count" => length(invalid_hashes),
+                "invalid_hashes" => invalid_hashes
+              }
+            )
+
+          OtelTraceHelpers.set_error("invalid_format", %{
+            "http.status_code" => 400,
+            "error.source" => "hooks_controller"
+          })
+
+          emit_hook_outcome("commit_event", :error, flow_keys, error_payload)
 
           conn
           |> put_status(:bad_request)
@@ -85,8 +123,22 @@ defmodule SpotterWeb.HooksController do
           |> json(%{error: "invalid commit hash format"})
 
         {:error, :session_not_found} ->
-          OtelTraceHelpers.set_error("session_not_found", %{"http.status_code" => 404})
-          emit_hook_outcome("commit_event", :error, flow_keys)
+          error_payload =
+            ErrorReport.hook_flow_error(
+              "session_not_found",
+              "session not found",
+              404,
+              hook_event,
+              hook_script,
+              %{"session_id" => session_id}
+            )
+
+          OtelTraceHelpers.set_error("session_not_found", %{
+            "http.status_code" => 404,
+            "error.source" => "hooks_controller"
+          })
+
+          emit_hook_outcome("commit_event", :error, flow_keys, error_payload)
 
           conn
           |> put_status(:not_found)
@@ -97,8 +149,26 @@ defmodule SpotterWeb.HooksController do
   end
 
   def commit_event(conn, _params) do
+    hook_event = get_req_header(conn, "x-spotter-hook-event") |> List.first() || "PostToolUse"
+    hook_script = get_req_header(conn, "x-spotter-hook-script") |> List.first() || "unknown"
+
     OtelTraceHelpers.with_span "spotter.hook.commit_event", %{} do
-      OtelTraceHelpers.set_error("invalid_params", %{"http.status_code" => 400})
+      error_payload =
+        ErrorReport.hook_flow_error(
+          "invalid_params",
+          "session_id and new_commit_hashes required",
+          400,
+          hook_event,
+          hook_script,
+          %{"reason" => "session_id and new_commit_hashes required"}
+        )
+
+      OtelTraceHelpers.set_error("invalid_params", %{
+        "http.status_code" => 400,
+        "error.source" => "hooks_controller"
+      })
+
+      emit_hook_outcome("commit_event", :error, [FlowKeys.system()], error_payload)
 
       conn
       |> put_status(:bad_request)
@@ -141,8 +211,22 @@ defmodule SpotterWeb.HooksController do
         |> json(%{ok: true})
       else
         {:error, :session_not_found} ->
-          OtelTraceHelpers.set_error("session_not_found", %{"http.status_code" => 404})
-          emit_hook_outcome("file_snapshot", :error, flow_keys)
+          error_payload =
+            ErrorReport.hook_flow_error(
+              "session_not_found",
+              "session not found",
+              404,
+              hook_event,
+              hook_script,
+              %{"session_id" => session_id}
+            )
+
+          OtelTraceHelpers.set_error("session_not_found", %{
+            "http.status_code" => 404,
+            "error.source" => "hooks_controller"
+          })
+
+          emit_hook_outcome("file_snapshot", :error, flow_keys, error_payload)
 
           conn
           |> put_status(:not_found)
@@ -150,12 +234,23 @@ defmodule SpotterWeb.HooksController do
           |> json(%{error: "session not found"})
 
         {:error, :invalid_params, reason} ->
+          error_payload =
+            ErrorReport.hook_flow_error(
+              "invalid_params",
+              reason,
+              400,
+              hook_event,
+              hook_script,
+              %{"reason" => reason}
+            )
+
           OtelTraceHelpers.set_error("invalid_params", %{
             "http.status_code" => 400,
-            "error.details" => reason
+            "error.details" => reason,
+            "error.source" => "hooks_controller"
           })
 
-          emit_hook_outcome("file_snapshot", :error, flow_keys)
+          emit_hook_outcome("file_snapshot", :error, flow_keys, error_payload)
 
           conn
           |> put_status(:bad_request)
@@ -163,8 +258,21 @@ defmodule SpotterWeb.HooksController do
           |> json(%{error: reason})
 
         {:error, changeset} ->
-          OtelTraceHelpers.set_error("validation_error", %{"http.status_code" => 422})
-          emit_hook_outcome("file_snapshot", :error, flow_keys)
+          error_payload =
+            ErrorReport.hook_flow_error(
+              "validation_error",
+              inspect(changeset),
+              422,
+              hook_event,
+              hook_script
+            )
+
+          OtelTraceHelpers.set_error("validation_error", %{
+            "http.status_code" => 422,
+            "error.source" => "hooks_controller"
+          })
+
+          emit_hook_outcome("file_snapshot", :error, flow_keys, error_payload)
 
           conn
           |> put_status(:unprocessable_entity)
@@ -175,8 +283,26 @@ defmodule SpotterWeb.HooksController do
   end
 
   def file_snapshot(conn, _params) do
+    hook_event = get_req_header(conn, "x-spotter-hook-event") |> List.first() || "PostToolUse"
+    hook_script = get_req_header(conn, "x-spotter-hook-script") |> List.first() || "unknown"
+
     OtelTraceHelpers.with_span "spotter.hook.file_snapshot", %{} do
-      OtelTraceHelpers.set_error("invalid_params", %{"http.status_code" => 400})
+      error_payload =
+        ErrorReport.hook_flow_error(
+          "invalid_params",
+          "session_id is required",
+          400,
+          hook_event,
+          hook_script,
+          %{"reason" => "session_id is required"}
+        )
+
+      OtelTraceHelpers.set_error("invalid_params", %{
+        "http.status_code" => 400,
+        "error.source" => "hooks_controller"
+      })
+
+      emit_hook_outcome("file_snapshot", :error, [FlowKeys.system()], error_payload)
 
       conn
       |> put_status(:bad_request)
@@ -218,8 +344,21 @@ defmodule SpotterWeb.HooksController do
         |> json(%{ok: true})
       else
         {:error, :validation_error, changeset} ->
-          OtelTraceHelpers.set_error("validation_error", %{"http.status_code" => 422})
-          emit_hook_outcome("tool_call", :error, flow_keys)
+          error_payload =
+            ErrorReport.hook_flow_error(
+              "validation_error",
+              inspect(changeset),
+              422,
+              hook_event,
+              hook_script
+            )
+
+          OtelTraceHelpers.set_error("validation_error", %{
+            "http.status_code" => 422,
+            "error.source" => "hooks_controller"
+          })
+
+          emit_hook_outcome("tool_call", :error, flow_keys, error_payload)
 
           conn
           |> put_status(:unprocessable_entity)
@@ -227,8 +366,21 @@ defmodule SpotterWeb.HooksController do
           |> json(%{error: inspect(changeset)})
 
         {:error, reason} ->
-          OtelTraceHelpers.set_error("session_creation_error", %{"http.status_code" => 422})
-          emit_hook_outcome("tool_call", :error, flow_keys)
+          error_payload =
+            ErrorReport.hook_flow_error(
+              "session_creation_error",
+              inspect(reason),
+              422,
+              hook_event,
+              hook_script
+            )
+
+          OtelTraceHelpers.set_error("session_creation_error", %{
+            "http.status_code" => 422,
+            "error.source" => "hooks_controller"
+          })
+
+          emit_hook_outcome("tool_call", :error, flow_keys, error_payload)
 
           conn
           |> put_status(:unprocessable_entity)
@@ -239,8 +391,26 @@ defmodule SpotterWeb.HooksController do
   end
 
   def tool_call(conn, _params) do
+    hook_event = get_req_header(conn, "x-spotter-hook-event") |> List.first() || "PostToolUse"
+    hook_script = get_req_header(conn, "x-spotter-hook-script") |> List.first() || "unknown"
+
     OtelTraceHelpers.with_span "spotter.hook.tool_call", %{} do
-      OtelTraceHelpers.set_error("invalid_params", %{"http.status_code" => 400})
+      error_payload =
+        ErrorReport.hook_flow_error(
+          "invalid_params",
+          "session_id is required",
+          400,
+          hook_event,
+          hook_script,
+          %{"reason" => "session_id is required"}
+        )
+
+      OtelTraceHelpers.set_error("invalid_params", %{
+        "http.status_code" => 400,
+        "error.source" => "hooks_controller"
+      })
+
+      emit_hook_outcome("tool_call", :error, [FlowKeys.system()], error_payload)
 
       conn
       |> put_status(:bad_request)
@@ -304,13 +474,27 @@ defmodule SpotterWeb.HooksController do
     _ -> :ok
   end
 
-  defp emit_hook_outcome(hook_name, status, flow_keys) do
+  defp emit_hook_outcome(hook_name, status, flow_keys, payload \\ %{}) do
+    payload =
+      if status == :error and payload == %{} do
+        ErrorReport.hook_flow_error(
+          "unknown",
+          "hook outcome error",
+          500,
+          "unknown",
+          "unknown"
+        )
+      else
+        payload
+      end
+
     FlowHub.record(%{
       kind: "hook.#{hook_name}.#{status}",
       status: status,
       flow_keys: flow_keys,
       summary: "Hook #{hook_name} #{status}",
-      traceparent: TraceContext.current_traceparent()
+      traceparent: TraceContext.current_traceparent(),
+      payload: payload
     })
   rescue
     _ -> :ok

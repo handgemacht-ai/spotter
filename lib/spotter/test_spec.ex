@@ -5,6 +5,7 @@ defmodule Spotter.TestSpec do
 
   alias Ecto.Adapters.SQL
   alias Spotter.Agents.TestTools
+  alias Spotter.Observability.ErrorReport
   alias Spotter.TestSpec.{Repo, SpecDiff}
   alias Spotter.Transcripts.CommitTestRun
 
@@ -31,7 +32,7 @@ defmodule Spotter.TestSpec do
           {:ok, build_file_tree(rows)}
 
         {:error, reason} ->
-          Tracer.set_status(:error, inspect(reason))
+          ErrorReport.set_trace_error("dolt_query_error", inspect(reason), "test_spec")
           {:error, reason}
       end
     end
@@ -53,7 +54,7 @@ defmodule Spotter.TestSpec do
 
       case load_test_run(project_id, git_commit_hash) do
         nil ->
-          Tracer.set_status(:error, "no_test_run")
+          ErrorReport.set_trace_error("no_test_run", "no_test_run", "test_spec")
           {:error, :no_test_run}
 
         run ->
@@ -76,7 +77,7 @@ defmodule Spotter.TestSpec do
 
       case load_test_run(project_id, git_commit_hash) do
         nil ->
-          Tracer.set_status(:error, "no_test_run")
+          ErrorReport.set_trace_error("no_test_run", "no_test_run", "test_spec")
           {:error, :no_test_run}
 
         %{dolt_commit_hash: nil} ->

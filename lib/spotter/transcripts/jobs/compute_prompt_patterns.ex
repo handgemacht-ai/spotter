@@ -10,6 +10,7 @@ defmodule Spotter.Transcripts.Jobs.ComputePromptPatterns do
   require OpenTelemetry.Tracer, as: Tracer
 
   alias Spotter.Config.Runtime
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Services.{LlmCredentials, PromptCollector}
   alias Spotter.Transcripts.{PromptPattern, PromptPatternMatch, PromptPatternRun}
 
@@ -40,7 +41,13 @@ defmodule Spotter.Transcripts.Jobs.ComputePromptPatterns do
       rescue
         e ->
           error_msg = Exception.message(e) |> String.slice(0, 500)
-          Tracer.set_status(:error, error_msg)
+
+          ErrorReport.set_trace_error(
+            "unexpected_error",
+            error_msg,
+            "transcripts.jobs.compute_prompt_patterns"
+          )
+
           fail_run(run, error_msg)
           :ok
       end
@@ -84,7 +91,13 @@ defmodule Spotter.Transcripts.Jobs.ComputePromptPatterns do
 
       {:error, reason} ->
         error_msg = inspect(reason) |> String.slice(0, 500)
-        Tracer.set_status(:error, error_msg)
+
+        ErrorReport.set_trace_error(
+          "analysis_error",
+          error_msg,
+          "transcripts.jobs.compute_prompt_patterns"
+        )
+
         fail_run(run, error_msg)
         :ok
     end

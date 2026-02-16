@@ -10,6 +10,7 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Search.Jobs.ReindexProject
 
   alias Spotter.Services.{
@@ -83,6 +84,13 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
         )
 
       set_failure_trace_attributes(failure)
+
+      ErrorReport.set_trace_error(
+        "unexpected_error",
+        reason,
+        "transcripts.jobs.analyze_commit_hotspots"
+      )
+
       Tracer.set_status(:error, reason)
       mark_error(commit.commit_hash, reason, failure)
       :ok
@@ -98,6 +106,13 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
         )
 
       set_failure_trace_attributes(failure)
+
+      ErrorReport.set_trace_error(
+        "unexpected_error",
+        msg,
+        "transcripts.jobs.analyze_commit_hotspots"
+      )
+
       Tracer.set_status(:error, msg)
       mark_error(commit.commit_hash, msg, failure)
       :ok

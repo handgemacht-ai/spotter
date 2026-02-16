@@ -1,3 +1,15 @@
+defmodule Spotter.Test.FakeClaudeStreamingError do
+  @moduledoc false
+
+  def start_session(_opts), do: {:ok, :fake_session}
+
+  def send_message(_session, _message) do
+    raise "simulated streaming failure"
+  end
+
+  def close_session(_session), do: :ok
+end
+
 defmodule Spotter.Transcripts.Jobs.ExplainAnnotationFlowTest do
   use ExUnit.Case, async: false
 
@@ -72,5 +84,39 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotationFlowTest do
     stop_event = Enum.find(events, &(&1.kind == "agent.run.stop"))
     assert stop_event != nil
     assert stop_event.status == :ok
+  end
+
+  test "emits structured error payload on streaming failure", %{
+    annotation: annotation
+  } do
+    # Switch to error-producing fake
+    Application.put_env(
+      :spotter,
+      :claude_streaming_module,
+      Spotter.Test.FakeClaudeStreamingError
+    )
+
+    Phoenix.PubSub.subscribe(Spotter.PubSub, FlowHub.global_topic())
+
+    job = %Oban.Job{id: 456, args: %{"annotation_id" => annotation.id}}
+
+    assert {:error, _reason} = ExplainAnnotation.perform(job)
+
+    %{events: events} = FlowHub.snapshot(minutes: 5)
+
+    stop_event =
+      Enum.find(events, fn e -> e.kind == "agent.run.stop" and e.status == :error end)
+
+    assert stop_event != nil
+    assert stop_event.payload["error.type"] == "annotation_explain_failed"
+    assert is_binary(stop_event.payload["error.message"])
+    assert stop_event.payload["error.message"] != ""
+    assert stop_event.payload["error.source"] == "transcripts.jobs.explain_annotation"
+    assert is_binary(stop_event.payload["run_id"])
+
+    # Verify start event still emitted normally
+    start_event = Enum.find(events, &(&1.kind == "agent.run.start"))
+    assert start_event != nil
+    assert start_event.status == :running
   end
 end

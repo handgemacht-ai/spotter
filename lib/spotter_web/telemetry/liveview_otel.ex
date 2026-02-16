@@ -9,6 +9,8 @@ defmodule SpotterWeb.Telemetry.LiveviewOtel do
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
+  alias Spotter.Observability.ErrorReport
+
   @handler_id __MODULE__
 
   @events [
@@ -71,7 +73,13 @@ defmodule SpotterWeb.Telemetry.LiveviewOtel do
         _config
       ) do
     reason = Map.get(metadata, :kind, :error)
-    Tracer.set_status(:error, to_string(reason))
+
+    ErrorReport.set_trace_error(
+      "liveview_exception",
+      to_string(reason),
+      "telemetry.liveview_otel"
+    )
+
     Tracer.end_span()
   rescue
     _error -> :ok

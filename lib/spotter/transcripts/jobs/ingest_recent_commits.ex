@@ -10,6 +10,7 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
+  alias Spotter.Observability.ErrorReport
   alias Spotter.ProductSpec.Jobs.UpdateRollingSpec
   alias Spotter.Services.GitCommitReader
   alias Spotter.Transcripts.{Commit, ProjectIngestState, ReviewItem, Session}
@@ -32,7 +33,11 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
           ingest(project_id, repo_path, limit, branch)
 
         :no_cwd ->
-          Tracer.set_status(:error, "no_accessible_cwd")
+          ErrorReport.set_trace_error(
+            "no_accessible_cwd",
+            "no_accessible_cwd",
+            "transcripts.jobs.ingest_recent_commits"
+          )
 
           Logger.info(
             "IngestRecentCommits: no accessible cwd for project #{project_id}, skipping"
@@ -43,7 +48,12 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
     end
   rescue
     error ->
-      Tracer.set_status(:error, Exception.message(error))
+      ErrorReport.set_trace_error(
+        "unexpected_error",
+        Exception.message(error),
+        "transcripts.jobs.ingest_recent_commits"
+      )
+
       reraise error, __STACKTRACE__
   end
 
@@ -97,7 +107,12 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
         :ok
 
       {:error, reason} ->
-        Tracer.set_status(:error, "recent_commits_failed")
+        ErrorReport.set_trace_error(
+          "recent_commits_failed",
+          "recent_commits_failed",
+          "transcripts.jobs.ingest_recent_commits"
+        )
+
         Tracer.add_event("recent_commits_error", [{"error.reason", inspect(reason)}])
 
         Logger.warning(

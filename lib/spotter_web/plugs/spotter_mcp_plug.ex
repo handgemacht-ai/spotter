@@ -97,7 +97,8 @@ defmodule SpotterWeb.SpotterMcpPlug do
     e ->
       OtelTraceHelpers.set_error(:mcp_request_failed, %{
         "error.message" => Exception.message(e),
-        "mcp.tool_name" => tool_name || "unknown"
+        "mcp.tool_name" => tool_name || "unknown",
+        "error.source" => "spotter_mcp_plug"
       })
 
       reraise e, __STACKTRACE__

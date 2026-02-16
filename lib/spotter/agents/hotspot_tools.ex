@@ -8,6 +8,8 @@ defmodule Spotter.Agents.HotspotTools do
 
   use ClaudeAgentSDK.Tool
 
+  alias Spotter.Observability.ErrorReport
+
   deftool :repo_read_file_at_commit,
           "Read a repo file at a specific commit (optionally sliced by line range)",
           %{
@@ -52,7 +54,7 @@ defmodule Spotter.Agents.HotspotTools do
             build_response(content, hash, path, input, max_chars)
 
           {:error, reason} ->
-            Tracer.set_status(:error, reason)
+            ErrorReport.set_trace_error("git_show_error", reason, "agents.hotspot_tools")
 
             Helpers.text_result(%{
               ok: false,

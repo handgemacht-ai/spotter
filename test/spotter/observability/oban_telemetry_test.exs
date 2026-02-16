@@ -64,7 +64,7 @@ defmodule Spotter.Observability.ObanTelemetryTest do
       assert is_number(event.payload["duration_ms"])
     end
 
-    test "emits error status for failure" do
+    test "emits error status for failure with structured error payload" do
       Phoenix.PubSub.subscribe(Spotter.PubSub, FlowHub.global_topic())
 
       :telemetry.execute(
@@ -73,7 +73,12 @@ defmodule Spotter.Observability.ObanTelemetryTest do
         %{job: fake_job(), conf: %{}, state: :failure, result: nil}
       )
 
-      assert_receive {:flow_event, %FlowEvent{kind: "oban.job.stop", status: :error}}, 1000
+      assert_receive {:flow_event, %FlowEvent{kind: "oban.job.stop", status: :error} = event},
+                     1000
+
+      assert event.payload["error.type"] == "job_failure"
+      assert event.payload["error.message"] == "Oban job failed"
+      assert event.payload["error.source"] == "oban_telemetry"
     end
 
     test "emits ok status for cancelled/snoozed" do
@@ -116,6 +121,11 @@ defmodule Spotter.Observability.ObanTelemetryTest do
       assert event.payload["error_kind"] == "error"
       assert event.payload["error_reason"] =~ "something went wrong"
       assert event.payload["error_stack"] == nil
+
+      # Structured error contract
+      assert event.payload["error.type"] == "job_exception"
+      assert event.payload["error.message"] =~ "something went wrong"
+      assert event.payload["error.source"] == "oban_telemetry"
     end
 
     test "includes bounded stack trace when stacktrace is present" do

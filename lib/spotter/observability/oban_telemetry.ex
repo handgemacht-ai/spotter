@@ -8,6 +8,7 @@ defmodule Spotter.Observability.ObanTelemetry do
 
   require Logger
 
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Observability.FlowHub
   alias Spotter.Observability.FlowKeys
 
@@ -142,23 +143,35 @@ defmodule Spotter.Observability.ObanTelemetry do
   end
 
   defp stop_payload(job, state, measurements) do
-    start_payload(job)
-    |> Map.put("state", to_string(state))
-    |> Map.put("duration_ms", duration_ms(measurements))
+    base =
+      start_payload(job)
+      |> Map.put("state", to_string(state))
+      |> Map.put("duration_ms", duration_ms(measurements))
+
+    if state in [:failure, :discard] do
+      Map.merge(
+        base,
+        ErrorReport.trace_error("job_failure", "Oban job failed", "oban_telemetry")
+      )
+    else
+      base
+    end
   end
 
   defp exception_payload(job, state, measurements, metadata) do
     kind = Map.get(metadata, :kind, :error)
     reason = Map.get(metadata, :reason)
     stacktrace = Map.get(metadata, :stacktrace, [])
+    error_message = format_error_reason(kind, reason)
 
     stop_payload(job, state, measurements)
     |> Map.put("kind", to_string(kind))
     |> Map.put("reason", truncate_reason(reason))
     |> Map.put("error_kind", to_string(kind))
-    |> Map.put("error_reason", format_error_reason(kind, reason))
+    |> Map.put("error_reason", error_message)
     |> Map.put("error_stack", format_stacktrace(stacktrace))
     |> maybe_put_failure_fields(job)
+    |> Map.merge(ErrorReport.trace_error("job_exception", error_message, "oban_telemetry"))
   end
 
   defp maybe_put_commit_analysis_fields(payload, job) do

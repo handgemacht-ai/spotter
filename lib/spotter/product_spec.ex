@@ -6,6 +6,7 @@ defmodule Spotter.ProductSpec do
   import Ecto.Query
 
   alias Ecto.Adapters.SQL
+  alias Spotter.Observability.ErrorReport
   alias Spotter.ProductSpec.{Repo, RollingSpecRun, SpecDiff}
 
   require Ash.Query
@@ -202,7 +203,7 @@ defmodule Spotter.ProductSpec do
          Enum.map(domains, &attach_features(&1, features_by_domain, requirements_by_feature))}
       else
         {:error, reason} ->
-          Tracer.set_status(:error, to_string(reason))
+          ErrorReport.set_trace_error("spec_error", to_string(reason), "product_spec")
           {:error, reason}
       end
     end
@@ -227,7 +228,7 @@ defmodule Spotter.ProductSpec do
 
       case load_spec_run(project_id, commit_hash) do
         nil ->
-          Tracer.set_status(:error, "no_spec_run")
+          ErrorReport.set_trace_error("no_spec_run", "no_spec_run", "product_spec")
           {:error, :no_spec_run}
 
         run ->
@@ -264,7 +265,7 @@ defmodule Spotter.ProductSpec do
 
       case load_spec_run(project_id, commit_hash) do
         nil ->
-          Tracer.set_status(:error, "no_spec_run")
+          ErrorReport.set_trace_error("no_spec_run", "no_spec_run", "product_spec")
           {:error, :no_spec_run}
 
         %{dolt_commit_hash: nil} ->

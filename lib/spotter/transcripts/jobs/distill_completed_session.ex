@@ -11,6 +11,7 @@ defmodule Spotter.Transcripts.Jobs.DistillCompletedSession do
     max_attempts: 3,
     unique: [keys: [:session_id], period: 86_400, states: Oban.Job.unique_states(:incomplete)]
 
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Services.{ProjectRollupBucket, SessionDistillationPack, SessionDistiller}
 
   alias Spotter.Transcripts.Jobs.{
@@ -110,7 +111,12 @@ defmodule Spotter.Transcripts.Jobs.DistillCompletedSession do
 
   defp save_error(session, reason, raw_response_text) do
     Logger.warning("DistillCompletedSession: distillation failed: #{inspect(reason)}")
-    Tracer.set_status(:error, inspect(reason))
+
+    ErrorReport.set_trace_error(
+      "distillation_error",
+      inspect(reason),
+      "transcripts.jobs.distill_completed_session"
+    )
 
     Ash.create!(SessionDistillation, %{
       session_id: session.id,

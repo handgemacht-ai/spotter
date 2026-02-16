@@ -13,6 +13,7 @@ defmodule Spotter.ProductSpec.Agent.Runner do
   alias Spotter.Config.Runtime
   alias Spotter.Observability.AgentRunScope
   alias Spotter.Observability.ClaudeAgentFlow
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Observability.FlowKeys
   alias Spotter.ProductSpec.Agent.Prompt
   alias Spotter.ProductSpec.Agent.ToolHelpers
@@ -109,7 +110,7 @@ defmodule Spotter.ProductSpec.Agent.Runner do
           Logger.warning("SpecAgent: failed: #{reason}")
           Tracer.set_attribute("spotter.error.kind", "exception")
           Tracer.set_attribute("spotter.error.reason", String.slice(reason, 0, 500))
-          Tracer.set_status(:error, reason)
+          ErrorReport.set_trace_error("agent_error", reason, "product_spec.agent.runner")
           {:error, reason}
       catch
         :exit, exit_reason ->
@@ -117,7 +118,7 @@ defmodule Spotter.ProductSpec.Agent.Runner do
           Logger.warning(msg)
           Tracer.set_attribute("spotter.error.kind", "exit")
           Tracer.set_attribute("spotter.error.reason", String.slice(msg, 0, 500))
-          Tracer.set_status(:error, msg)
+          ErrorReport.set_trace_error("agent_exit", msg, "product_spec.agent.runner")
           {:error, {:agent_exit, exit_reason}}
       after
         AgentRunScope.delete(server.registry_pid)

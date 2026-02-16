@@ -4,6 +4,7 @@ defmodule Spotter.Services.SessionDistiller.ClaudeCode do
 
   require OpenTelemetry.Tracer, as: Tracer
 
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Services.ClaudeCode.Client
   alias Spotter.Services.ClaudeCode.ResultExtractor
 
@@ -73,7 +74,12 @@ defmodule Spotter.Services.SessionDistiller.ClaudeCode do
           end
 
         {:error, reason} ->
-          Tracer.set_status(:error, inspect(reason))
+          ErrorReport.set_trace_error(
+            "distill_error",
+            inspect(reason),
+            "services.session_distiller"
+          )
+
           {:error, reason}
       end
     end

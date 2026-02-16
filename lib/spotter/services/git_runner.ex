@@ -6,6 +6,8 @@ defmodule Spotter.Services.GitRunner do
   an Erlang Port instead of `System.cmd/3`.
   """
 
+  alias Spotter.Observability.ErrorReport
+
   require OpenTelemetry.Tracer, as: Tracer
 
   @default_timeout_ms 10_000
@@ -72,7 +74,7 @@ defmodule Spotter.Services.GitRunner do
       truncated = byte_size(output) > max_bytes
       output = if truncated, do: binary_part(output, 0, max_bytes), else: output
 
-      Tracer.set_status(:error, "timeout")
+      ErrorReport.set_trace_error("timeout", "timeout", "services.git_runner")
 
       {:error,
        %{
@@ -103,7 +105,7 @@ defmodule Spotter.Services.GitRunner do
         {^port, {:exit_status, status}} ->
           output = IO.iodata_to_binary(acc)
           Tracer.set_attribute("spotter.git.exit_status", status)
-          Tracer.set_status(:error, "exit #{status}")
+          ErrorReport.set_trace_error("git_exit_error", "exit #{status}", "services.git_runner")
 
           {:error, %{kind: :exit_nonzero, status: status, output: output, truncated: false}}
       after
@@ -112,7 +114,7 @@ defmodule Spotter.Services.GitRunner do
           truncated = byte_size(output) > max_bytes
           output = if truncated, do: binary_part(output, 0, max_bytes), else: output
 
-          Tracer.set_status(:error, "timeout")
+          ErrorReport.set_trace_error("timeout", "timeout", "services.git_runner")
 
           {:error,
            %{

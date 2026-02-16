@@ -1,6 +1,7 @@
 defmodule Spotter.Services.FileDetail do
   @moduledoc "Data service for the file detail page."
 
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Services.CommitDetail
 
   alias Spotter.Transcripts.{
@@ -46,7 +47,12 @@ defmodule Spotter.Services.FileDetail do
 
       case cwd do
         nil ->
-          OpenTelemetry.Tracer.set_status(:error, "no_accessible_cwd")
+          ErrorReport.set_trace_error(
+            "no_accessible_cwd",
+            "no_accessible_cwd",
+            "services.file_detail"
+          )
+
           {:error, :no_accessible_cwd}
 
         cwd ->
@@ -57,7 +63,11 @@ defmodule Spotter.Services.FileDetail do
               {:ok, String.trim(root)}
 
             {output, _} ->
-              OpenTelemetry.Tracer.set_status(:error, "git_root_failed")
+              ErrorReport.set_trace_error(
+                "git_root_failed",
+                "git_root_failed",
+                "services.file_detail"
+              )
 
               OpenTelemetry.Tracer.set_attribute("git.error", String.slice(output, 0, 200))
 
@@ -108,7 +118,12 @@ defmodule Spotter.Services.FileDetail do
               {:ok, content}
 
             {:error, reason} ->
-              OpenTelemetry.Tracer.set_status(:error, "file_read_failed")
+              ErrorReport.set_trace_error(
+                "file_read_failed",
+                "file_read_failed",
+                "services.file_detail"
+              )
+
               OpenTelemetry.Tracer.set_attribute("file.error", inspect(reason))
               {:error, {:file_read_failed, reason, full_path}}
           end

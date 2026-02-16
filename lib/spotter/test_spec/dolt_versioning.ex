@@ -8,6 +8,7 @@ defmodule Spotter.TestSpec.DoltVersioning do
   require OpenTelemetry.Tracer, as: Tracer
 
   alias Ecto.Adapters.SQL
+  alias Spotter.Observability.ErrorReport
   alias Spotter.TestSpec.Repo
 
   @doc """
@@ -35,7 +36,11 @@ defmodule Spotter.TestSpec.DoltVersioning do
           Tracer.set_attribute("spotter.dolt_changed", false)
 
         {:error, reason} ->
-          Tracer.set_status(:error, inspect(reason))
+          ErrorReport.set_trace_error(
+            "dolt_commit_error",
+            inspect(reason),
+            "test_spec.dolt_versioning"
+          )
       end
 
       result
@@ -43,7 +48,7 @@ defmodule Spotter.TestSpec.DoltVersioning do
   rescue
     e ->
       reason = Exception.message(e)
-      Tracer.set_status(:error, reason)
+      ErrorReport.set_trace_error("unexpected_error", reason, "test_spec.dolt_versioning")
       {:error, reason}
   end
 

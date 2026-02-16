@@ -15,6 +15,7 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
+  alias Spotter.Observability.ErrorReport
   alias Spotter.ProductSpec.Agent.Runner
   alias Spotter.ProductSpec.DoltVersioning
   alias Spotter.ProductSpec.RollingSpecRun
@@ -53,7 +54,12 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
             "UpdateRollingSpec: invalid project_id #{inspect(project_id)}: #{reason}"
           )
 
-          Tracer.set_status(:error, reason)
+          ErrorReport.set_trace_error(
+            "invalid_project_id",
+            reason,
+            "product_spec.jobs.update_rolling_spec"
+          )
+
           :ok
       end
     end
@@ -141,7 +147,13 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
       {:error, reason} ->
         error_msg = inspect(reason) |> String.slice(0, @max_error_chars)
         Logger.warning("UpdateRollingSpec: failed for #{commit_hash}: #{error_msg}")
-        Tracer.set_status(:error, error_msg)
+
+        ErrorReport.set_trace_error(
+          "spec_update_error",
+          error_msg,
+          "product_spec.jobs.update_rolling_spec"
+        )
+
         Ash.update!(run, %{error: error_msg}, action: :mark_error)
         :ok
     end

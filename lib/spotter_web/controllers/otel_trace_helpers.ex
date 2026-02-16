@@ -70,13 +70,18 @@ defmodule SpotterWeb.OtelTraceHelpers do
   @spec set_error(atom() | String.t(), map()) :: :ok
   def set_error(reason, attrs \\ %{}) when is_map(attrs) do
     try do
+      reason_str = reason_to_string(reason)
+
       error_attrs =
-        Map.merge(attrs, %{
-          "error.type" => reason_to_string(reason)
-        })
+        %{
+          "error.type" => reason_str,
+          "error.message" => reason_str,
+          "error.source" => "unknown"
+        }
+        |> Map.merge(attrs)
 
       set_attributes_safely(error_attrs)
-      Tracer.set_status(:error, reason_to_string(reason))
+      Tracer.set_status(:error, reason_str)
     rescue
       _error -> :ok
     end

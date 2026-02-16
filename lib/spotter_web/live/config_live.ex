@@ -2,6 +2,7 @@ defmodule SpotterWeb.ConfigLive do
   use Phoenix.LiveView
 
   alias Spotter.Config.{Runtime, Setting}
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Transcripts.{Config, Project}
 
   require Ash.Query
@@ -25,7 +26,7 @@ defmodule SpotterWeb.ConfigLive do
           {:noreply, socket |> put_flash(:info, "Saved #{key}") |> load_all()}
 
         {:error, reason} ->
-          Tracer.set_status(:error, "ash_error")
+          ErrorReport.set_trace_error("ash_error", "ash_error", "live.config_live")
           {:noreply, put_flash(socket, :error, "Failed to save #{key}: #{inspect(reason)}")}
       end
     end
@@ -45,7 +46,7 @@ defmodule SpotterWeb.ConfigLive do
             {:noreply, socket |> put_flash(:info, "Saved transcripts_dir") |> load_all()}
 
           {:error, reason} ->
-            Tracer.set_status(:error, "ash_error")
+            ErrorReport.set_trace_error("ash_error", "ash_error", "live.config_live")
             {:noreply, put_flash(socket, :error, "Failed to save: #{inspect(reason)}")}
         end
       end
@@ -61,7 +62,7 @@ defmodule SpotterWeb.ConfigLive do
           {:noreply, socket |> put_flash(:info, "Saved summary_model") |> load_all()}
 
         {:error, reason} ->
-          Tracer.set_status(:error, "ash_error")
+          ErrorReport.set_trace_error("ash_error", "ash_error", "live.config_live")
           {:noreply, put_flash(socket, :error, "Failed to save: #{inspect(reason)}")}
       end
     end
@@ -78,12 +79,12 @@ defmodule SpotterWeb.ConfigLive do
               {:noreply, socket |> put_flash(:info, "Saved summary_token_budget") |> load_all()}
 
             {:error, reason} ->
-              Tracer.set_status(:error, "ash_error")
+              ErrorReport.set_trace_error("ash_error", "ash_error", "live.config_live")
               {:noreply, put_flash(socket, :error, "Failed to save: #{inspect(reason)}")}
           end
 
         :error ->
-          Tracer.set_status(:error, "validation_error")
+          ErrorReport.set_trace_error("validation_error", "validation_error", "live.config_live")
           {:noreply, put_flash(socket, :error, "Token budget must be a positive integer")}
       end
     end
@@ -103,12 +104,12 @@ defmodule SpotterWeb.ConfigLive do
                |> load_all()}
 
             {:error, reason} ->
-              Tracer.set_status(:error, "ash_error")
+              ErrorReport.set_trace_error("ash_error", "ash_error", "live.config_live")
               {:noreply, put_flash(socket, :error, "Failed to save: #{inspect(reason)}")}
           end
 
         :error ->
-          Tracer.set_status(:error, "validation_error")
+          ErrorReport.set_trace_error("validation_error", "validation_error", "live.config_live")
           {:noreply, put_flash(socket, :error, "Sessions per run must be a positive integer")}
       end
     end
@@ -128,12 +129,12 @@ defmodule SpotterWeb.ConfigLive do
                |> load_all()}
 
             {:error, reason} ->
-              Tracer.set_status(:error, "ash_error")
+              ErrorReport.set_trace_error("ash_error", "ash_error", "live.config_live")
               {:noreply, put_flash(socket, :error, "Failed to save: #{inspect(reason)}")}
           end
 
         :error ->
-          Tracer.set_status(:error, "validation_error")
+          ErrorReport.set_trace_error("validation_error", "validation_error", "live.config_live")
           {:noreply, put_flash(socket, :error, "Max prompts per run must be a positive integer")}
       end
     end
@@ -151,12 +152,12 @@ defmodule SpotterWeb.ConfigLive do
                socket |> put_flash(:info, "Saved prompt_patterns_max_prompt_chars") |> load_all()}
 
             {:error, reason} ->
-              Tracer.set_status(:error, "ash_error")
+              ErrorReport.set_trace_error("ash_error", "ash_error", "live.config_live")
               {:noreply, put_flash(socket, :error, "Failed to save: #{inspect(reason)}")}
           end
 
         :error ->
-          Tracer.set_status(:error, "validation_error")
+          ErrorReport.set_trace_error("validation_error", "validation_error", "live.config_live")
           {:noreply, put_flash(socket, :error, "Max prompt chars must be a positive integer")}
       end
     end
@@ -174,14 +175,14 @@ defmodule SpotterWeb.ConfigLive do
               {:noreply, socket |> put_flash(:info, "Created project #{name}") |> load_all()}
 
             {:error, reason} ->
-              Tracer.set_status(:error, "ash_error")
+              ErrorReport.set_trace_error("ash_error", "ash_error", "live.config_live")
 
               {:noreply,
                put_flash(socket, :error, "Failed to create project: #{inspect(reason)}")}
           end
 
         {:error, _} ->
-          Tracer.set_status(:error, "validation_error")
+          ErrorReport.set_trace_error("validation_error", "validation_error", "live.config_live")
           {:noreply, put_flash(socket, :error, "Invalid regex pattern")}
       end
     end
@@ -201,12 +202,12 @@ defmodule SpotterWeb.ConfigLive do
               {:noreply, socket |> put_flash(:info, "Updated project pattern") |> load_all()}
 
             {:error, reason} ->
-              Tracer.set_status(:error, "ash_error")
+              ErrorReport.set_trace_error("ash_error", "ash_error", "live.config_live")
               {:noreply, put_flash(socket, :error, "Failed to update: #{inspect(reason)}")}
           end
 
         {:error, _} ->
-          Tracer.set_status(:error, "validation_error")
+          ErrorReport.set_trace_error("validation_error", "validation_error", "live.config_live")
           {:noreply, put_flash(socket, :error, "Invalid regex pattern")}
       end
     end
@@ -226,7 +227,7 @@ defmodule SpotterWeb.ConfigLive do
 
       case Ash.get(Project, id) do
         {:ok, nil} ->
-          Tracer.set_status(:error, "not_found")
+          ErrorReport.set_trace_error("not_found", "not_found", "live.config_live")
 
           {:noreply,
            socket
@@ -246,7 +247,7 @@ defmodule SpotterWeb.ConfigLive do
                |> load_all()}
 
             {:error, reason} ->
-              Tracer.set_status(:error, "destroy_failed")
+              ErrorReport.set_trace_error("destroy_failed", "destroy_failed", "live.config_live")
 
               {:noreply,
                socket
@@ -256,7 +257,7 @@ defmodule SpotterWeb.ConfigLive do
           end
 
         {:error, _reason} ->
-          Tracer.set_status(:error, "not_found")
+          ErrorReport.set_trace_error("not_found", "not_found", "live.config_live")
 
           {:noreply,
            socket
@@ -276,12 +277,17 @@ defmodule SpotterWeb.ConfigLive do
              socket |> put_flash(:info, "Imported #{count} projects from TOML") |> load_all()}
 
           {:error, {:invalid_pattern, name}} ->
-            Tracer.set_status(:error, "validation_error")
+            ErrorReport.set_trace_error(
+              "validation_error",
+              "validation_error",
+              "live.config_live"
+            )
+
             {:noreply, put_flash(socket, :error, "Invalid pattern for project #{name}")}
         end
       rescue
         e ->
-          Tracer.set_status(:error, "ash_error")
+          ErrorReport.set_trace_error("ash_error", "ash_error", "live.config_live")
           {:noreply, put_flash(socket, :error, "Import failed: #{Exception.message(e)}")}
       end
     end

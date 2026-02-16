@@ -10,6 +10,7 @@ defmodule SpotterWeb.TerminalChannel do
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
+  alias Spotter.Observability.ErrorReport
   alias Spotter.Services.Tmux
   alias Spotter.Services.TmuxOutput
 
@@ -231,7 +232,7 @@ defmodule SpotterWeb.TerminalChannel do
   end
 
   defp span_error(reason) do
-    Tracer.set_status(:error, reason)
+    ErrorReport.set_trace_error("channel_error", reason, "channels.terminal_channel")
   rescue
     _error -> :ok
   end

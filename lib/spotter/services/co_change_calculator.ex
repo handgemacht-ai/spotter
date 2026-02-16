@@ -21,6 +21,8 @@ defmodule Spotter.Services.CoChangeCalculator do
   require Ash.Query
   require OpenTelemetry.Tracer
 
+  alias Spotter.Observability.ErrorReport
+
   @provenance_batch_size 200
   @max_pair_members 100
 
@@ -508,7 +510,11 @@ defmodule Spotter.Services.CoChangeCalculator do
         "CoChangeCalculator: provenance persistence failed for group #{group.group_key}: #{Exception.message(e)}"
       )
 
-      OpenTelemetry.Tracer.set_status(:error, Exception.message(e))
+      ErrorReport.set_trace_error(
+        "provenance_error",
+        Exception.message(e),
+        "services.co_change_calculator"
+      )
   end
 
   defp upsert_group_commits(project_id, scope, group) do
