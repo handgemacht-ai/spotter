@@ -144,41 +144,70 @@ defmodule SpotterWeb.FileDetailLive do
 
   def handle_event("save_annotation", params, socket) do
     session_id = socket.assigns.file_detail_selected_session_id
+    selected_text = socket.assigns.selected_text
 
-    if is_nil(session_id) do
+    if is_nil(session_id) or session_id == "" do
       {:noreply,
        put_flash(socket, :error, "Select a linked session before saving an annotation.")}
     else
-      comment = params["comment"] || ""
-      purpose = if params["purpose"] == "explain", do: :explain, else: :review
-      line_start = parse_line(socket.assigns.selection_line_start, 1)
-      line_end = parse_line(socket.assigns.selection_line_end, line_start)
+      if is_nil(selected_text) || String.trim(selected_text) == "" do
+        {:noreply, put_flash(socket, :error, "Select file text before saving an annotation.")}
+      else
+        comment = params["comment"] || ""
+        purpose = if params["purpose"] == "explain", do: :explain, else: :review
+        line_start = parse_line(socket.assigns.selection_line_start, 1)
+        line_end = parse_line(socket.assigns.selection_line_end, line_start)
 
-      create_params = %{
-        session_id: session_id,
-        project_id: socket.assigns.file_detail_project_id,
-        source: :file,
-        selected_text: socket.assigns.selected_text,
-        comment: comment,
-        purpose: purpose,
-        relative_path: socket.assigns.file_detail_relative_path,
-        line_start: line_start,
-        line_end: line_end
-      }
+        create_params = %{
+          session_id: session_id,
+          project_id: socket.assigns.file_detail_project_id,
+          source: :file,
+          selected_text: selected_text,
+          comment: comment,
+          purpose: purpose,
+          relative_path: socket.assigns.file_detail_relative_path,
+          line_start: line_start,
+          line_end: line_end
+        }
 
-      case Ash.create(Annotation, create_params) do
-        {:ok, annotation} ->
-          create_file_ref(annotation, socket)
-          socket = maybe_enqueue_explain(socket, annotation, purpose)
+        case Ash.create(Annotation, create_params) do
+          {:ok, annotation} ->
+            case create_file_ref(annotation, socket) do
+              {:ok, _} ->
+                socket = maybe_enqueue_explain(socket, annotation, purpose)
 
-          {:noreply,
-           socket
-           |> assign(selected_text: nil, selection_line_start: nil, selection_line_end: nil)
-           |> refresh_annotations()}
+                {:noreply,
+                 socket
+                 |> assign(selected_text: nil, selection_line_start: nil, selection_line_end: nil)
+                 |> refresh_annotations()}
 
-        {:error, _} ->
-          {:noreply, put_flash(socket, :error, "Could not save annotation.")}
+              {:error, error} ->
+                Ash.destroy(annotation)
+
+                {:noreply,
+                 put_flash(
+                   socket,
+                   :error,
+                   "Could not save annotation link: #{format_annotation_error(error)}"
+                 )}
+            end
+
+          {:error, error} ->
+            {:noreply, put_flash(socket, :error, "Could not save annotation: #{format_annotation_error(error)}")}
+        end
       end
+    end
+  end
+
+  defp format_annotation_error(error) do
+    case error do
+      %{errors: errors} when is_list(errors) ->
+        errors
+        |> Enum.map(&inspect/1)
+        |> Enum.join(", ")
+
+      _ ->
+        inspect(error)
     end
   end
 
@@ -263,7 +292,7 @@ defmodule SpotterWeb.FileDetailLive do
     line_start = parse_line(socket.assigns.selection_line_start, 1)
     line_end = parse_line(socket.assigns.selection_line_end, line_start)
 
-    Ash.create!(AnnotationFileRef, %{
+    Ash.create(AnnotationFileRef, %{
       annotation_id: annotation.id,
       project_id: socket.assigns.file_detail_project_id,
       relative_path: socket.assigns.file_detail_relative_path,
