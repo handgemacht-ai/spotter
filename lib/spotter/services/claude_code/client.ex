@@ -12,6 +12,7 @@ defmodule Spotter.Services.ClaudeCode.Client do
   alias Spotter.Services.ClaudeCode.Model
   alias Spotter.Services.ClaudeCode.ResultExtractor
   alias Spotter.Services.LlmCredentials
+  alias Spotter.Telemetry.TraceContext
 
   @default_timeout_ms 30_000
 
@@ -60,7 +61,7 @@ defmodule Spotter.Services.ClaudeCode.Client do
     format_label = if format == :text, do: "text", else: "json_schema"
 
     Tracer.with_span "spotter.claude_code.query" do
-      Tracer.set_attribute("spotter.model", normalized_model || "default")
+      Tracer.set_attribute("spotter.model_requested", normalized_model || "default")
       Tracer.set_attribute("spotter.output_format", format_label)
       Tracer.set_attribute("spotter.timeout_ms", timeout_ms)
 
@@ -84,6 +85,12 @@ defmodule Spotter.Services.ClaudeCode.Client do
   end
 
   defp build_options(system_prompt, model, output_format, timeout_ms, max_turns) do
+    env =
+      case TraceContext.current_traceparent() do
+        tp when is_binary(tp) -> %{"TRACEPARENT" => tp}
+        _ -> %{}
+      end
+
     opts = %ClaudeAgentSDK.Options{
       system_prompt: system_prompt,
       tools: [],
@@ -91,7 +98,8 @@ defmodule Spotter.Services.ClaudeCode.Client do
       permission_mode: :dont_ask,
       max_turns: max_turns,
       output_format: output_format,
-      timeout_ms: timeout_ms
+      timeout_ms: timeout_ms,
+      env: env
     }
 
     if model, do: %{opts | model: model}, else: opts

@@ -3,6 +3,8 @@ defmodule Spotter.Services.CommitPatchExtractor do
 
   require Logger
 
+  alias Spotter.Services.GitRunner
+
   @doc """
   Returns a list of per-file hunk data for a commit.
 
@@ -12,14 +14,15 @@ defmodule Spotter.Services.CommitPatchExtractor do
   """
   @spec patch_hunks(String.t(), String.t()) :: {:ok, [map()]} | {:error, term()}
   def patch_hunks(repo_path, commit_hash) do
-    args = ["-C", repo_path, "show", "--format=", "--unified=0", commit_hash]
-
-    case System.cmd("git", args, stderr_to_stdout: true) do
-      {output, 0} ->
+    case GitRunner.run(["show", "--format=", "--unified=0", commit_hash],
+           cd: repo_path,
+           timeout_ms: 20_000
+         ) do
+      {:ok, output} ->
         {:ok, parse_patch(output)}
 
-      {error, _} ->
-        Logger.warning("CommitPatchExtractor: git show failed: #{String.slice(error, 0, 200)}")
+      {:error, err} ->
+        Logger.warning("CommitPatchExtractor: git show failed: #{inspect(err.kind)}")
 
         {:error, :git_show_failed}
     end

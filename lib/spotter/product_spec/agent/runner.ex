@@ -16,8 +16,10 @@ defmodule Spotter.ProductSpec.Agent.Runner do
   alias Spotter.ProductSpec.Agent.Prompt
   alias Spotter.ProductSpec.Agent.ToolHelpers
   alias Spotter.ProductSpec.Agent.Tools
+  alias Spotter.Services.ClaudeCode.ResultExtractor
 
   @max_turns 15
+  @timeout_ms 300_000
 
   @tool_names ~w(
     domains_list domains_create domains_update
@@ -56,7 +58,10 @@ defmodule Spotter.ProductSpec.Agent.Runner do
       base_opts = %ClaudeAgentSDK.Options{
         mcp_servers: %{"spec-tools" => server},
         allowed_tools: allowed_tools,
-        max_turns: @max_turns
+        max_turns: @max_turns,
+        timeout_ms: @timeout_ms,
+        permission_mode: :dont_ask,
+        tools: []
       }
 
       opts = ClaudeAgentFlow.build_opts(base_opts)
@@ -69,16 +74,23 @@ defmodule Spotter.ProductSpec.Agent.Runner do
       changed_count = 0
 
       try do
-        {tool_calls, changed_count} =
+        messages =
           system_prompt
           |> ClaudeAgentSDK.query(opts)
           |> ClaudeAgentFlow.wrap_stream(flow_keys: flow_keys)
-          |> Enum.reduce({tool_calls, changed_count}, &collect_tool_calls/2)
+          |> Enum.to_list()
+
+        {tool_calls, changed_count} =
+          Enum.reduce(messages, {tool_calls, changed_count}, &collect_tool_calls/2)
+
+        model_used = ResultExtractor.extract_model_used(messages)
+        Tracer.set_attribute("spotter.model_used", model_used || "unknown")
 
         output = %{
           ok: true,
           tool_calls: tool_calls,
-          changed_entities_count: changed_count
+          changed_entities_count: changed_count,
+          model_used: model_used
         }
 
         {:ok, output}

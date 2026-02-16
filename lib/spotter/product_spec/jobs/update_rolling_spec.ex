@@ -27,6 +27,9 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
   @max_error_chars 8_000
 
   @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(10)
+
+  @impl Oban.Worker
   def perform(%Oban.Job{args: %{"project_id" => project_id, "commit_hash" => commit_hash} = args}) do
     Tracer.with_span "spotter.product_spec.update_rolling_spec.perform" do
       Tracer.set_attribute("spotter.commit_hash", commit_hash)
@@ -182,16 +185,18 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
   end
 
   defp load_commit_message_from_git(commit_hash, git_cwd) when is_binary(git_cwd) do
-    case System.cmd("git", ["show", "--no-patch", "--format=%s%n%b", commit_hash],
+    alias Spotter.Services.GitRunner
+
+    case GitRunner.run(["show", "--no-patch", "--format=%s%n%b", commit_hash],
            cd: git_cwd,
-           stderr_to_stdout: true
+           timeout_ms: 10_000
          ) do
-      {output, 0} ->
+      {:ok, output} ->
         [subject | rest] = String.split(output, "\n", parts: 2)
         body = List.first(rest) || ""
         {String.trim(subject), String.trim(body)}
 
-      _ ->
+      {:error, _} ->
         {"", ""}
     end
   end

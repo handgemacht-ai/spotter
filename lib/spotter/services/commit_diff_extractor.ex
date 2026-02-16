@@ -3,6 +3,8 @@ defmodule Spotter.Services.CommitDiffExtractor do
 
   require Logger
 
+  alias Spotter.Services.GitRunner
+
   @doc """
   Returns diff stats for a commit.
 
@@ -15,16 +17,15 @@ defmodule Spotter.Services.CommitDiffExtractor do
   """
   @spec diff_stats(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def diff_stats(repo_path, commit_hash) do
-    args = ["-C", repo_path, "diff-tree", "--numstat", "-r", commit_hash]
-
-    case System.cmd("git", args, stderr_to_stdout: true) do
-      {output, 0} ->
+    case GitRunner.run(["diff-tree", "--numstat", "-r", commit_hash],
+           cd: repo_path,
+           timeout_ms: 10_000
+         ) do
+      {:ok, output} ->
         {:ok, parse_numstat(output)}
 
-      {error, _} ->
-        Logger.warning(
-          "CommitDiffExtractor: git diff-tree failed: #{String.slice(error, 0, 200)}"
-        )
+      {:error, err} ->
+        Logger.warning("CommitDiffExtractor: git diff-tree failed: #{inspect(err.kind)}")
 
         {:error, :git_diff_tree_failed}
     end

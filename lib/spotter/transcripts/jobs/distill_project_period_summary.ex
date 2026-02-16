@@ -25,6 +25,9 @@ defmodule Spotter.Transcripts.Jobs.DistillProjectPeriodSummary do
   require OpenTelemetry.Tracer, as: Tracer
 
   @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(10)
+
+  @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
     project_id = args["project_id"]
     bucket_kind = String.to_existing_atom(args["bucket_kind"])

@@ -26,6 +26,9 @@ defmodule Spotter.Transcripts.Jobs.DistillCompletedSession do
   require OpenTelemetry.Tracer, as: Tracer
 
   @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(5)
+
+  @impl Oban.Worker
   def perform(%Oban.Job{args: %{"session_id" => session_id}}) do
     Tracer.with_span "spotter.jobs.distill_completed_session" do
       Tracer.set_attribute("spotter.session_id", session_id)

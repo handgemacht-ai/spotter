@@ -3,70 +3,6 @@ defmodule Spotter.Services.CommitHotspotAgentTest do
 
   alias Spotter.Services.CommitHotspotAgent
 
-  describe "choose_strategy/2" do
-    test "returns :single_run for small diffs" do
-      ctx = %{
-        diff_stats: %{files_changed: 3, insertions: 50, deletions: 10, binary_files: []},
-        patch_files: [],
-        context_windows: %{"a.ex" => [%{content: String.duplicate("x", 100)}]}
-      }
-
-      assert CommitHotspotAgent.choose_strategy(ctx) == :single_run
-    end
-
-    test "returns :explore_then_chunked when files exceed threshold" do
-      ctx = %{
-        diff_stats: %{files_changed: 300, insertions: 50, deletions: 10, binary_files: []},
-        patch_files: [],
-        context_windows: %{"a.ex" => [%{content: "x"}]}
-      }
-
-      assert CommitHotspotAgent.choose_strategy(ctx) == :explore_then_chunked
-    end
-
-    test "returns :explore_then_chunked when lines exceed threshold" do
-      ctx = %{
-        diff_stats: %{files_changed: 3, insertions: 3000, deletions: 500, binary_files: []},
-        patch_files: [],
-        context_windows: %{"a.ex" => [%{content: "x"}]}
-      }
-
-      assert CommitHotspotAgent.choose_strategy(ctx) == :explore_then_chunked
-    end
-
-    test "respects custom thresholds via opts" do
-      ctx = %{
-        diff_stats: %{files_changed: 5, insertions: 10, deletions: 5, binary_files: []},
-        patch_files: [],
-        context_windows: %{"a.ex" => [%{content: "x"}]}
-      }
-
-      assert CommitHotspotAgent.choose_strategy(ctx, max_files: 3) == :explore_then_chunked
-      assert CommitHotspotAgent.choose_strategy(ctx, max_files: 10) == :single_run
-    end
-  end
-
-  describe "parse_explore_response/1" do
-    test "parses valid explore response" do
-      json =
-        ~s({"selected":[{"relative_path":"lib/foo.ex","ranges":[{"line_start":1,"line_end":20}],"reason":"complex"}],"skipped":[]})
-
-      assert {:ok, selected} = CommitHotspotAgent.parse_explore_response(json)
-      assert length(selected) == 1
-      assert hd(selected)["relative_path"] == "lib/foo.ex"
-    end
-
-    test "returns error for missing selected key" do
-      assert {:error, :invalid_explore_response} =
-               CommitHotspotAgent.parse_explore_response(~s({"files":[]}))
-    end
-
-    test "handles markdown-fenced JSON" do
-      json = "```json\n{\"selected\":[],\"skipped\":[]}\n```"
-      assert {:ok, []} = CommitHotspotAgent.parse_explore_response(json)
-    end
-  end
-
   describe "parse_main_response/1" do
     test "parses valid main response" do
       json =
@@ -94,6 +30,12 @@ defmodule Spotter.Services.CommitHotspotAgentTest do
     test "returns error for missing hotspots key" do
       assert {:error, :invalid_main_response} =
                CommitHotspotAgent.parse_main_response(~s({"results":[]}))
+    end
+
+    test "accepts a decoded map" do
+      map = %{"hotspots" => [%{"relative_path" => "a.ex", "line_start" => 1, "line_end" => 5}]}
+      assert {:ok, [h]} = CommitHotspotAgent.parse_main_response(map)
+      assert h.relative_path == "a.ex"
     end
   end
 
@@ -131,6 +73,55 @@ defmodule Spotter.Services.CommitHotspotAgentTest do
 
     test "returns empty list for empty input" do
       assert CommitHotspotAgent.dedupe_hotspots([]) == []
+    end
+  end
+
+  describe "extract_tool_counts/1" do
+    test "counts tool invocations from assistant messages" do
+      tool_name = "mcp__spotter-hotspots__repo_read_file_at_commit"
+
+      messages = [
+        %{
+          type: "assistant",
+          message: %{
+            content: [
+              %{"type" => "tool_use", "name" => tool_name, "id" => "1"},
+              %{"type" => "tool_use", "name" => tool_name, "id" => "2"}
+            ]
+          }
+        },
+        %{type: "user", message: %{content: "result"}},
+        %{
+          type: "assistant",
+          message: %{
+            content: [
+              %{"type" => "tool_use", "name" => tool_name, "id" => "3"}
+            ]
+          }
+        }
+      ]
+
+      counts = CommitHotspotAgent.extract_tool_counts(messages)
+      assert counts[tool_name] == 3
+    end
+
+    test "ignores non-allowed tools" do
+      messages = [
+        %{
+          type: "assistant",
+          message: %{
+            content: [
+              %{"type" => "tool_use", "name" => "some_other_tool", "id" => "1"}
+            ]
+          }
+        }
+      ]
+
+      assert CommitHotspotAgent.extract_tool_counts(messages) == %{}
+    end
+
+    test "returns empty map for empty messages" do
+      assert CommitHotspotAgent.extract_tool_counts([]) == %{}
     end
   end
 end

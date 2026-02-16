@@ -10,6 +10,7 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTests do
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
+  alias Spotter.Services.GitRunner
   alias Spotter.Transcripts.{Commit, CommitTestRun, Session, TestCase}
 
   @test_path_patterns [
@@ -20,6 +21,9 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTests do
     ~r{\.test\.[tj]sx?$},
     ~r{\.spec\.[tj]sx?$}
   ]
+
+  @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(10)
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"project_id" => project_id, "commit_hash" => commit_hash}}) do
@@ -120,15 +124,15 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTests do
 
   defp diff_tree(repo_path, commit_hash) do
     Tracer.with_span "spotter.commit_tests.git.diff_tree" do
-      case System.cmd("git", ["diff-tree", "--name-status", "-r", commit_hash],
+      case GitRunner.run(["diff-tree", "--name-status", "-r", commit_hash],
              cd: repo_path,
-             stderr_to_stdout: true
+             timeout_ms: 10_000
            ) do
-        {output, 0} ->
+        {:ok, output} ->
           parse_diff_tree(output)
 
-        {err, _} ->
-          Logger.warning("AnalyzeCommitTests: diff-tree failed: #{String.slice(err, 0, 200)}")
+        {:error, err} ->
+          Logger.warning("AnalyzeCommitTests: diff-tree failed: #{inspect(err.kind)}")
           []
       end
     end
@@ -231,22 +235,22 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTests do
   end
 
   defp git_show_file(repo_path, commit_hash, path) do
-    case System.cmd("git", ["show", "#{commit_hash}:#{path}"],
+    case GitRunner.run(["show", "#{commit_hash}:#{path}"],
            cd: repo_path,
-           stderr_to_stdout: true
+           timeout_ms: 10_000
          ) do
-      {content, 0} -> {:ok, content}
-      _ -> :file_missing
+      {:ok, content} -> {:ok, content}
+      {:error, _} -> :file_missing
     end
   end
 
   defp git_show_diff(repo_path, commit_hash, path) do
-    case System.cmd("git", ["show", "--format=", "--unified=3", commit_hash, "--", path],
+    case GitRunner.run(["show", "--format=", "--unified=3", commit_hash, "--", path],
            cd: repo_path,
-           stderr_to_stdout: true
+           timeout_ms: 10_000
          ) do
-      {diff, 0} -> diff
-      _ -> ""
+      {:ok, diff} -> diff
+      {:error, _} -> ""
     end
   end
 

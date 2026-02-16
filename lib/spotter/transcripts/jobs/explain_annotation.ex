@@ -13,10 +13,20 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
 
   require OpenTelemetry.Tracer, as: Tracer
 
+  @model "haiku"
+  @timeout_ms 120_000
+
+  @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(5)
+
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"annotation_id" => annotation_id}}) do
     Tracer.with_span "spotter.annotations.explain.job",
-      attributes: %{annotation_id: annotation_id, model: "haiku"} do
+      attributes: %{
+        annotation_id: annotation_id,
+        "spotter.model_requested": @model,
+        "spotter.timeout_ms": @timeout_ms
+      } do
       run_explain(annotation_id)
     end
   end
@@ -61,22 +71,36 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
 
   defp stream_explanation(annotation) do
     Tracer.with_span "spotter.annotations.explain.agent_stream",
-      attributes: %{annotation_id: annotation.id} do
+      attributes: %{
+        annotation_id: annotation.id,
+        "spotter.model_requested": @model,
+        "spotter.timeout_ms": @timeout_ms
+      } do
       prompts = AnnotationExplainPrompt.build(annotation)
       streaming_mod = streaming_module()
 
       {:ok, session} =
         streaming_mod.start_session(%ClaudeAgentSDK.Options{
-          model: "haiku",
+          model: @model,
           system_prompt: prompts.system,
           allowed_tools: ["WebSearch", "WebFetch"],
-          max_turns: 5
+          max_turns: 5,
+          timeout_ms: @timeout_ms,
+          permission_mode: :dont_ask
         })
+
+      started_at_ms = System.monotonic_time(:millisecond)
 
       try do
         answer =
           streaming_mod.send_message(session, prompts.user)
           |> Enum.reduce("", fn event, acc ->
+            elapsed = System.monotonic_time(:millisecond) - started_at_ms
+
+            if elapsed > @timeout_ms do
+              raise "stream_timeout: exceeded #{@timeout_ms}ms wall clock"
+            end
+
             case event do
               %{type: :text_delta, text: chunk} ->
                 broadcast_delta(annotation.id, chunk)

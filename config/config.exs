@@ -19,7 +19,10 @@ config :spotter, Oban,
   notifier: Oban.Notifiers.PG,
   queues: [default: 10, spec: 1],
   repo: Spotter.Repo,
-  plugins: [{Oban.Plugins.Cron, []}]
+  plugins: [
+    {Oban.Plugins.Cron, []},
+    {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(15)}
+  ]
 
 config :spotter, ecto_repos: [Spotter.Repo], ash_domains: [Spotter.Transcripts, Spotter.Config]
 

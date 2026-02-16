@@ -66,11 +66,12 @@ defmodule Spotter.Services.WaitingSummary do
 
   defp generate_summary(sliced_messages, model, session_id, all_messages, window_meta) do
     Tracer.with_span "spotter.waiting_summary.llm" do
-      Tracer.set_attribute("spotter.model", model)
+      Tracer.set_attribute("spotter.model_requested", model)
       Tracer.set_attribute("spotter.input_chars", window_meta.input_chars)
 
       case call_llm(sliced_messages, model) do
-        {:ok, text} ->
+        {:ok, text, model_used} ->
+          Tracer.set_attribute("spotter.model_used", model_used || model)
           text
 
         {:error, reason} ->
@@ -90,7 +91,7 @@ defmodule Spotter.Services.WaitingSummary do
     {system_prompt, _source} = Runtime.waiting_summary_system_prompt()
 
     case Client.query_text(system_prompt, input_text, model: model, timeout_ms: 15_000) do
-      {:ok, %{text: text}} -> {:ok, String.trim(text)}
+      {:ok, %{text: text, model_used: model_used}} -> {:ok, String.trim(text), model_used}
       {:error, reason} -> {:error, reason}
     end
   end

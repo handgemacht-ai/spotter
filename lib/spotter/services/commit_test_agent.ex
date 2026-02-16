@@ -9,10 +9,14 @@ defmodule Spotter.Services.CommitTestAgent do
   require OpenTelemetry.Tracer, as: Tracer
 
   alias Spotter.Agents.TestToolServer
+  alias Spotter.Observability.ClaudeAgentFlow
+  alias Spotter.Observability.FlowKeys
+  alias Spotter.Services.ClaudeCode.ResultExtractor
   alias Spotter.Services.CommitTestPermissions
 
   @default_model "sonnet"
   @default_max_turns 8
+  @default_timeout_ms 180_000
 
   @ext_to_lang %{
     ".ex" => "elixir",
@@ -65,7 +69,7 @@ defmodule Spotter.Services.CommitTestAgent do
       Tracer.set_attribute("spotter.project_id", project_id)
       Tracer.set_attribute("spotter.commit_hash", commit_hash)
       Tracer.set_attribute("spotter.relative_path", relative_path)
-      Tracer.set_attribute("spotter.model", model)
+      Tracer.set_attribute("spotter.model_requested", model)
       Tracer.set_attribute("spotter.diff_bytes", byte_size(file_diff))
       Tracer.set_attribute("spotter.file_bytes", byte_size(file_content))
 
@@ -80,26 +84,34 @@ defmodule Spotter.Services.CommitTestAgent do
 
       server = TestToolServer.create_server()
 
-      sdk_opts = %ClaudeAgentSDK.Options{
-        model: model,
-        max_turns: max_turns,
-        permission_mode: :dont_ask,
-        tools: [],
-        mcp_servers: %{"spotter-tests" => server},
-        allowed_tools: TestToolServer.allowed_tools(),
-        can_use_tool: &CommitTestPermissions.can_use_tool/1
-      }
+      sdk_opts =
+        %ClaudeAgentSDK.Options{
+          model: model,
+          max_turns: max_turns,
+          timeout_ms: @default_timeout_ms,
+          permission_mode: :dont_ask,
+          tools: [],
+          mcp_servers: %{"spotter-tests" => server},
+          allowed_tools: TestToolServer.allowed_tools(),
+          can_use_tool: &CommitTestPermissions.can_use_tool/1
+        }
+        |> ClaudeAgentFlow.build_opts()
+
+      flow_keys = [FlowKeys.project(project_id), FlowKeys.commit(commit_hash)]
 
       try do
         messages =
           prompt
           |> ClaudeAgentSDK.query(sdk_opts)
+          |> ClaudeAgentFlow.wrap_stream(flow_keys: flow_keys)
           |> Enum.to_list()
 
+        model_used = ResultExtractor.extract_model_used(messages) || model
+        Tracer.set_attribute("spotter.model_used", model_used)
         tool_counts = extract_tool_counts(messages)
         final_text = extract_final_text(messages)
 
-        {:ok, %{model_used: model, tool_counts: tool_counts, final_text: final_text}}
+        {:ok, %{model_used: model_used, tool_counts: tool_counts, final_text: final_text}}
       rescue
         e ->
           reason = Exception.message(e)

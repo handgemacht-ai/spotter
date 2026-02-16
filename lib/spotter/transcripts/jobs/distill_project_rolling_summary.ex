@@ -16,6 +16,9 @@ defmodule Spotter.Transcripts.Jobs.DistillProjectRollingSummary do
   require OpenTelemetry.Tracer, as: Tracer
 
   @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(10)
+
+  @impl Oban.Worker
   def perform(%Oban.Job{args: %{"project_id" => project_id}}) do
     Tracer.with_span "spotter.jobs.distill_project_rolling_summary" do
       Tracer.set_attribute("spotter.project_id", project_id)

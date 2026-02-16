@@ -14,6 +14,9 @@ defmodule Spotter.Transcripts.Jobs.ComputePromptPatterns do
   alias Spotter.Transcripts.{PromptPattern, PromptPatternRun}
 
   @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(5)
+
+  @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
     Tracer.with_span "spotter.compute_prompt_patterns.perform" do
       scope = parse_scope(args["scope"])

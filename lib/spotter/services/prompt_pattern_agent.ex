@@ -60,7 +60,7 @@ defmodule Spotter.Services.PromptPatternAgent do
       model = Keyword.get(opts, :model, "claude-haiku-4-5")
       patterns_max = Keyword.get(opts, :patterns_max, 10)
 
-      Tracer.set_attribute("spotter.model", model)
+      Tracer.set_attribute("spotter.model_requested", model)
       Tracer.set_attribute("spotter.prompts_count", length(prompts))
 
       user_input = build_user_input(prompts, patterns_max)
@@ -70,6 +70,8 @@ defmodule Spotter.Services.PromptPatternAgent do
              timeout_ms: 30_000
            ) do
         {:ok, %{output: output, model_used: model_used, messages: _messages}} ->
+          Tracer.set_attribute("spotter.model_used", model_used || model)
+
           case validate_output(output, patterns_max) do
             {:ok, patterns} ->
               {:ok, %{model_used: model_used || model, patterns: patterns}}

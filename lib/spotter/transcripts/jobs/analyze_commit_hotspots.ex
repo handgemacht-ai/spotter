@@ -11,7 +11,6 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
   require OpenTelemetry.Tracer, as: Tracer
 
   alias Spotter.Services.{
-    CommitContextBuilder,
     CommitDiffExtractor,
     CommitHotspotAgent,
     CommitHotspotFilters,
@@ -19,6 +18,9 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
   }
 
   alias Spotter.Transcripts.{Commit, CommitHotspot, ReviewItem, Session}
+
+  @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(5)
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"project_id" => project_id, "commit_hash" => commit_hash}}) do
@@ -61,11 +63,27 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
   end
 
   defp run_analysis(project_id, commit, repo_path) do
+    started_at = DateTime.utc_now() |> DateTime.to_iso8601()
+
     with {:ok, diff_context} <- extract_diff_context(repo_path, commit.commit_hash),
          {:ok, result} <-
-           CommitHotspotAgent.run(commit.commit_hash, commit.subject || "", diff_context) do
-      persist_hotspots(project_id, commit, result)
-      mark_success(commit, result.metadata)
+           CommitHotspotAgent.run(%{
+             project_id: project_id,
+             commit_hash: commit.commit_hash,
+             commit_subject: commit.subject || "",
+             diff_stats: diff_context.diff_stats,
+             patch_files: diff_context.patch_files,
+             git_cwd: repo_path
+           }) do
+      metadata =
+        Map.merge(result.metadata, %{
+          strategy: "tool_loop_v1",
+          eligible_files: length(diff_context.patch_files),
+          started_at: started_at
+        })
+
+      persist_hotspots(project_id, commit, %{result | metadata: metadata})
+      mark_success(commit, metadata)
     else
       {:error, :missing_api_key} ->
         Logger.warning("AnalyzeCommitHotspots: missing API key, skipping")
@@ -90,16 +108,7 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
         Tracer.set_attribute("spotter.patch_files_skipped_binary", meta.skipped_binary)
         Tracer.set_attribute("spotter.patch_files_skipped_blocklist", meta.skipped_blocklist)
 
-        context_windows = build_context_windows(repo_path, eligible)
-
-        Tracer.set_attribute("spotter.eligible_files", map_size(context_windows))
-
-        {:ok,
-         %{
-           diff_stats: diff_stats,
-           patch_files: eligible,
-           context_windows: context_windows
-         }}
+        {:ok, %{diff_stats: diff_stats, patch_files: eligible}}
       end
     end
   end
@@ -136,29 +145,6 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
     {eligible, meta}
   end
 
-  defp build_context_windows(repo_path, patch_files) do
-    Map.new(patch_files, fn file ->
-      ranges =
-        Enum.map(file.hunks, fn h ->
-          {h.new_start, h.new_start + max(h.new_len - 1, 0)}
-        end)
-
-      content = read_file_content(repo_path, file.path)
-      windows = CommitContextBuilder.build_windows(content, ranges)
-
-      {file.path, windows}
-    end)
-  end
-
-  defp read_file_content(repo_path, relative_path) do
-    full_path = Path.join(repo_path, relative_path)
-
-    case File.read(full_path) do
-      {:ok, content} -> content
-      {:error, _} -> ""
-    end
-  end
-
   defp persist_hotspots(project_id, commit, result) do
     now = DateTime.utc_now()
 
@@ -174,18 +160,14 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
         reason: h.reason,
         overall_score: h.overall_score,
         rubric: h.rubric,
-        model_used: model_for_strategy(result.strategy),
+        model_used: result.metadata[:model_used] || "unknown",
         analyzed_at: now,
-        metadata: %{strategy: Atom.to_string(result.strategy)}
+        metadata: result.metadata
       })
     end)
 
     ensure_hotspot_review_items(project_id, commit)
   end
-
-  defp model_for_strategy(:single_run), do: "claude-haiku-4-5-20251001"
-  defp model_for_strategy(:explore_then_chunked), do: "claude-haiku-4-5-20251001"
-  defp model_for_strategy(_), do: "unknown"
 
   defp ensure_hotspot_review_items(project_id, commit) do
     hotspots =
