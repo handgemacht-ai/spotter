@@ -74,9 +74,8 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
       {:error, reason} ->
         finalize_error(annotation, reason)
         emit_flow_event("agent.run.stop", :error, flow_keys, traceparent, %{"run_id" => run_id})
+        {:error, reason}
     end
-
-    :ok
   rescue
     e ->
       reason = Exception.message(e)
@@ -89,7 +88,7 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
         _ -> :ok
       end
 
-      :ok
+      {:error, reason}
   end
 
   defp stream_explanation(annotation, flow_keys, _traceparent) do
@@ -186,26 +185,43 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
     question = non_empty(annotation.comment)
     project_id = annotation.session.project_id
 
-    flashcard =
-      Ash.create!(Flashcard, %{
-        project_id: project_id,
-        annotation_id: annotation.id,
-        question: question,
-        front_snippet: annotation.selected_text,
-        answer: answer,
-        references: %{"urls" => Enum.map(references, & &1["url"])}
-      })
+    with {:ok, flashcard} <-
+           Ash.create(Flashcard, %{
+             project_id: project_id,
+             annotation_id: annotation.id,
+             question: question,
+             front_snippet: annotation.selected_text,
+             answer: answer,
+             references: %{"urls" => Enum.map(references, & &1["url"])}
+           }),
+         {:ok, _review_item} <- find_or_create_review_item(flashcard) do
+      broadcast_done(annotation.id, answer, references)
+      :ok
+    end
+  end
 
-    Ash.create!(ReviewItem, %{
-      project_id: project_id,
-      target_kind: :flashcard,
-      flashcard_id: flashcard.id,
-      importance: :medium,
-      interval_days: 1,
-      next_due_on: Date.utc_today()
-    })
+  defp find_or_create_review_item(flashcard) do
+    require Ash.Query
 
-    broadcast_done(annotation.id, answer, references)
+    case ReviewItem
+         |> Ash.Query.filter(flashcard_id == ^flashcard.id and target_kind == :flashcard)
+         |> Ash.read_one() do
+      {:ok, nil} ->
+        Ash.create(ReviewItem, %{
+          project_id: flashcard.project_id,
+          target_kind: :flashcard,
+          flashcard_id: flashcard.id,
+          importance: :medium,
+          interval_days: 1,
+          next_due_on: Date.utc_today()
+        })
+
+      {:ok, existing} ->
+        {:ok, existing}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   defp finalize_error(annotation, reason) do

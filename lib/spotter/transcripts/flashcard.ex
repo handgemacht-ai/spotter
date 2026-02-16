@@ -24,6 +24,9 @@ defmodule Spotter.Transcripts.Flashcard do
         :answer,
         :references
       ]
+
+      upsert? true
+      upsert_identity :unique_flashcard_per_annotation
     end
   end
 
@@ -51,5 +54,9 @@ defmodule Spotter.Transcripts.Flashcard do
     belongs_to :annotation, Spotter.Transcripts.Annotation do
       allow_nil? false
     end
+  end
+
+  identities do
+    identity :unique_flashcard_per_annotation, [:annotation_id]
   end
 end

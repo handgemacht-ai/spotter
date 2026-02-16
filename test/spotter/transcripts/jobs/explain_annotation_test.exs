@@ -84,13 +84,37 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotationTest do
     Application.put_env(:spotter, :claude_streaming_module, FakeStreamingError)
 
     job = build_job(%{"annotation_id" => annotation.id})
-    assert :ok = ExplainAnnotation.perform(job)
+    assert {:error, _reason} = ExplainAnnotation.perform(job)
 
     updated = Ash.get!(Annotation, annotation.id)
     explain = updated.metadata["explain"]
 
     assert explain["status"] == "error"
     assert is_binary(explain["error"])
+  end
+
+  test "idempotent: running twice creates exactly 1 flashcard and 1 review item", %{
+    annotation: annotation
+  } do
+    job = build_job(%{"annotation_id" => annotation.id})
+
+    assert :ok = ExplainAnnotation.perform(job)
+    assert :ok = ExplainAnnotation.perform(job)
+
+    flashcards =
+      Flashcard
+      |> Ash.Query.filter(annotation_id == ^annotation.id)
+      |> Ash.read!()
+
+    assert length(flashcards) == 1
+    flashcard = hd(flashcards)
+
+    review_items =
+      ReviewItem
+      |> Ash.Query.filter(target_kind == :flashcard and flashcard_id == ^flashcard.id)
+      |> Ash.read!()
+
+    assert length(review_items) == 1
   end
 
   defp build_job(args) do
