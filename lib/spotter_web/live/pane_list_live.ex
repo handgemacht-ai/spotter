@@ -1234,11 +1234,8 @@ defmodule SpotterWeb.PaneListLive do
                   ({length(project.visible_sessions)} sessions)
                 </span>
               </h3>
-              <a href={"/projects/#{project.id}/heatmap"} class="btn btn-ghost text-xs">
-                Heatmap
-              </a>
-              <a href={"/projects/#{project.id}/co-change"} class="btn btn-ghost text-xs">
-                Co-change
+              <a href={"/projects/#{project.id}/file-metrics"} class="btn btn-ghost text-xs">
+                File metrics
               </a>
               <form phx-submit="update_timezone" class="inline-form">
                 <input type="hidden" name="project_id" value={project.id} />

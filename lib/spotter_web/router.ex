@@ -45,6 +45,7 @@ defmodule SpotterWeb.Router do
     live("/heatmap", HeatmapLive)
     live("/hotspots", HotspotsLive)
     live("/co-change", CoChangeLive)
+    live("/file-metrics", FileMetricsLive)
     live("/flows", FlowsLive)
     live("/product", ProductLive)
     live("/patterns/:pattern_id", PromptPatternDetailLive)
@@ -54,6 +55,7 @@ defmodule SpotterWeb.Router do
     live("/projects/:project_id/heatmap", HeatmapLive)
     live("/projects/:project_id/co-change", CoChangeLive)
     live("/projects/:project_id/hotspots", HotspotsLive)
+    live("/projects/:project_id/file-metrics", FileMetricsLive)
     live("/projects/:project_id/files/*relative_path", FileDetailLive)
   end
 end
