@@ -466,8 +466,8 @@ defmodule SpotterWeb.SpecsLive do
       </div>
       <div :for={field <- @item.changed_fields} class="product-diff-field">
         <span class="product-diff-field-name">{field}</span>
-        <div class="product-diff-before">{Map.get(@item.before, field)}</div>
-        <div class="product-diff-after">{Map.get(@item.after, field)}</div>
+        <div class="product-diff-before">{format_changed_field_value(field, Map.get(@item.before, field))}</div>
+        <div class="product-diff-after">{format_changed_field_value(field, Map.get(@item.after, field))}</div>
       </div>
     </div>
     """
@@ -972,6 +972,37 @@ defmodule SpotterWeb.SpecsLive do
 
   defp test_name(%{test_name: name}) when is_binary(name), do: name
   defp test_name(_), do: nil
+
+  defp format_changed_field_value(:acceptance_criteria, nil), do: ""
+  defp format_changed_field_value(:acceptance_criteria, value) do
+    value
+    |> normalize_acceptance_criteria()
+    |> format_acceptance_criteria_lines()
+  end
+
+  defp format_changed_field_value("acceptance_criteria", nil), do: ""
+  defp format_changed_field_value("acceptance_criteria", value) do
+    value
+    |> normalize_acceptance_criteria()
+    |> format_acceptance_criteria_lines()
+  end
+
+  defp format_changed_field_value(_field, value), do: format_field_value(value)
+
+  defp normalize_acceptance_criteria(raw) when is_binary(raw) do
+    case Jason.decode(raw) do
+      {:ok, decoded} -> decoded
+      {:error, _} -> raw
+    end
+  end
+
+  defp normalize_acceptance_criteria(raw), do: raw
+
+  defp format_acceptance_criteria_lines(list) when is_list(list) do
+    Enum.map_join(list, "\n", &to_string/1)
+  end
+
+  defp format_acceptance_criteria_lines(value), do: to_string(value)
 
   defp format_field_value(val) when is_list(val), do: inspect(val)
   defp format_field_value(val) when is_map(val), do: inspect(val)

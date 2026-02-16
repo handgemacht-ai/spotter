@@ -2899,6 +2899,7 @@ input::placeholder, textarea::placeholder {
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   margin-bottom: var(--space-1);
+  white-space: pre-wrap;
 }
 
 .product-diff-after {
@@ -2907,6 +2908,7 @@ input::placeholder, textarea::placeholder {
   background: color-mix(in srgb, var(--accent-green) 8%, transparent);
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
+  white-space: pre-wrap;
 }
 /* ── Flows ────────────────────────────────────────── */
 .flows-layout {
