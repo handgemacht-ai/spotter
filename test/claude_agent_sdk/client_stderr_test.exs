@@ -8,6 +8,9 @@ defmodule ClaudeAgentSDK.ClientStderrTest do
   """
   use ExUnit.Case, async: true
 
+  @moduletag :spawns_claude
+  @moduletag :slow
+
   test "handle_info({:transport_stderr, _}) does not crash the client" do
     # Start a bare client GenServer (it won't connect to a real CLI process)
     {:ok, pid} = GenServer.start(ClaudeAgentSDK.Client, %ClaudeAgentSDK.Options{})
