@@ -2354,6 +2354,21 @@ input::placeholder, textarea::placeholder {
 .pattern-table-row { cursor: pointer; transition: background 0.15s ease; }
 .pattern-table-row:hover { background: var(--bg-hover); }
 
+/* --- Specs Page (merged Product + Tests) --- */
+
+.specs-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.specs-artifact-toggle {
+  display: flex;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
 /* --- Product Spec Page --- */
 
 .product-callout {
@@ -2497,12 +2512,12 @@ input::placeholder, textarea::placeholder {
 
 .product-layout {
   display: grid;
-  grid-template-columns: 340px 1fr;
+  grid-template-columns: 360px 1fr;
   gap: var(--space-4);
   min-height: 400px;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1023px) {
   .product-layout {
     grid-template-columns: 1fr;
   }
@@ -2515,7 +2530,7 @@ input::placeholder, textarea::placeholder {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 200px);
+  max-height: calc(100vh - 220px);
 }
 
 .product-timeline-header {

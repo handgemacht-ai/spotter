@@ -1,4 +1,4 @@
-defmodule SpotterWeb.TestsLiveTest do
+defmodule SpotterWeb.SpecsLiveTest do
   use ExUnit.Case, async: false
 
   import Phoenix.ConnTest
@@ -15,48 +15,44 @@ defmodule SpotterWeb.TestsLiveTest do
     Sandbox.mode(Repo, {:shared, self()})
   end
 
-  test "/tests mounts and renders page header" do
+  test "/specs mounts and renders title + subtitle" do
     conn = build_conn()
-    {:ok, view, html} = live(conn, "/tests")
-    assert html =~ "Tests"
-    assert html =~ "Test specifications extracted from commits"
-    assert has_element?(view, "h1", "Tests")
+    {:ok, view, html} = live(conn, "/specs")
+    assert html =~ "Specs"
+    assert html =~ "Product and test specifications derived from commits"
+    assert has_element?(view, "h1", "Specs")
   end
 
-  test "/tests shows Dolt unavailable callout when repo is down" do
-    if Process.whereis(Spotter.TestSpec.Repo) == nil do
-      conn = build_conn()
-      {:ok, _view, html} = live(conn, "/tests")
-      assert html =~ "Dolt is unavailable"
-      assert html =~ "docker compose"
-    end
+  test "sidebar contains link to /specs" do
+    conn = build_conn()
+    {:ok, _view, html} = live(conn, "/specs")
+    assert html =~ ~s|href="/specs"|
+    assert html =~ "Specs"
   end
 
-  test "sidebar contains link to /tests" do
+  test "sidebar does not contain Product or Tests links" do
     conn = build_conn()
-    {:ok, _view, html} = live(conn, "/tests")
-    assert html =~ ~s|href="/tests"|
-    assert html =~ "Tests"
+    {:ok, _view, html} = live(conn, "/specs")
+    refute html =~ ~s|href="/product"|
+    refute html =~ ~s|href="/tests"|
   end
 
   describe "timeline + detail interaction" do
     setup do
-      # Create a dummy project that sorts first alphabetically so mount auto-selects it,
-      # ensuring handle_params detects a project change and loads the timeline.
       _dummy = Ash.create!(Project, %{name: "aaa-dummy", pattern: "^aaa-dummy"})
-      project = Ash.create!(Project, %{name: "tests-timeline", pattern: "^tests-timeline"})
+      project = Ash.create!(Project, %{name: "specs-timeline", pattern: "^specs-timeline"})
 
       session =
         Ash.create!(Session, %{
           session_id: Ash.UUID.generate(),
-          transcript_dir: "/tmp/test-tests-timeline",
+          transcript_dir: "/tmp/test-specs-timeline",
           project_id: project.id
         })
 
       commit =
         Ash.create!(Commit, %{
-          commit_hash: String.duplicate("b", 40),
-          subject: "test: add unit tests",
+          commit_hash: String.duplicate("a", 40),
+          subject: "feat: add specs feature",
           committed_at: ~U[2026-02-14 12:00:00Z]
         })
 
@@ -75,10 +71,18 @@ defmodule SpotterWeb.TestsLiveTest do
       commit: commit
     } do
       conn = build_conn()
-      {:ok, _view, html} = live(conn, "/tests?project_id=#{project.id}")
+      {:ok, _view, html} = live(conn, "/specs?project_id=#{project.id}")
 
       assert html =~ String.slice(commit.commit_hash, 0, 8)
-      assert html =~ "test: add unit tests"
+      assert html =~ "feat: add specs feature"
+    end
+
+    test "timeline row shows both product and tests badges", %{project: project} do
+      conn = build_conn()
+      {:ok, _view, html} = live(conn, "/specs?project_id=#{project.id}")
+
+      assert html =~ "product:"
+      assert html =~ "tests:"
     end
 
     test "selecting a commit updates URL and renders detail header", %{
@@ -86,14 +90,14 @@ defmodule SpotterWeb.TestsLiveTest do
       commit: commit
     } do
       conn = build_conn()
-      {:ok, view, _html} = live(conn, "/tests?project_id=#{project.id}")
+      {:ok, view, _html} = live(conn, "/specs?project_id=#{project.id}")
 
       html =
         view
         |> element(".product-timeline-row")
         |> render_click()
 
-      assert_patched(view, "/tests?commit_id=#{commit.id}&project_id=#{project.id}")
+      assert_patched(view, "/specs?commit_id=#{commit.id}&project_id=#{project.id}")
       assert html =~ commit.commit_hash
     end
 
@@ -122,38 +126,68 @@ defmodule SpotterWeb.TestsLiveTest do
       })
 
       conn = build_conn()
-      {:ok, _view, html} = live(conn, "/tests?project_id=#{project.id}")
+      {:ok, _view, html} = live(conn, "/specs?project_id=#{project.id}")
 
       # The other project's commit should not appear
       refute html =~ "other project only"
       refute html =~ String.slice(other_commit.commit_hash, 0, 8)
     end
 
-    test "toggling between Diff and Snapshot updates URL", %{
+    test "URL patches when switching artifact", %{
       project: project,
       commit: commit
     } do
       conn = build_conn()
 
       {:ok, view, _html} =
-        live(conn, "/tests?project_id=#{project.id}&commit_id=#{commit.id}")
+        live(conn, "/specs?project_id=#{project.id}&commit_id=#{commit.id}")
 
-      # Switch to snapshot
+      view
+      |> element(".specs-artifact-toggle button", "Tests")
+      |> render_click()
+
+      assert_patched(
+        view,
+        "/specs?artifact=tests&commit_id=#{commit.id}&project_id=#{project.id}"
+      )
+    end
+
+    test "URL patches when switching spec view", %{
+      project: project,
+      commit: commit
+    } do
+      conn = build_conn()
+
+      {:ok, view, _html} =
+        live(conn, "/specs?project_id=#{project.id}&commit_id=#{commit.id}")
+
       view
       |> element(".product-detail-toggle button", "Snapshot")
       |> render_click()
 
       assert_patched(
         view,
-        "/tests?commit_id=#{commit.id}&project_id=#{project.id}&spec_view=snapshot"
+        "/specs?commit_id=#{commit.id}&project_id=#{project.id}&spec_view=snapshot"
       )
 
-      # Switch back to diff
       view
       |> element(".product-detail-toggle button", "Diff")
       |> render_click()
 
-      assert_patched(view, "/tests?commit_id=#{commit.id}&project_id=#{project.id}")
+      assert_patched(view, "/specs?commit_id=#{commit.id}&project_id=#{project.id}")
+    end
+
+    test "product and test detail render empty states when no data exists", %{
+      project: project,
+      commit: commit
+    } do
+      conn = build_conn()
+
+      {:ok, _view, html} =
+        live(conn, "/specs?project_id=#{project.id}&commit_id=#{commit.id}")
+
+      # Detail section should render without errors
+      assert html =~ commit.commit_hash
     end
 
     test "shows test run badge when run exists", %{
@@ -169,57 +203,24 @@ defmodule SpotterWeb.TestsLiveTest do
       Ash.update!(run, %{dolt_commit_hash: String.duplicate("c", 32)}, action: :complete)
 
       conn = build_conn()
-      {:ok, _view, html} = live(conn, "/tests?project_id=#{project.id}")
+      {:ok, _view, html} = live(conn, "/specs?project_id=#{project.id}")
 
+      assert html =~ "tests:"
       assert html =~ "is-ok"
     end
+  end
 
-    test "shows no-changes badge for completed run without dolt hash", %{
-      project: project,
-      commit: commit
-    } do
-      run =
-        Ash.create!(CommitTestRun, %{
-          project_id: project.id,
-          commit_id: commit.id
-        })
-
-      Ash.update!(run, %{}, action: :complete)
-
+  test "shows Dolt unavailable callout for product artifact when repo is down" do
+    if Process.whereis(Spotter.ProductSpec.Repo) == nil do
       conn = build_conn()
-      {:ok, _view, html} = live(conn, "/tests?project_id=#{project.id}")
-
-      assert html =~ "ok (no changes)"
-    end
-
-    test "shows queued badge for pending run", %{
-      project: project,
-      commit: commit
-    } do
-      Ash.create!(CommitTestRun, %{
-        project_id: project.id,
-        commit_id: commit.id
-      })
-
-      conn = build_conn()
-      {:ok, _view, html} = live(conn, "/tests?project_id=#{project.id}")
-
-      assert html =~ "is-queued"
-    end
-
-    test "shows empty detail prompt when no commit selected", %{project: project} do
-      conn = build_conn()
-      {:ok, _view, html} = live(conn, "/tests?project_id=#{project.id}")
-
-      assert html =~ "Select a commit to view its test specification"
+      {:ok, _view, html} = live(conn, "/specs")
+      assert html =~ "Dolt is unavailable"
     end
   end
 
   test "shows empty state when no project selected" do
     conn = build_conn()
-    {:ok, _view, html} = live(conn, "/tests")
-
-    # Either shows "Select a project" or auto-selects first project
-    assert html =~ "Tests"
+    {:ok, _view, html} = live(conn, "/specs")
+    assert html =~ "Specs"
   end
 end

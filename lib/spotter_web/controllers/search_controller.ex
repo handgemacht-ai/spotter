@@ -91,7 +91,7 @@ defmodule SpotterWeb.SearchController do
   defp first_present(values), do: Enum.find(values, "", &(&1 != nil && &1 != ""))
 
   defp product_url(project_id, q) do
-    base = "/product?spec_view=snapshot&q=#{URI.encode_www_form(q)}"
+    base = "/specs?artifact=product&spec_view=snapshot&q=#{URI.encode_www_form(q)}"
     if project_id, do: base <> "&project_id=#{project_id}", else: base
   end
 

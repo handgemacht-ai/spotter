@@ -194,20 +194,23 @@ Tests run without Dolt. Integration tests require Dolt: `mix test --include live
 
 ## Test Specifications (Dolt)
 
-Spotter extracts structured test specifications from commits using Claude agents, storing them in a Dolt database (`spotter_tests`). The `/tests` page provides a read-only view of the versioned test tree.
+Spotter extracts structured test specifications from commits using Claude agents, storing them in a Dolt database (`spotter_tests`). The `/specs` page (artifact=tests) provides a read-only view of the versioned test tree.
 
 ### How it works
 
 1. When commits are ingested (via hooks or `IngestRecentCommits`), `AnalyzeCommitTests` is enqueued for commits with test file changes.
 2. The agent reads each changed test file at the analyzed commit and extracts test metadata (framework, describe path, test name, given/when/then) into Dolt.
 3. Each analysis run creates a Dolt commit snapshot. The snapshot hash is stored in `CommitTestRun.dolt_commit_hash`.
-4. The `/tests` page uses time-travel queries (`AS OF`) to show the test tree at any commit, and computes semantic diffs between snapshots.
+4. The `/specs` page uses time-travel queries (`AS OF`) to show the test tree at any commit, and computes semantic diffs between snapshots.
 
-### `/tests` page
+### `/specs` page (merged Product + Tests)
 
-- **Timeline**: project-scoped commit list with test-run status badges (none, queued, running, ok, ok (no changes), error)
-- **Diff view**: shows added, changed, and removed tests for a commit
-- **Snapshot view**: full test tree grouped by file, with search and expand/collapse controls
+The Specs page (`/specs`) combines product and test specifications into a single commit-centric view. Users switch between artifact types (Product/Tests) and view modes (Diff/Snapshot) without leaving context.
+
+- **Timeline**: project-scoped commit list with both product and test run badges
+- **Artifact toggle**: switch between Product and Tests specs for the same commit
+- **Diff view**: shows added, changed, and removed specs for a commit
+- **Snapshot view**: full tree (domains/features/requirements for product, files/tests for tests) with search and expand/collapse controls
 
 ### Configuration
 
@@ -237,7 +240,7 @@ If logs show repeated `database not found: spotter_tests` errors:
 1. Start Dolt: `docker compose -f docker-compose.dolt.yml up -d`
 2. Boot or restart the app (schema is created automatically on startup)
 3. Verify hook enqueue: trigger a commit with test changes and check that `AnalyzeCommitTests` jobs appear
-4. Verify `/tests` timeline shows commits with test-run badges
+4. Verify `/specs?artifact=tests` timeline shows commits with test-run badges
 5. Verify no-change commits show "ok (no changes)" badge (no Dolt snapshot created)
 
 ## Local E2E (Docker + Playwright + Live Claude)
