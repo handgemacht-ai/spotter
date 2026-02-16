@@ -283,6 +283,10 @@ defmodule SpotterWeb.SessionHookController do
     String.replace(cwd, "/", "-")
   end
 
+  @env Application.compile_env(:spotter, :env, :prod)
+
+  defp maybe_bootstrap_sync(_session) when @env == :test, do: :ok
+
   defp maybe_bootstrap_sync(session) do
     if is_nil(session.message_count) or session.message_count == 0 do
       trace_ctx = OtelTraceHelpers.maybe_add_trace_context(%{})
