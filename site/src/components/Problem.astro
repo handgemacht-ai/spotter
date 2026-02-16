@@ -1,0 +1,81 @@
+---
+const diffTexture = `- async function processQueue(items) {
+-   for (const item of items) {
+-     await handle(item);
+-   }
++ async function processQueue(items) {
++   const results = await Promise.all(
++     items.map(item => handle(item))
++   );
++   return results.filter(Boolean);`;
+---
+
+<section class="problem">
+  <pre class="problem-texture" aria-hidden="true" set:text={diffTexture} />
+
+  <div class="problem-content">
+    <h2 class="section-label">The Problem</h2>
+    <p class="problem-text">
+      When you run 4+ agents in parallel, you lose track.
+      <span class="text-gradient text-gradient--bold">What changed? Why?</span>
+      The diff doesn't show the reasoning, the failed attempts, or the three rewrites
+      before the final commit. You need the full transcript &mdash; annotated and searchable.
+    </p>
+  </div>
+</section>
+
+<style>
+  .problem {
+    position: relative;
+    padding: 6rem 0;
+    border-top: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .problem-texture {
+    position: absolute;
+    right: 2rem;
+    top: 3rem;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    line-height: 1.8;
+    color: var(--muted);
+    opacity: 0.06;
+    pointer-events: none;
+    user-select: none;
+    white-space: pre;
+  }
+
+  .problem-content {
+    max-width: 48rem;
+    margin: 0 auto;
+    text-align: center;
+  }
+
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 2rem;
+  }
+
+  .problem-text {
+    font-size: clamp(1.25rem, 3vw, 1.75rem);
+    line-height: 1.6;
+    color: var(--text);
+  }
+
+  .text-gradient {
+    background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient--bold {
+    font-weight: 600;
+  }
+</style>

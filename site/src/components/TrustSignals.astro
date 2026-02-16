@@ -1,0 +1,90 @@
+---
+---
+
+<section class="trust-signals">
+  <div class="ts-header">
+    <h2 class="section-label">Built For Engineers</h2>
+    <p class="ts-title">No cloud lock-in. No telemetry. No BS.</p>
+  </div>
+
+  <div class="ts-grid">
+    <div class="ts-card">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      <span>Open source, MIT licensed &mdash; read every line</span>
+    </div>
+    <div class="ts-card">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+      <span>Elixir/Phoenix stack, fully self-hosted &mdash; no data leaves your machine</span>
+    </div>
+    <div class="ts-card">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20"><path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+      <span>900+ tests, OpenTelemetry instrumented, E2E with Playwright</span>
+    </div>
+    <div class="ts-card">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="16" r="1"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+      <span>Built with Claude Code itself &mdash; every commit co-authored with an AI agent</span>
+    </div>
+  </div>
+</section>
+
+<style>
+  .trust-signals {
+    padding: 6rem 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .ts-header {
+    margin-bottom: 2.5rem;
+  }
+
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 1rem;
+  }
+
+  .ts-title {
+    font-size: clamp(1.5rem, 3.5vw, 2.25rem);
+    font-weight: 700;
+    color: #f0f3f8;
+  }
+
+  .ts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    max-width: 48rem;
+  }
+
+  .ts-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+  }
+
+  .ts-card svg {
+    color: var(--accent);
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+  }
+
+  .ts-card span {
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: var(--text);
+  }
+
+  @media (max-width: 768px) {
+    .ts-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -1,0 +1,311 @@
+---
+---
+
+<section class="flow-diagram">
+  <div class="flow-header">
+    <h2 class="section-label">The Pipeline</h2>
+    <p class="flow-title">From idea to continuous improvement.</p>
+    <p class="flow-sub">
+      Spotter tracks the full lifecycle of every AI-assisted change &mdash; from
+      the initial prompt through review and back into your tooling.
+    </p>
+  </div>
+
+  <div class="flow-svg-wrap">
+    <svg class="flow-svg" viewBox="0 0 1000 550" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="node-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="8" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      <!-- Edges (base) -->
+      <line class="edge-base" x1="80" y1="60" x2="310" y2="60" />
+      <line class="edge-base" x1="310" y1="60" x2="560" y2="60" />
+      <line class="edge-base" x1="560" y1="60" x2="120" y2="220" />
+      <line class="edge-base" x1="560" y1="60" x2="370" y2="220" />
+      <line class="edge-base" x1="560" y1="60" x2="630" y2="220" />
+      <line class="edge-base" x1="560" y1="60" x2="880" y2="220" />
+      <line class="edge-base" x1="120" y1="220" x2="500" y2="370" />
+      <line class="edge-base" x1="370" y1="220" x2="500" y2="370" />
+      <line class="edge-base" x1="630" y1="220" x2="500" y2="370" />
+      <line class="edge-base" x1="880" y1="220" x2="500" y2="370" />
+      <line class="edge-base" x1="500" y1="370" x2="500" y2="500" />
+
+      <!-- Edges (animated overlay) -->
+      <line class="edge-anim edge-0" x1="80" y1="60" x2="310" y2="60" />
+      <line class="edge-anim edge-1" x1="310" y1="60" x2="560" y2="60" />
+      <line class="edge-anim edge-2" x1="560" y1="60" x2="120" y2="220" />
+      <line class="edge-anim edge-3" x1="560" y1="60" x2="370" y2="220" />
+      <line class="edge-anim edge-4" x1="560" y1="60" x2="630" y2="220" />
+      <line class="edge-anim edge-5" x1="560" y1="60" x2="880" y2="220" />
+      <line class="edge-anim edge-6" x1="120" y1="220" x2="500" y2="370" />
+      <line class="edge-anim edge-7" x1="370" y1="220" x2="500" y2="370" />
+      <line class="edge-anim edge-8" x1="630" y1="220" x2="500" y2="370" />
+      <line class="edge-anim edge-9" x1="880" y1="220" x2="500" y2="370" />
+      <line class="edge-anim edge-10" x1="500" y1="370" x2="500" y2="500" />
+
+      <!-- Node: Idea -->
+      <g class="node node-idea">
+        <rect x="20" y="32" width="120" height="48" rx="8" />
+        <circle cx="80" cy="52" r="8" />
+        <text x="80" y="70">Idea</text>
+      </g>
+
+      <!-- Node: Conversation -->
+      <g class="node node-conversation">
+        <rect x="230" y="32" width="160" height="48" rx="8" />
+        <circle cx="310" cy="52" r="8" />
+        <text x="310" y="70">Conversation</text>
+      </g>
+
+      <!-- Node: Commit -->
+      <g class="node node-commit">
+        <rect x="500" y="32" width="120" height="48" rx="8" />
+        <circle cx="560" cy="52" r="8" />
+        <text x="560" y="70">Commit</text>
+      </g>
+
+      <!-- Node: Code Hotspots -->
+      <g class="node node-hotspots">
+        <rect x="30" y="192" width="180" height="48" rx="8" />
+        <circle cx="120" cy="212" r="8" />
+        <text x="120" y="230">Code Hotspots</text>
+      </g>
+
+      <!-- Node: Product Changes -->
+      <g class="node node-product">
+        <rect x="270" y="192" width="200" height="48" rx="8" />
+        <circle cx="370" cy="212" r="8" />
+        <text x="370" y="230">Product Changes</text>
+      </g>
+
+      <!-- Node: Transcripts -->
+      <g class="node node-transcripts">
+        <rect x="540" y="192" width="180" height="56" rx="8" />
+        <circle cx="630" cy="208" r="8" />
+        <text x="630" y="226">Transcripts</text>
+        <text x="630" y="240" class="sublabel">rework, failed tools</text>
+      </g>
+
+      <!-- Node: Repetitive Prompts -->
+      <g class="node node-prompts">
+        <rect x="775" y="192" width="210" height="48" rx="8" />
+        <circle cx="880" cy="212" r="8" />
+        <text x="880" y="230">Repetitive Prompts</text>
+      </g>
+
+      <!-- Node: Review -->
+      <g class="node node-review">
+        <rect x="440" y="342" width="120" height="48" rx="8" />
+        <circle cx="500" cy="362" r="8" />
+        <text x="500" y="380">Review</text>
+      </g>
+
+      <!-- Node: Continuous Improvement -->
+      <g class="node node-improvement">
+        <rect x="370" y="472" width="260" height="56" rx="8" />
+        <circle cx="500" cy="488" r="8" />
+        <text x="500" y="506">Continuous Improvement</text>
+        <text x="500" y="520" class="sublabel">rules, hooks, skills</text>
+      </g>
+    </svg>
+  </div>
+</section>
+
+<style>
+  .flow-diagram {
+    padding: 6rem 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .flow-header {
+    max-width: 40rem;
+    margin-bottom: 3rem;
+  }
+
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 1rem;
+  }
+
+  .flow-title {
+    font-size: clamp(1.5rem, 3.5vw, 2.25rem);
+    font-weight: 700;
+    color: #f0f3f8;
+    margin-bottom: 1rem;
+  }
+
+  .flow-sub {
+    color: var(--muted);
+    line-height: 1.7;
+    font-size: 0.95rem;
+  }
+
+  .flow-svg-wrap {
+    overflow-x: auto;
+  }
+
+  .flow-svg {
+    width: 100%;
+    min-width: 700px;
+  }
+
+  /* Edges */
+  .edge-base {
+    stroke: rgba(212, 145, 94, 0.1);
+    stroke-width: 1.5;
+  }
+
+  .edge-anim {
+    stroke: rgba(212, 145, 94, 0.6);
+    stroke-width: 2;
+    stroke-dasharray: 1000;
+    stroke-dashoffset: 1000;
+  }
+
+  /* Edge animation keyframes */
+  @keyframes edgeFlow {
+    0%, 5% { stroke-dashoffset: 1000; }
+    15%, 85% { stroke-dashoffset: 0; }
+    95%, 100% { stroke-dashoffset: 1000; }
+  }
+
+  .edge-0 { animation: edgeFlow 7s 0s infinite; }
+  .edge-1 { animation: edgeFlow 7s 0.8s infinite; }
+  .edge-2 { animation: edgeFlow 7s 1.6s infinite; }
+  .edge-3 { animation: edgeFlow 7s 1.6s infinite; }
+  .edge-4 { animation: edgeFlow 7s 1.6s infinite; }
+  .edge-5 { animation: edgeFlow 7s 1.6s infinite; }
+  .edge-6 { animation: edgeFlow 7s 2.8s infinite; }
+  .edge-7 { animation: edgeFlow 7s 2.8s infinite; }
+  .edge-8 { animation: edgeFlow 7s 2.8s infinite; }
+  .edge-9 { animation: edgeFlow 7s 2.8s infinite; }
+  .edge-10 { animation: edgeFlow 7s 3.6s infinite; }
+
+  /* Nodes */
+  .node rect {
+    fill: var(--bg-elevated);
+    stroke: var(--border);
+    stroke-width: 1;
+    transition: fill 0.3s, stroke 0.3s;
+  }
+
+  .node circle {
+    fill: none;
+    stroke: var(--muted);
+    stroke-width: 1.5;
+    transition: stroke 0.3s;
+  }
+
+  .node text {
+    fill: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+    font-family: var(--font-display);
+    text-anchor: middle;
+    transition: fill 0.3s;
+  }
+
+  .node .sublabel {
+    fill: rgba(123, 135, 154, 0.6);
+    font-size: 9px;
+    font-weight: 400;
+  }
+
+  /* Node glow animation */
+  @keyframes nodeGlow {
+    0%, 5% { filter: none; }
+    15%, 30% { filter: url(#node-glow); }
+    45%, 100% { filter: none; }
+  }
+
+  @keyframes nodeRectGlow {
+    0%, 5% { fill: var(--bg-elevated); stroke: var(--border); }
+    15%, 30% { fill: rgba(212, 145, 94, 0.12); stroke: rgba(212, 145, 94, 0.5); }
+    45%, 100% { fill: var(--bg-elevated); stroke: var(--border); }
+  }
+
+  @keyframes nodeCircleGlow {
+    0%, 5% { stroke: var(--muted); }
+    15%, 30% { stroke: var(--accent); }
+    45%, 100% { stroke: var(--muted); }
+  }
+
+  @keyframes nodeTextGlow {
+    0%, 5% { fill: var(--muted); }
+    15%, 30% { fill: #f0f3f8; }
+    45%, 100% { fill: var(--muted); }
+  }
+
+  .node-idea { animation: nodeGlow 7s 0s infinite; }
+  .node-idea rect { animation: nodeRectGlow 7s 0s infinite; }
+  .node-idea circle { animation: nodeCircleGlow 7s 0s infinite; }
+  .node-idea text { animation: nodeTextGlow 7s 0s infinite; }
+
+  .node-conversation { animation: nodeGlow 7s 0.8s infinite; }
+  .node-conversation rect { animation: nodeRectGlow 7s 0.8s infinite; }
+  .node-conversation circle { animation: nodeCircleGlow 7s 0.8s infinite; }
+  .node-conversation text { animation: nodeTextGlow 7s 0.8s infinite; }
+
+  .node-commit { animation: nodeGlow 7s 1.6s infinite; }
+  .node-commit rect { animation: nodeRectGlow 7s 1.6s infinite; }
+  .node-commit circle { animation: nodeCircleGlow 7s 1.6s infinite; }
+  .node-commit text { animation: nodeTextGlow 7s 1.6s infinite; }
+
+  .node-hotspots { animation: nodeGlow 7s 2.4s infinite; }
+  .node-hotspots rect { animation: nodeRectGlow 7s 2.4s infinite; }
+  .node-hotspots circle { animation: nodeCircleGlow 7s 2.4s infinite; }
+  .node-hotspots text:not(.sublabel) { animation: nodeTextGlow 7s 2.4s infinite; }
+
+  .node-product { animation: nodeGlow 7s 2.5s infinite; }
+  .node-product rect { animation: nodeRectGlow 7s 2.5s infinite; }
+  .node-product circle { animation: nodeCircleGlow 7s 2.5s infinite; }
+  .node-product text:not(.sublabel) { animation: nodeTextGlow 7s 2.5s infinite; }
+
+  .node-transcripts { animation: nodeGlow 7s 2.6s infinite; }
+  .node-transcripts rect { animation: nodeRectGlow 7s 2.6s infinite; }
+  .node-transcripts circle { animation: nodeCircleGlow 7s 2.6s infinite; }
+  .node-transcripts text:not(.sublabel) { animation: nodeTextGlow 7s 2.6s infinite; }
+
+  .node-prompts { animation: nodeGlow 7s 2.7s infinite; }
+  .node-prompts rect { animation: nodeRectGlow 7s 2.7s infinite; }
+  .node-prompts circle { animation: nodeCircleGlow 7s 2.7s infinite; }
+  .node-prompts text:not(.sublabel) { animation: nodeTextGlow 7s 2.7s infinite; }
+
+  .node-review { animation: nodeGlow 7s 3.4s infinite; }
+  .node-review rect { animation: nodeRectGlow 7s 3.4s infinite; }
+  .node-review circle { animation: nodeCircleGlow 7s 3.4s infinite; }
+  .node-review text { animation: nodeTextGlow 7s 3.4s infinite; }
+
+  .node-improvement { animation: nodeGlow 7s 4.2s infinite; }
+  .node-improvement rect { animation: nodeRectGlow 7s 4.2s infinite; }
+  .node-improvement circle { animation: nodeCircleGlow 7s 4.2s infinite; }
+  .node-improvement text:not(.sublabel) { animation: nodeTextGlow 7s 4.2s infinite; }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .edge-anim,
+    .node,
+    .node rect,
+    .node circle,
+    .node text {
+      animation: none !important;
+    }
+
+    .edge-anim {
+      stroke-dasharray: none;
+      stroke-dashoffset: 0;
+      opacity: 0.3;
+    }
+  }
+</style>

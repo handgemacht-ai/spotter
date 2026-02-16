@@ -1,0 +1,141 @@
+---
+---
+
+<section class="how-it-works">
+  <div class="hiw-header">
+    <h2 class="section-label">How It Works</h2>
+    <p class="hiw-title">Three steps. No config files.</p>
+  </div>
+
+  <div class="hiw-steps">
+    <div class="hiw-step">
+      <div class="hiw-number">01</div>
+      <div class="hiw-content">
+        <h3>Install hooks &amp; start the server</h3>
+        <p>One command sets up Git hooks and boots the Spotter server. Your workflow stays exactly the same.</p>
+        <div class="hiw-terminal">
+          <span class="hiw-prompt">$</span>
+          git clone https://github.com/marot/spotter && cd spotter && mix setup && mix phx.server
+        </div>
+      </div>
+    </div>
+
+    <div class="hiw-step">
+      <div class="hiw-number">02</div>
+      <div class="hiw-content">
+        <h3>Use Claude Code normally</h3>
+        <p>Spotter captures transcripts, terminal output, and commits in the background. Zero friction.</p>
+        <div class="hiw-terminal">
+          <span class="hiw-prompt">$</span>
+          claude "refactor the auth module"
+        </div>
+      </div>
+    </div>
+
+    <div class="hiw-step">
+      <div class="hiw-number">03</div>
+      <div class="hiw-content">
+        <h3>Review, annotate, improve</h3>
+        <p>Browse transcripts, annotate decisions, trace commits to conversations. Start improvement sessions to refine your rules and hooks. Use spaced repetition to stay on top of past changes.</p>
+        <div class="hiw-terminal">
+          <span class="hiw-prompt">$</span>
+          open http://localhost:4000
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .how-it-works {
+    padding: 6rem 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .hiw-header {
+    margin-bottom: 3rem;
+  }
+
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 1rem;
+  }
+
+  .hiw-title {
+    font-size: clamp(1.5rem, 3.5vw, 2.25rem);
+    font-weight: 700;
+    color: #f0f3f8;
+  }
+
+  .hiw-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 2.5rem;
+    max-width: 48rem;
+  }
+
+  .hiw-step {
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-start;
+  }
+
+  .hiw-number {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: clamp(2rem, 4vw, 3rem);
+    font-weight: 700;
+    color: rgba(212, 145, 94, 0.2);
+    line-height: 1;
+    padding-top: 0.15rem;
+  }
+
+  .hiw-content h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #f0f3f8;
+    margin-bottom: 0.5rem;
+  }
+
+  .hiw-content p {
+    font-size: 0.95rem;
+    color: var(--muted);
+    line-height: 1.65;
+    margin-bottom: 1rem;
+  }
+
+  .hiw-terminal {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.6rem 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  .hiw-prompt {
+    color: rgba(212, 145, 94, 0.5);
+  }
+
+  @media (max-width: 480px) {
+    .hiw-step {
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .hiw-terminal {
+      font-size: 0.7rem;
+      overflow-x: auto;
+      max-width: 100%;
+    }
+  }
+</style>

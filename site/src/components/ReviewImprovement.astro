@@ -1,0 +1,202 @@
+---
+---
+
+<section class="review-improvement">
+  <div class="ri-overlay"></div>
+
+  <div class="ri-inner">
+    <div class="ri-header">
+      <h2 class="section-label">Review &amp; Improve</h2>
+      <p class="ri-title">Turn observations into better agent behavior.</p>
+    </div>
+
+    <div class="ri-grid">
+      <div class="ri-left">
+        <p class="ri-body">
+          After reviewing sessions, you'll notice patterns &mdash; the agent keeps making the same mistake,
+          or ignores a convention, or reaches for the wrong tool.
+        </p>
+        <p class="ri-body">
+          Start an <strong>improvement session</strong> directly
+          from Spotter. It pulls in your observations and helps you refine your Claude Code setup &mdash;
+          rules, hooks, skills, and tooling &mdash; so the next session is better than the last.
+        </p>
+        <div class="ri-callout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          <span>Each improvement compounds. Your agent gets sharper over time.</span>
+        </div>
+      </div>
+
+      <div class="ri-right">
+        <div class="ri-cards">
+          <div class="ri-card">
+            <div class="ri-card-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              <span>CLAUDE.md rules</span>
+            </div>
+            <p>Codify what you learn into persistent agent instructions</p>
+          </div>
+          <div class="ri-card">
+            <div class="ri-card-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              <span>Hooks</span>
+            </div>
+            <p>Automate pre/post actions for agent sessions</p>
+          </div>
+          <div class="ri-card">
+            <div class="ri-card-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              <span>Skills</span>
+            </div>
+            <p>Teach your agent reusable capabilities</p>
+          </div>
+          <div class="ri-card">
+            <div class="ri-card-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.32 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+              <span>Tool configs</span>
+            </div>
+            <p>Fine-tune which tools the agent can reach for</p>
+          </div>
+        </div>
+
+        <div class="ri-screenshot">
+          <div class="screenshot-placeholder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="32" height="32"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+            <span>Screenshot: Improvement Session</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .review-improvement {
+    position: relative;
+    padding: 6rem 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .ri-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to bottom, transparent, rgba(212, 145, 94, 0.015), transparent);
+    pointer-events: none;
+  }
+
+  .ri-inner {
+    position: relative;
+  }
+
+  .ri-header {
+    margin-bottom: 3rem;
+  }
+
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 1rem;
+  }
+
+  .ri-title {
+    font-size: clamp(1.5rem, 3.5vw, 2.25rem);
+    font-weight: 700;
+    color: #f0f3f8;
+  }
+
+  .ri-grid {
+    display: grid;
+    grid-template-columns: 5fr 7fr;
+    gap: 3rem;
+  }
+
+  .ri-body {
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--text);
+    margin-bottom: 1.25rem;
+  }
+
+  .ri-body strong {
+    color: #f0f3f8;
+  }
+
+  .ri-callout {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-top: 1.5rem;
+  }
+
+  .ri-callout svg {
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .ri-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+
+  .ri-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+  }
+
+  .ri-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 0.5rem;
+  }
+
+  .ri-card-header svg {
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .ri-card p {
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+
+  .ri-screenshot {
+    margin-top: 1.5rem;
+  }
+
+  .screenshot-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    aspect-ratio: 16 / 10;
+    border: 1px dashed rgba(212, 145, 94, 0.3);
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(212, 145, 94, 0.03), rgba(212, 145, 94, 0.01));
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    opacity: 0.6;
+  }
+
+  @media (max-width: 768px) {
+    .ri-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
