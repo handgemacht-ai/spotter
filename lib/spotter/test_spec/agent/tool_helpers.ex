@@ -85,6 +85,46 @@ defmodule Spotter.TestSpec.Agent.ToolHelpers do
     end)
   end
 
+  # -- Readiness check --
+
+  @doc "Returns :ok if the Dolt TestSpec.Repo is available, {:error, reason} otherwise."
+  @spec check_repo_available() :: :ok | {:error, :repo_unavailable | :health_check_failed}
+  def check_repo_available do
+    if Process.whereis(Repo) == nil do
+      {:error, :repo_unavailable}
+    else
+      case dolt_query("SELECT 1") do
+        {:ok, _} -> :ok
+        {:error, _} -> {:error, :health_check_failed}
+      end
+    end
+  rescue
+    _ -> {:error, :health_check_failed}
+  end
+
+  @doc "Detect if an error is a pool/connection timeout."
+  @spec pool_timeout_error?(term()) :: boolean()
+  def pool_timeout_error?(%DBConnection.ConnectionError{message: msg}),
+    do: pool_timeout_message?(msg)
+
+  def pool_timeout_error?(%MyXQL.Error{message: msg}), do: pool_timeout_message?(msg)
+
+  def pool_timeout_error?(error) when is_binary(error), do: pool_timeout_message?(error)
+
+  def pool_timeout_error?(error) when is_exception(error),
+    do: error |> Exception.message() |> pool_timeout_message?()
+
+  def pool_timeout_error?(_), do: false
+
+  defp pool_timeout_message?(msg) when is_binary(msg) do
+    String.contains?(msg, "connection not available") or
+      String.contains?(msg, "dropped from queue") or
+      String.contains?(msg, "timed out") or
+      String.contains?(msg, "queue timeout")
+  end
+
+  defp pool_timeout_message?(_), do: false
+
   # -- Result helpers --
 
   def text_result(data) do

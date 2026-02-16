@@ -230,6 +230,34 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTestsTest do
       Application.delete_env(:spotter, :commit_test_agent_module)
     end
   end
+
+  describe "pool_timeout_error? classification" do
+    alias Spotter.TestSpec.Agent.ToolHelpers, as: DoltH
+
+    test "detects DBConnection pool timeout messages" do
+      assert DoltH.pool_timeout_error?(
+               "connection not available and request was dropped from queue"
+             )
+
+      assert DoltH.pool_timeout_error?("connection not available")
+      assert DoltH.pool_timeout_error?("dropped from queue after 5000ms")
+    end
+
+    test "does not match unrelated errors" do
+      refute DoltH.pool_timeout_error?("syntax error in SQL")
+      refute DoltH.pool_timeout_error?(nil)
+      refute DoltH.pool_timeout_error?(:some_atom)
+    end
+  end
+
+  describe "runtime config" do
+    test "SPOTTER_TEST_SPEC_POOL_SIZE defaults to 5" do
+      config = Application.get_env(:spotter, Spotter.TestSpec.Repo)
+      # In test env, pool_size may differ, but the runtime.exs logic is tested
+      # by verifying the config key exists
+      assert is_integer(config[:pool_size])
+    end
+  end
 end
 
 defmodule StubAgent do

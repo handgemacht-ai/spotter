@@ -55,7 +55,17 @@ config :spotter, Spotter.TestSpec.Repo,
       "SPOTTER_TEST_SPEC_DOLT_PASSWORD",
       System.get_env("SPOTTER_DOLT_PASSWORD", "spotter")
     ),
-  pool_size: 5
+  pool_size:
+    (case System.get_env("SPOTTER_TEST_SPEC_POOL_SIZE") do
+       nil ->
+         5
+
+       val ->
+         case Integer.parse(val) do
+           {n, _} when n > 0 -> n
+           _ -> 5
+         end
+     end)
 
 if config_env() == :prod do
   alias Spotter.Config.EnvParser

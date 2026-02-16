@@ -75,69 +75,126 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTests do
 
   # -- Analysis pipeline --
 
+  @max_dolt_retries 3
+  @dolt_retry_delays [100, 250]
+
   defp run_analysis(project_id, commit, repo_path) do
     test_run = create_test_run(project_id, commit)
     test_run = Ash.update!(test_run, %{}, action: :mark_running)
 
-    try do
-      changes = diff_tree(repo_path, commit.commit_hash)
-      {candidates, skipped} = partition_candidates(changes)
+    case dolt_preflight() do
+      :ok ->
+        run_analysis_pipeline(project_id, commit, repo_path, test_run)
 
-      Tracer.set_attribute("spotter.files_total", length(changes))
-      Tracer.set_attribute("spotter.files_candidate", length(candidates))
-
-      {results, direct_deletes} = process_files(project_id, commit, repo_path, candidates)
-
-      totals = aggregate_tool_counts(results, direct_deletes)
-
-      Tracer.set_attribute("spotter.tool.created", totals[:created])
-      Tracer.set_attribute("spotter.tool.updated", totals[:updated])
-      Tracer.set_attribute("spotter.tool.deleted", totals[:deleted])
-
-      model_used = results |> List.first() |> then(fn r -> r && r[:model_used] end)
-
-      dolt_commit_hash = commit_dolt_snapshot(project_id, commit.commit_hash)
-
-      Tracer.set_attribute("spotter.dolt_changed", dolt_commit_hash != nil)
-
-      if dolt_commit_hash do
-        Tracer.set_attribute("spotter.dolt_commit_hash", dolt_commit_hash)
-      end
-
-      Ash.update!(
-        test_run,
-        %{
-          model_used: model_used,
-          dolt_commit_hash: dolt_commit_hash,
-          input_stats: %{
-            files_total: length(changes),
-            files_candidate: length(candidates),
-            files_skipped: skipped
-          },
-          output_stats: totals
-        },
-        action: :complete
-      )
-
-      mark_commit_success(commit, totals, skipped, dolt_commit_hash)
-    rescue
-      e ->
-        reason = Exception.message(e)
-        Logger.warning("AnalyzeCommitTests: failed: #{reason}")
+      {:error, reason} ->
+        {reason_code, msg} =
+          case reason do
+            :repo_unavailable -> {"test_spec_repo_unavailable", "Dolt TestSpec.Repo unavailable"}
+            :health_check_failed -> {"test_spec_repo_unavailable", "Dolt health check failed"}
+          end
 
         failure =
-          build_failure("analysis_unexpected_error", "run_analysis",
-            retryable: false,
-            error_class: inspect(e.__struct__),
-            message: reason
+          build_failure(reason_code, "preflight", retryable: true, message: msg)
+
+        set_failure_trace_attributes(failure)
+        Tracer.set_status(:error, msg)
+        Ash.update!(test_run, %{error: String.slice(msg, 0, 500)}, action: :fail)
+        mark_commit_error(commit, msg, failure)
+        :ok
+    end
+  end
+
+  defp dolt_preflight do
+    DoltHelpers.check_repo_available()
+  end
+
+  defp run_analysis_pipeline(project_id, commit, repo_path, test_run) do
+    changes = diff_tree(repo_path, commit.commit_hash)
+    {candidates, skipped} = partition_candidates(changes)
+
+    Tracer.set_attribute("spotter.files_total", length(changes))
+    Tracer.set_attribute("spotter.files_candidate", length(candidates))
+
+    {results, direct_deletes} = process_files(project_id, commit, repo_path, candidates)
+
+    totals = aggregate_tool_counts(results, direct_deletes)
+
+    Tracer.set_attribute("spotter.tool.created", totals[:created])
+    Tracer.set_attribute("spotter.tool.updated", totals[:updated])
+    Tracer.set_attribute("spotter.tool.deleted", totals[:deleted])
+
+    model_used = results |> List.first() |> then(fn r -> r && r[:model_used] end)
+
+    case commit_dolt_snapshot_with_retry(project_id, commit.commit_hash) do
+      {:ok, dolt_commit_hash} ->
+        Tracer.set_attribute("spotter.dolt_changed", dolt_commit_hash != nil)
+
+        if dolt_commit_hash do
+          Tracer.set_attribute("spotter.dolt_commit_hash", dolt_commit_hash)
+        end
+
+        output_stats = Map.put(totals, :skipped_reason_counts, %{})
+
+        Ash.update!(
+          test_run,
+          %{
+            model_used: model_used,
+            dolt_commit_hash: dolt_commit_hash,
+            input_stats: %{
+              files_total: length(changes),
+              files_candidate: length(candidates),
+              files_skipped: skipped
+            },
+            output_stats: output_stats
+          },
+          action: :complete
+        )
+
+        mark_commit_success(commit, output_stats, skipped, dolt_commit_hash)
+
+      {:error, dolt_reason} ->
+        msg = "Dolt commit failed: #{inspect(dolt_reason)}"
+        Logger.warning("AnalyzeCommitTests: #{msg}")
+
+        {reason_code, retryable} =
+          if DoltHelpers.pool_timeout_error?(dolt_reason),
+            do: {"test_spec_pool_timeout", true},
+            else: {"dolt_commit_failed", false}
+
+        failure =
+          build_failure(reason_code, "dolt_commit",
+            retryable: retryable,
+            message: msg
           )
 
         set_failure_trace_attributes(failure)
-        Tracer.set_status(:error, reason)
-        Ash.update!(test_run, %{error: String.slice(reason, 0, 500)}, action: :fail)
-        mark_commit_error(commit, reason, failure)
+        Tracer.set_status(:error, msg)
+        Ash.update!(test_run, %{error: String.slice(msg, 0, 500)}, action: :fail)
+        mark_commit_error(commit, msg, failure)
         :ok
     end
+  rescue
+    e ->
+      reason = Exception.message(e)
+      Logger.warning("AnalyzeCommitTests: failed: #{reason}")
+
+      {reason_code, retryable} =
+        if DoltHelpers.pool_timeout_error?(e),
+          do: {"test_spec_pool_timeout", true},
+          else: {"analysis_unexpected_error", false}
+
+      failure =
+        build_failure(reason_code, "run_analysis",
+          retryable: retryable,
+          error_class: inspect(e.__struct__),
+          message: reason
+        )
+
+      set_failure_trace_attributes(failure)
+      Tracer.set_status(:error, reason)
+      Ash.update!(test_run, %{error: String.slice(reason, 0, 500)}, action: :fail)
+      mark_commit_error(commit, reason, failure)
+      :ok
   end
 
   defp create_test_run(project_id, commit) do
@@ -309,23 +366,36 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTests do
 
   # -- Commit status --
 
-  defp commit_dolt_snapshot(project_id, commit_hash) do
+  defp commit_dolt_snapshot_with_retry(project_id, commit_hash) do
     message = "tests: sync #{project_id} #{commit_hash}"
+    do_dolt_commit(message, 1)
+  end
 
+  defp do_dolt_commit(message, attempt) do
     case DoltVersioning.commit_if_dirty(message) do
-      {:ok, hash} -> hash
-      {:error, reason} -> raise "Dolt commit failed: #{inspect(reason)}"
+      {:ok, hash} ->
+        {:ok, hash}
+
+      {:error, reason} = err ->
+        if attempt < @max_dolt_retries and DoltHelpers.pool_timeout_error?(reason) do
+          delay = Enum.at(@dolt_retry_delays, attempt - 1, 250)
+          Process.sleep(delay)
+          do_dolt_commit(message, attempt + 1)
+        else
+          err
+        end
     end
   end
 
-  defp mark_commit_success(commit, totals, skipped, dolt_commit_hash) do
+  defp mark_commit_success(commit, output_stats, skipped, dolt_commit_hash) do
     Ash.update(commit, %{
       tests_status: :ok,
       tests_analyzed_at: DateTime.utc_now(),
       tests_error: nil,
       tests_metadata: %{
-        tool_counts: totals,
+        tool_counts: output_stats,
         skipped_files: skipped,
+        skipped_reason_counts: Map.get(output_stats, :skipped_reason_counts, %{}),
         dolt_commit_hash: dolt_commit_hash
       }
     })
