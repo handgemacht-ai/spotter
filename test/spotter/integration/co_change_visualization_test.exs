@@ -1,5 +1,5 @@
 defmodule Spotter.Integration.CoChangeVisualizationTest do
-  @moduledoc "Integration test ensuring CoChangeLive can render rows with provenance."
+  @moduledoc "Integration test ensuring FileMetricsLive co-change tab renders rows with provenance."
 
   use ExUnit.Case, async: false
 
@@ -59,8 +59,10 @@ defmodule Spotter.Integration.CoChangeVisualizationTest do
     assert groups != []
 
     # LiveView should render without crashes
-    {:ok, view, html} = live(build_conn(), "/co-change?project_id=#{project.id}")
-    assert html =~ "Co-change Groups"
+    {:ok, view, html} =
+      live(build_conn(), "/file-metrics?project_id=#{project.id}&tab=co-change")
+
+    assert html =~ "Co-change"
 
     # Table should have rows
     [sample_group | _] = groups
@@ -68,7 +70,7 @@ defmodule Spotter.Integration.CoChangeVisualizationTest do
     assert html =~ sample_member
 
     # Expand a row - should show provenance sections without error
-    html = render_click(view, "toggle_expand", %{"member" => sample_member})
+    html = render_click(view, "cc_toggle_expand", %{"member" => sample_member})
     assert html =~ "Members"
     assert html =~ "Relevant Commits"
   end
@@ -91,11 +93,13 @@ defmodule Spotter.Integration.CoChangeVisualizationTest do
       last_seen_at: ~U[2026-02-10 12:00:00Z]
     })
 
-    {:ok, view, html} = live(build_conn(), "/co-change?project_id=#{project.id}")
+    {:ok, view, html} =
+      live(build_conn(), "/file-metrics?project_id=#{project.id}&tab=co-change")
+
     assert html =~ "lib/a.ex"
 
     # Expand - should show empty states
-    html = render_click(view, "toggle_expand", %{"member" => "lib/a.ex"})
+    html = render_click(view, "cc_toggle_expand", %{"member" => "lib/a.ex"})
     assert html =~ "No file metrics available"
     assert html =~ "No commit provenance recorded"
   end

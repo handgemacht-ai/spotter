@@ -34,7 +34,7 @@ defmodule SpotterWeb.FileMetricsLiveTest do
       assert html =~ "File metrics"
     end
 
-    test "renders all four section headings" do
+    test "renders tab bar with all four tabs" do
       {:ok, _view, html} = live(build_conn(), "/file-metrics")
       assert html =~ "Heat map"
       assert html =~ "Hotspots"
@@ -42,10 +42,57 @@ defmodule SpotterWeb.FileMetricsLiveTest do
       assert html =~ "File size"
     end
 
+    test "defaults to heatmap tab" do
+      {:ok, _view, html} = live(build_conn(), "/file-metrics")
+      assert html =~ "heatmap-section"
+      refute html =~ "hotspots-section"
+      refute html =~ "co-change-section"
+      refute html =~ "file-size-section"
+    end
+
     test "project-scoped route works" do
       project = create_project("fm-proj-route")
       {:ok, _view, html} = live(build_conn(), "/projects/#{project.id}/file-metrics")
       assert html =~ "File metrics"
+    end
+  end
+
+  describe "tab navigation" do
+    test "select_tab switches to hotspots" do
+      {:ok, view, _html} = live(build_conn(), "/file-metrics")
+      html = render_click(view, "select_tab", %{"tab" => "hotspots"})
+      assert html =~ "hotspots-section"
+      refute html =~ "heatmap-section"
+    end
+
+    test "select_tab switches to co-change" do
+      {:ok, view, _html} = live(build_conn(), "/file-metrics")
+      html = render_click(view, "select_tab", %{"tab" => "co-change"})
+      assert html =~ "co-change-section"
+      refute html =~ "heatmap-section"
+    end
+
+    test "select_tab switches to file-size" do
+      {:ok, view, _html} = live(build_conn(), "/file-metrics")
+      html = render_click(view, "select_tab", %{"tab" => "file-size"})
+      assert html =~ "file-size-section"
+      refute html =~ "heatmap-section"
+    end
+
+    test "tab query param renders correct section" do
+      {:ok, _view, html} = live(build_conn(), "/file-metrics?tab=hotspots")
+      assert html =~ "hotspots-section"
+      refute html =~ "heatmap-section"
+    end
+
+    test "invalid tab defaults to heatmap" do
+      {:ok, _view, html} = live(build_conn(), "/file-metrics?tab=invalid")
+      assert html =~ "heatmap-section"
+    end
+
+    test "active tab has aria-current=page" do
+      {:ok, _view, html} = live(build_conn(), "/file-metrics?tab=co-change")
+      assert html =~ ~s(aria-current="page")
     end
   end
 
@@ -80,7 +127,7 @@ defmodule SpotterWeb.FileMetricsLiveTest do
     end
   end
 
-  describe "heat map section" do
+  describe "heat map tab" do
     test "renders heatmap entries" do
       project = create_project("fm-hm-entries")
 
@@ -126,7 +173,7 @@ defmodule SpotterWeb.FileMetricsLiveTest do
     end
   end
 
-  describe "hotspots section" do
+  describe "hotspots tab" do
     test "renders hotspot entries" do
       project = create_project("fm-hs-entries")
 
@@ -150,14 +197,19 @@ defmodule SpotterWeb.FileMetricsLiveTest do
         analyzed_at: DateTime.utc_now()
       })
 
-      {:ok, _view, html} = live(build_conn(), "/file-metrics?project_id=#{project.id}")
+      {:ok, _view, html} =
+        live(build_conn(), "/file-metrics?project_id=#{project.id}&tab=hotspots")
+
       assert html =~ "lib/spotted.ex"
       assert html =~ "70.0"
     end
 
     test "analyze_commits enqueues job when project selected" do
       project = create_project("fm-hs-analyze")
-      {:ok, view, _html} = live(build_conn(), "/file-metrics?project_id=#{project.id}")
+
+      {:ok, view, _html} =
+        live(build_conn(), "/file-metrics?project_id=#{project.id}&tab=hotspots")
+
       _html = render_click(view, "analyze_commits", %{})
 
       jobs =
@@ -172,14 +224,14 @@ defmodule SpotterWeb.FileMetricsLiveTest do
     end
 
     test "empty state when no hotspots" do
-      {:ok, _view, html} = live(build_conn(), "/file-metrics")
+      {:ok, _view, html} = live(build_conn(), "/file-metrics?tab=hotspots")
       assert html =~ "No commit hotspots yet"
     end
   end
 
-  describe "co-change section" do
+  describe "co-change tab" do
     test "shows select project prompt without project" do
-      {:ok, _view, html} = live(build_conn(), "/file-metrics")
+      {:ok, _view, html} = live(build_conn(), "/file-metrics?tab=co-change")
       assert html =~ "Select a project to view co-change groups"
     end
 
@@ -195,7 +247,9 @@ defmodule SpotterWeb.FileMetricsLiveTest do
         last_seen_at: ~U[2026-02-10 12:00:00Z]
       })
 
-      {:ok, _view, html} = live(build_conn(), "/file-metrics?project_id=#{project.id}")
+      {:ok, _view, html} =
+        live(build_conn(), "/file-metrics?project_id=#{project.id}&tab=co-change")
+
       assert html =~ "lib/a.ex"
       assert html =~ "lib/b.ex"
     end
@@ -212,7 +266,9 @@ defmodule SpotterWeb.FileMetricsLiveTest do
         last_seen_at: ~U[2026-02-10 12:00:00Z]
       })
 
-      {:ok, view, html} = live(build_conn(), "/file-metrics?project_id=#{project.id}")
+      {:ok, view, html} =
+        live(build_conn(), "/file-metrics?project_id=#{project.id}&tab=co-change")
+
       refute html =~ ~s(\u00d78)
 
       html = render_click(view, "cc_toggle_scope", %{"scope" => "directory"})
@@ -233,14 +289,16 @@ defmodule SpotterWeb.FileMetricsLiveTest do
         last_seen_at: ~U[2026-02-10 12:00:00Z]
       })
 
-      {:ok, view, _html} = live(build_conn(), "/file-metrics?project_id=#{project.id}")
+      {:ok, view, _html} =
+        live(build_conn(), "/file-metrics?project_id=#{project.id}&tab=co-change")
+
       html = render_click(view, "cc_toggle_expand", %{"member" => "lib/a.ex"})
       assert html =~ "Members"
       assert html =~ "Relevant Commits"
     end
   end
 
-  describe "file size section" do
+  describe "file size tab" do
     test "renders LOC and Size columns" do
       project = create_project("fm-fs-cols")
 
@@ -255,7 +313,9 @@ defmodule SpotterWeb.FileMetricsLiveTest do
         measured_at: ~U[2026-02-10 12:00:00Z]
       })
 
-      {:ok, _view, html} = live(build_conn(), "/file-metrics?project_id=#{project.id}")
+      {:ok, _view, html} =
+        live(build_conn(), "/file-metrics?project_id=#{project.id}&tab=file-size")
+
       assert html =~ "lib/big.ex"
       assert html =~ "100"
       assert html =~ "4.9 KB"
@@ -286,7 +346,8 @@ defmodule SpotterWeb.FileMetricsLiveTest do
         measured_at: ~U[2026-02-10 12:00:00Z]
       })
 
-      {:ok, _view, html} = live(build_conn(), "/file-metrics?project_id=#{project.id}")
+      {:ok, _view, html} =
+        live(build_conn(), "/file-metrics?project_id=#{project.id}&tab=file-size")
 
       big_pos = :binary.match(html, "lib/big.ex") |> elem(0)
       small_pos = :binary.match(html, "lib/small.ex") |> elem(0)
@@ -318,7 +379,9 @@ defmodule SpotterWeb.FileMetricsLiveTest do
         measured_at: ~U[2026-02-10 12:00:00Z]
       })
 
-      {:ok, view, _html} = live(build_conn(), "/file-metrics?project_id=#{project.id}")
+      {:ok, view, _html} =
+        live(build_conn(), "/file-metrics?project_id=#{project.id}&tab=file-size")
+
       html = render_click(view, "fs_sort_by", %{"field" => "loc"})
 
       many_pos = :binary.match(html, "lib/many_lines.ex") |> elem(0)
@@ -327,7 +390,7 @@ defmodule SpotterWeb.FileMetricsLiveTest do
     end
 
     test "empty state when no file size data" do
-      {:ok, _view, html} = live(build_conn(), "/file-metrics")
+      {:ok, _view, html} = live(build_conn(), "/file-metrics?tab=file-size")
       assert html =~ "No file size data yet"
     end
 
@@ -345,19 +408,40 @@ defmodule SpotterWeb.FileMetricsLiveTest do
         measured_at: ~U[2026-02-10 12:00:00Z]
       })
 
-      {:ok, _view, html} = live(build_conn(), "/file-metrics?project_id=#{project.id}")
+      {:ok, _view, html} =
+        live(build_conn(), "/file-metrics?project_id=#{project.id}&tab=file-size")
+
       assert html =~ "/projects/#{project.id}/files/lib/linked.ex"
     end
   end
 
   describe "empty states" do
-    test "each section renders empty state when datasets missing" do
-      project = create_project("fm-empty-all")
+    test "heatmap empty state renders" do
+      project = create_project("fm-empty-hm")
       {:ok, _view, html} = live(build_conn(), "/file-metrics?project_id=#{project.id}")
-
       assert html =~ "No file activity data yet"
+    end
+
+    test "hotspots empty state renders" do
+      project = create_project("fm-empty-hs")
+
+      {:ok, _view, html} =
+        live(build_conn(), "/file-metrics?project_id=#{project.id}&tab=hotspots")
+
       assert html =~ "No commit hotspots"
+    end
+
+    test "co-change empty state renders" do
+      project = create_project("fm-empty-cc")
+
+      {:ok, _view, html} =
+        live(build_conn(), "/file-metrics?project_id=#{project.id}&tab=co-change")
+
       assert html =~ "No co-change groups"
+    end
+
+    test "file size empty state renders" do
+      {:ok, _view, html} = live(build_conn(), "/file-metrics?tab=file-size")
       assert html =~ "No file size data yet"
     end
   end

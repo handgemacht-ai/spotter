@@ -8,6 +8,14 @@ defmodule SpotterWeb.FileMetricsLive do
   require Ash.Query
   require OpenTelemetry.Tracer, as: Tracer
 
+  @valid_tabs ~w(heatmap hotspots co-change file-size)
+  @tab_atoms %{
+    "heatmap" => :heatmap,
+    "hotspots" => :hotspots,
+    "co-change" => :co_change,
+    "file-size" => :file_size
+  }
+
   @impl true
   def mount(_params, _session, socket) do
     projects =
@@ -21,6 +29,7 @@ defmodule SpotterWeb.FileMetricsLive do
      assign(socket,
        projects: projects,
        selected_project_id: nil,
+       active_tab: :heatmap,
        # Heat map state
        hm_min_score: 0,
        hm_sort_by: :heat_score,
@@ -48,11 +57,12 @@ defmodule SpotterWeb.FileMetricsLive do
   @impl true
   def handle_params(params, _uri, socket) do
     project_id = parse_project_id(params["project_id"])
+    tab = parse_tab(params["tab"])
 
     socket =
       socket
-      |> assign(selected_project_id: project_id)
-      |> load_all_sections()
+      |> assign(selected_project_id: project_id, active_tab: tab)
+      |> load_active_tab()
 
     {:noreply, socket}
   end
@@ -60,8 +70,12 @@ defmodule SpotterWeb.FileMetricsLive do
   @impl true
   def handle_event("filter_project", %{"project-id" => raw_id}, socket) do
     project_id = parse_project_id(raw_id)
-    path = if project_id, do: "/file-metrics?project_id=#{project_id}", else: "/file-metrics"
-    {:noreply, push_patch(socket, to: path)}
+    {:noreply, push_patch(socket, to: tab_path(project_id, socket.assigns.active_tab))}
+  end
+
+  def handle_event("select_tab", %{"tab" => tab}, socket) do
+    {:noreply,
+     push_patch(socket, to: tab_path(socket.assigns.selected_project_id, parse_tab(tab)))}
   end
 
   # Heat map events
@@ -195,12 +209,27 @@ defmodule SpotterWeb.FileMetricsLive do
 
   # --- Data loading ---
 
-  defp load_all_sections(socket) do
-    socket
-    |> load_heatmap()
-    |> load_hotspots()
-    |> load_co_change()
-    |> load_file_sizes()
+  defp parse_tab(tab) when tab in @valid_tabs, do: Map.fetch!(@tab_atoms, tab)
+  defp parse_tab(_), do: :heatmap
+
+  defp tab_to_param(:heatmap), do: "heatmap"
+  defp tab_to_param(:hotspots), do: "hotspots"
+  defp tab_to_param(:co_change), do: "co-change"
+  defp tab_to_param(:file_size), do: "file-size"
+
+  defp tab_path(project_id, tab) do
+    base = if project_id, do: "/projects/#{project_id}/file-metrics", else: "/file-metrics"
+    param = tab_to_param(tab)
+    if param == "heatmap", do: base, else: "#{base}?tab=#{param}"
+  end
+
+  defp load_active_tab(socket) do
+    case socket.assigns.active_tab do
+      :heatmap -> load_heatmap(socket)
+      :hotspots -> load_hotspots(socket)
+      :co_change -> load_co_change(socket)
+      :file_size -> load_file_sizes(socket)
+    end
   end
 
   defp load_heatmap(socket) do
@@ -477,8 +506,22 @@ defmodule SpotterWeb.FileMetricsLive do
         </div>
       </div>
 
-      <%!-- Section 1: Heat map --%>
-      <div class="section" data-testid="heatmap-section">
+      <%!-- Tab bar --%>
+      <div class="tab-bar" role="tablist">
+        <button
+          :for={{tab, label} <- [{:heatmap, "Heat map"}, {:hotspots, "Hotspots"}, {:co_change, "Co-change"}, {:file_size, "File size"}]}
+          phx-click="select_tab"
+          phx-value-tab={tab_to_param(tab)}
+          role="tab"
+          aria-current={if @active_tab == tab, do: "page"}
+          class={"tab-btn#{if @active_tab == tab, do: " is-active"}"}
+        >
+          {label}
+        </button>
+      </div>
+
+      <%!-- Heat map tab --%>
+      <div :if={@active_tab == :heatmap} class="section" data-testid="heatmap-section">
         <h2 class="section-heading">Heat map</h2>
 
         <div class="filter-section">
@@ -553,8 +596,8 @@ defmodule SpotterWeb.FileMetricsLive do
         <% end %>
       </div>
 
-      <%!-- Section 2: Hotspots --%>
-      <div class="section" data-testid="hotspots-section">
+      <%!-- Hotspots tab --%>
+      <div :if={@active_tab == :hotspots} class="section" data-testid="hotspots-section">
         <div class="section-header">
           <h2 class="section-heading">Hotspots</h2>
           <button :if={@selected_project_id} phx-click="analyze_commits" class="btn">
@@ -668,8 +711,8 @@ defmodule SpotterWeb.FileMetricsLive do
         <% end %>
       </div>
 
-      <%!-- Section 3: Co-change --%>
-      <div class="section" data-testid="co-change-section">
+      <%!-- Co-change tab --%>
+      <div :if={@active_tab == :co_change} class="section" data-testid="co-change-section">
         <h2 class="section-heading">Co-change</h2>
 
         <div class="filter-section">
@@ -845,8 +888,8 @@ defmodule SpotterWeb.FileMetricsLive do
         <% end %>
       </div>
 
-      <%!-- Section 4: File size --%>
-      <div class="section" data-testid="file-size-section">
+      <%!-- File size tab --%>
+      <div :if={@active_tab == :file_size} class="section" data-testid="file-size-section">
         <h2 class="section-heading">File size</h2>
 
         <div class="filter-section">
@@ -905,7 +948,29 @@ defmodule SpotterWeb.FileMetricsLive do
     </div>
 
     <style>
-      .section { margin-top: 2rem; }
+      .tab-bar {
+        display: flex;
+        gap: 0;
+        border-bottom: 1px solid #333;
+        margin-top: 1.5rem;
+        margin-bottom: 0;
+      }
+      .tab-btn {
+        padding: 0.5rem 1rem;
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: #9ca3af;
+        cursor: pointer;
+        font-size: 0.9rem;
+      }
+      .tab-btn:hover { color: #d1d5db; }
+      .tab-btn.is-active {
+        color: #fff;
+        border-bottom-color: #3b82f6;
+      }
+
+      .section { margin-top: 1rem; }
       .section-header { display: flex; justify-content: space-between; align-items: center; }
 
       .badge-hot { background: #dc2626; color: #fff; }
