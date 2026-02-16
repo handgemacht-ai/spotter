@@ -68,8 +68,17 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
 
     case stream_explanation(annotation, flow_keys, traceparent) do
       {:ok, answer, references} ->
-        finalize_success(annotation, answer, references)
-        emit_flow_event("agent.run.stop", :ok, flow_keys, traceparent, %{"run_id" => run_id})
+        case finalize_success(annotation, answer, references) do
+          :ok ->
+            emit_flow_event("agent.run.stop", :ok, flow_keys, traceparent, %{"run_id" => run_id})
+
+          {:error, reason} ->
+            emit_flow_event("agent.run.stop", :error, flow_keys, traceparent, %{
+              "run_id" => run_id
+            })
+
+            {:error, reason}
+        end
 
       {:error, reason} ->
         finalize_error(annotation, reason)
@@ -142,8 +151,9 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
 
                 {acc <> chunk, last_delta}
 
-              %{type: :message_stop, final_text: final} when is_binary(final) ->
-                {final, last_delta}
+              %{type: :message_stop, final_text: final}
+              when is_binary(final) and final != "" ->
+                if String.trim(final) != "", do: {final, last_delta}, else: {acc, last_delta}
 
               _ ->
                 {acc, last_delta}
@@ -175,28 +185,37 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
   end
 
   defp finalize_success(annotation, answer, references) do
-    update_explain_metadata(annotation, %{
-      "status" => "complete",
-      "answer" => answer,
-      "references" => references,
-      "completed_at" => DateTime.utc_now() |> DateTime.to_iso8601()
-    })
+    if String.trim(answer) == "" do
+      finalize_error(annotation, "empty answer from LLM")
+      {:error, :empty_answer}
+    else
+      question = non_empty(annotation.comment)
+      project_id = annotation.session.project_id
 
-    question = non_empty(annotation.comment)
-    project_id = annotation.session.project_id
+      with {:ok, flashcard} <-
+             Ash.create(Flashcard, %{
+               project_id: project_id,
+               annotation_id: annotation.id,
+               question: question,
+               front_snippet: annotation.selected_text,
+               answer: answer,
+               references: %{"urls" => Enum.map(references, & &1["url"])}
+             }),
+           {:ok, _review_item} <- find_or_create_review_item(flashcard) do
+        update_explain_metadata(annotation, %{
+          "status" => "complete",
+          "answer" => answer,
+          "references" => references,
+          "completed_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+        })
 
-    with {:ok, flashcard} <-
-           Ash.create(Flashcard, %{
-             project_id: project_id,
-             annotation_id: annotation.id,
-             question: question,
-             front_snippet: annotation.selected_text,
-             answer: answer,
-             references: %{"urls" => Enum.map(references, & &1["url"])}
-           }),
-         {:ok, _review_item} <- find_or_create_review_item(flashcard) do
-      broadcast_done(annotation.id, answer, references)
-      :ok
+        broadcast_done(annotation.id, answer, references)
+        :ok
+      else
+        {:error, reason} ->
+          finalize_error(annotation, inspect(reason))
+          {:error, reason}
+      end
     end
   end
 

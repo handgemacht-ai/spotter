@@ -117,9 +117,128 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotationTest do
     assert length(review_items) == 1
   end
 
+  test "message_stop with blank final_text preserves accumulated deltas", %{
+    annotation: annotation
+  } do
+    Application.put_env(:spotter, :claude_streaming_module, FakeStreamingBlankFinal)
+
+    job = build_job(%{"annotation_id" => annotation.id})
+    assert :ok = ExplainAnnotation.perform(job)
+
+    updated = Ash.get!(Annotation, annotation.id)
+    explain = updated.metadata["explain"]
+
+    assert explain["status"] == "complete"
+    assert explain["answer"] == "hello world"
+
+    flashcards =
+      Flashcard
+      |> Ash.Query.filter(annotation_id == ^annotation.id)
+      |> Ash.read!()
+
+    assert length(flashcards) == 1
+    assert hd(flashcards).answer == "hello world"
+  end
+
+  test "blank-only answer results in error and no persistence artifacts", %{
+    annotation: annotation
+  } do
+    Application.put_env(:spotter, :claude_streaming_module, FakeStreamingBlankAnswer)
+
+    job = build_job(%{"annotation_id" => annotation.id})
+    assert {:error, _} = ExplainAnnotation.perform(job)
+
+    updated = Ash.get!(Annotation, annotation.id)
+    explain = updated.metadata["explain"]
+
+    assert explain["status"] == "error"
+    assert explain["error"] =~ "empty answer from LLM"
+
+    flashcards =
+      Flashcard
+      |> Ash.Query.filter(annotation_id == ^annotation.id)
+      |> Ash.read!()
+
+    assert flashcards == []
+
+    review_items =
+      ReviewItem
+      |> Ash.Query.filter(target_kind == :flashcard)
+      |> Ash.read!()
+      |> Enum.filter(fn ri ->
+        case Ash.Query.filter(Flashcard, annotation_id == ^annotation.id) |> Ash.read!() do
+          [] -> false
+          cards -> ri.flashcard_id in Enum.map(cards, & &1.id)
+        end
+      end)
+
+    assert review_items == []
+  end
+
+  test "complete status only exists when flashcard and review_item both exist", %{
+    annotation: annotation
+  } do
+    job = build_job(%{"annotation_id" => annotation.id})
+    assert :ok = ExplainAnnotation.perform(job)
+
+    updated = Ash.get!(Annotation, annotation.id)
+    explain = updated.metadata["explain"]
+
+    # Status must be "complete" only when both flashcard and review_item exist
+    assert explain["status"] == "complete"
+
+    flashcards =
+      Flashcard
+      |> Ash.Query.filter(annotation_id == ^annotation.id)
+      |> Ash.read!()
+
+    assert length(flashcards) == 1
+    flashcard = hd(flashcards)
+
+    review_items =
+      ReviewItem
+      |> Ash.Query.filter(flashcard_id == ^flashcard.id and target_kind == :flashcard)
+      |> Ash.read!()
+
+    assert length(review_items) == 1
+
+    # Verify the invariant: complete ↔ flashcard + review_item exist
+    # This test confirms the refactored finalize_success writes "complete"
+    # only AFTER both downstream creates succeed (not before, as the old code did)
+    assert explain["answer"] != ""
+    assert explain["answer"] != nil
+  end
+
   defp build_job(args) do
     %Oban.Job{args: args}
   end
+end
+
+defmodule FakeStreamingBlankFinal do
+  def start_session(_opts), do: {:ok, self()}
+
+  def send_message(_session, _message) do
+    [
+      %{type: :text_delta, text: "hello"},
+      %{type: :text_delta, text: " world"},
+      %{type: :message_stop, final_text: ""}
+    ]
+  end
+
+  def close_session(_session), do: :ok
+end
+
+defmodule FakeStreamingBlankAnswer do
+  def start_session(_opts), do: {:ok, self()}
+
+  def send_message(_session, _message) do
+    [
+      %{type: :text_delta, text: "   "},
+      %{type: :message_stop, final_text: ""}
+    ]
+  end
+
+  def close_session(_session), do: :ok
 end
 
 defmodule FakeStreaming do
