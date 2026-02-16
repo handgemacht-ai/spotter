@@ -2,7 +2,10 @@
   "mcpServers": {
     "spotter": {
       "type": "http",
-      "url": "${SPOTTER_URL:-http://127.0.0.1:1100}/api/mcp"
+      "url": "${SPOTTER_URL:-http://127.0.0.1:1100}/api/mcp",
+      "headers": {
+        "x-spotter-project-dir": "${SPOTTER_PROJECT_DIR:-}"
+      }
     }
   }
 }

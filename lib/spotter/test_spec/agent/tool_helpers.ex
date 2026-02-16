@@ -54,6 +54,34 @@ defmodule Spotter.TestSpec.Agent.ToolHelpers do
     end
   end
 
+  # -- Project scope guard --
+
+  @doc """
+  Validates that the payload project_id matches the bound scope.
+  Returns `{:ok, scoped_project_id}` or `{:error, mismatch_result}`.
+  """
+  @spec validate_project_scope(String.t()) :: {:ok, String.t()} | {:error, map()}
+  def validate_project_scope(payload_project_id) do
+    scoped = project_id!()
+
+    if scoped == payload_project_id do
+      {:ok, scoped}
+    else
+      require OpenTelemetry.Tracer, as: Tracer
+
+      Tracer.set_attribute("spotter.project_id", scoped)
+      Tracer.set_attribute("spotter.payload_project_id", payload_project_id)
+      Tracer.set_status(:error, "project_scope_mismatch")
+
+      {:error,
+       %{
+         error: "project_scope_mismatch",
+         scoped_project_id: scoped,
+         payload_project_id: payload_project_id
+       }}
+    end
+  end
+
   # -- Deterministic key --
 
   @doc "Builds a deterministic test_key from components."

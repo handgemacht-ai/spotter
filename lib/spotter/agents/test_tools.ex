@@ -28,29 +28,34 @@ defmodule Spotter.Agents.TestTools do
     alias Spotter.Agents.TestTools
     alias Spotter.TestSpec.Agent.ToolHelpers, as: H
 
-    def execute(%{"project_id" => _project_id, "relative_path" => relative_path}) do
+    def execute(%{"project_id" => project_id, "relative_path" => relative_path}) do
       Tracer.with_span "spotter.commit_tests.tool.list_tests" do
-        pid = H.project_id!()
-        Tracer.set_attribute("spotter.project_id", pid)
-        Tracer.set_attribute("spotter.relative_path", relative_path)
-        Tracer.set_attribute("spotter.storage_backend", "dolt")
+        case H.validate_project_scope(project_id) do
+          {:error, mismatch} ->
+            H.text_result(mismatch)
 
-        result =
-          H.dolt_query!(
-            """
-            SELECT id, project_id, test_key, relative_path, framework,
-                   describe_path_json, test_name, line_start, line_end,
-                   given_json, when_json, then_json, confidence,
-                   metadata_json, source_commit_hash, updated_by_git_commit
-            FROM test_specs
-            WHERE project_id = ? AND relative_path = ?
-            ORDER BY describe_path_json, test_name, line_start, framework
-            """,
-            [pid, relative_path]
-          )
+          {:ok, pid} ->
+            Tracer.set_attribute("spotter.project_id", pid)
+            Tracer.set_attribute("spotter.relative_path", relative_path)
+            Tracer.set_attribute("spotter.storage_backend", "dolt")
 
-        tests = Enum.map(H.rows_to_maps(result), &TestTools.deserialize_row/1)
-        H.text_result(%{tests: tests})
+            result =
+              H.dolt_query!(
+                """
+                SELECT id, project_id, test_key, relative_path, framework,
+                       describe_path_json, test_name, line_start, line_end,
+                       given_json, when_json, then_json, confidence,
+                       metadata_json, source_commit_hash, updated_by_git_commit
+                FROM test_specs
+                WHERE project_id = ? AND relative_path = ?
+                ORDER BY describe_path_json, test_name, line_start, framework
+                """,
+                [pid, relative_path]
+              )
+
+            tests = Enum.map(H.rows_to_maps(result), &TestTools.deserialize_row/1)
+            H.text_result(%{tests: tests})
+        end
       end
     end
   end
@@ -92,64 +97,69 @@ defmodule Spotter.Agents.TestTools do
     require OpenTelemetry.Tracer, as: Tracer
     alias Spotter.TestSpec.Agent.ToolHelpers, as: H
 
-    def execute(%{"project_id" => _project_id, "relative_path" => relative_path} = input) do
+    def execute(%{"project_id" => project_id, "relative_path" => relative_path} = input) do
       Tracer.with_span "spotter.commit_tests.tool.create_test" do
-        pid = H.project_id!()
-        Tracer.set_attribute("spotter.project_id", pid)
-        Tracer.set_attribute("spotter.relative_path", relative_path)
-        Tracer.set_attribute("spotter.storage_backend", "dolt")
+        case H.validate_project_scope(project_id) do
+          {:error, mismatch} ->
+            H.text_result(mismatch)
 
-        framework = input["framework"]
-        describe_path = input["describe_path"] || []
-        test_name = input["test_name"]
-        test_key = H.build_test_key(framework, relative_path, describe_path, test_name)
-        commit_hash = input["source_commit_hash"] || H.commit_hash()
+          {:ok, pid} ->
+            Tracer.set_attribute("spotter.project_id", pid)
+            Tracer.set_attribute("spotter.relative_path", relative_path)
+            Tracer.set_attribute("spotter.storage_backend", "dolt")
 
-        H.dolt_query!(
-          """
-          INSERT INTO test_specs (
-            project_id, test_key, relative_path, framework,
-            describe_path_json, test_name, line_start, line_end,
-            given_json, when_json, then_json, confidence,
-            metadata_json, source_commit_hash, updated_by_git_commit
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE
-            relative_path = VALUES(relative_path),
-            framework = VALUES(framework),
-            describe_path_json = VALUES(describe_path_json),
-            test_name = VALUES(test_name),
-            line_start = VALUES(line_start),
-            line_end = VALUES(line_end),
-            given_json = VALUES(given_json),
-            when_json = VALUES(when_json),
-            then_json = VALUES(then_json),
-            confidence = VALUES(confidence),
-            metadata_json = VALUES(metadata_json),
-            source_commit_hash = VALUES(source_commit_hash),
-            updated_by_git_commit = VALUES(updated_by_git_commit)
-          """,
-          [
-            pid,
-            test_key,
-            relative_path,
-            framework,
-            Jason.encode!(describe_path),
-            test_name,
-            input["line_start"],
-            input["line_end"],
-            Jason.encode!(input["given"] || []),
-            Jason.encode!(input["when"] || []),
-            Jason.encode!(input["then"] || []),
-            input["confidence"],
-            Jason.encode!(input["metadata"] || %{}),
-            input["source_commit_hash"],
-            commit_hash
-          ]
-        )
+            framework = input["framework"]
+            describe_path = input["describe_path"] || []
+            test_name = input["test_name"]
+            test_key = H.build_test_key(framework, relative_path, describe_path, test_name)
+            commit_hash = input["source_commit_hash"] || H.commit_hash()
 
-        # Re-read the upserted row
-        row = load_by_key!(pid, test_key)
-        H.text_result(%{test: row})
+            H.dolt_query!(
+              """
+              INSERT INTO test_specs (
+                project_id, test_key, relative_path, framework,
+                describe_path_json, test_name, line_start, line_end,
+                given_json, when_json, then_json, confidence,
+                metadata_json, source_commit_hash, updated_by_git_commit
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON DUPLICATE KEY UPDATE
+                relative_path = VALUES(relative_path),
+                framework = VALUES(framework),
+                describe_path_json = VALUES(describe_path_json),
+                test_name = VALUES(test_name),
+                line_start = VALUES(line_start),
+                line_end = VALUES(line_end),
+                given_json = VALUES(given_json),
+                when_json = VALUES(when_json),
+                then_json = VALUES(then_json),
+                confidence = VALUES(confidence),
+                metadata_json = VALUES(metadata_json),
+                source_commit_hash = VALUES(source_commit_hash),
+                updated_by_git_commit = VALUES(updated_by_git_commit)
+              """,
+              [
+                pid,
+                test_key,
+                relative_path,
+                framework,
+                Jason.encode!(describe_path),
+                test_name,
+                input["line_start"],
+                input["line_end"],
+                Jason.encode!(input["given"] || []),
+                Jason.encode!(input["when"] || []),
+                Jason.encode!(input["then"] || []),
+                input["confidence"],
+                Jason.encode!(input["metadata"] || %{}),
+                input["source_commit_hash"],
+                commit_hash
+              ]
+            )
+
+            # Re-read the upserted row
+            row = load_by_key!(pid, test_key)
+            H.text_result(%{test: row})
+        end
       end
     end
 
@@ -200,39 +210,58 @@ defmodule Spotter.Agents.TestTools do
     @patch_fields ~w(framework describe_path test_name line_start line_end given when then confidence metadata source_commit_hash)
 
     def execute(%{
-          "project_id" => _project_id,
+          "project_id" => project_id,
           "relative_path" => relative_path,
           "test_id" => test_id,
           "patch" => patch
         }) do
       Tracer.with_span "spotter.commit_tests.tool.update_test" do
-        pid = H.project_id!()
-        Tracer.set_attribute("spotter.project_id", pid)
-        Tracer.set_attribute("spotter.relative_path", relative_path)
-        Tracer.set_attribute("spotter.test_id", test_id)
-        Tracer.set_attribute("spotter.storage_backend", "dolt")
+        case H.validate_project_scope(project_id) do
+          {:error, mismatch} ->
+            H.text_result(mismatch)
 
-        # Verify row exists and is scoped
-        case load_by_id(pid, relative_path, test_id) do
-          nil ->
-            H.text_result(%{error: "test_not_found"})
+          {:ok, pid} ->
+            Tracer.set_attribute("spotter.project_id", pid)
+            Tracer.set_attribute("spotter.relative_path", relative_path)
+            Tracer.set_attribute("spotter.test_id", test_id)
+            Tracer.set_attribute("spotter.storage_backend", "dolt")
 
-          _existing ->
-            {sets, params} = build_update(patch)
-
-            if sets == [] do
-              row = load_by_id(pid, relative_path, test_id)
-              H.text_result(%{test: TestTools.deserialize_row(row)})
-            else
-              sql = "UPDATE test_specs SET #{Enum.join(sets, ", ")} WHERE id = ?"
-
-              H.dolt_query!(sql, params ++ [String.to_integer(test_id)])
-
-              row = load_by_id(pid, relative_path, test_id)
-              H.text_result(%{test: TestTools.deserialize_row(row)})
-            end
+            do_update(pid, relative_path, test_id, patch)
         end
       end
+    end
+
+    defp do_update(pid, relative_path, test_id, patch) do
+      alias Spotter.Agents.TestTools
+      alias Spotter.TestSpec.Agent.ToolHelpers, as: H
+
+      case load_by_id(pid, relative_path, test_id) do
+        nil ->
+          H.text_result(%{error: "test_not_found"})
+
+        _existing ->
+          {sets, params} = build_update(patch)
+          apply_update(pid, relative_path, test_id, sets, params)
+      end
+    end
+
+    defp apply_update(pid, relative_path, test_id, [] = _sets, _params) do
+      alias Spotter.Agents.TestTools
+      alias Spotter.TestSpec.Agent.ToolHelpers, as: H
+
+      row = load_by_id(pid, relative_path, test_id)
+      H.text_result(%{test: TestTools.deserialize_row(row)})
+    end
+
+    defp apply_update(pid, relative_path, test_id, sets, params) do
+      alias Spotter.Agents.TestTools
+      alias Spotter.TestSpec.Agent.ToolHelpers, as: H
+
+      sql = "UPDATE test_specs SET #{Enum.join(sets, ", ")} WHERE id = ?"
+      H.dolt_query!(sql, params ++ [String.to_integer(test_id)])
+
+      row = load_by_id(pid, relative_path, test_id)
+      H.text_result(%{test: TestTools.deserialize_row(row)})
     end
 
     defp load_by_id(project_id, relative_path, test_id) do
@@ -298,23 +327,28 @@ defmodule Spotter.Agents.TestTools do
     alias Spotter.TestSpec.Agent.ToolHelpers, as: H
 
     def execute(%{
-          "project_id" => _project_id,
+          "project_id" => project_id,
           "relative_path" => relative_path,
           "test_id" => test_id
         }) do
       Tracer.with_span "spotter.commit_tests.tool.delete_test" do
-        pid = H.project_id!()
-        Tracer.set_attribute("spotter.project_id", pid)
-        Tracer.set_attribute("spotter.relative_path", relative_path)
-        Tracer.set_attribute("spotter.test_id", test_id)
-        Tracer.set_attribute("spotter.storage_backend", "dolt")
+        case H.validate_project_scope(project_id) do
+          {:error, mismatch} ->
+            H.text_result(mismatch)
 
-        H.dolt_query!(
-          "DELETE FROM test_specs WHERE id = ? AND project_id = ? AND relative_path = ?",
-          [String.to_integer(test_id), pid, relative_path]
-        )
+          {:ok, pid} ->
+            Tracer.set_attribute("spotter.project_id", pid)
+            Tracer.set_attribute("spotter.relative_path", relative_path)
+            Tracer.set_attribute("spotter.test_id", test_id)
+            Tracer.set_attribute("spotter.storage_backend", "dolt")
 
-        H.text_result(%{ok: true})
+            H.dolt_query!(
+              "DELETE FROM test_specs WHERE id = ? AND project_id = ? AND relative_path = ?",
+              [String.to_integer(test_id), pid, relative_path]
+            )
+
+            H.text_result(%{ok: true})
+        end
       end
     end
   end
@@ -336,16 +370,21 @@ defmodule Spotter.Agents.TestTools do
     alias Spotter.Agents.TestTools, as: TTools
     alias Spotter.TestSpec.Agent.ToolHelpers, as: H
 
-    def execute(%{"project_id" => _project_id, "commit_hash" => commit_hash}) do
+    def execute(%{"project_id" => project_id, "commit_hash" => commit_hash}) do
       Tracer.with_span "spotter.commit_tests.tool.list_spec_requirements" do
-        pid = H.project_id!()
-        Tracer.set_attribute("spotter.project_id", pid)
-        Tracer.set_attribute("spotter.commit_hash", commit_hash)
+        case H.validate_project_scope(project_id) do
+          {:error, mismatch} ->
+            H.text_result(mismatch)
 
-        requirements = TTools.fetch_spec_requirements(pid, commit_hash)
-        Tracer.set_attribute("spotter.requirement_count", length(requirements))
+          {:ok, pid} ->
+            Tracer.set_attribute("spotter.project_id", pid)
+            Tracer.set_attribute("spotter.commit_hash", commit_hash)
 
-        H.text_result(%{requirements: requirements})
+            requirements = TTools.fetch_spec_requirements(pid, commit_hash)
+            Tracer.set_attribute("spotter.requirement_count", length(requirements))
+
+            H.text_result(%{requirements: requirements})
+        end
       end
     end
   end
@@ -389,18 +428,23 @@ defmodule Spotter.Agents.TestTools do
     alias Spotter.TestSpec.Agent.ToolHelpers, as: H
 
     def execute(%{
-          "project_id" => _project_id,
+          "project_id" => project_id,
           "commit_hash" => commit_hash,
           "links" => links
         }) do
       Tracer.with_span "spotter.commit_tests.tool.upsert_spec_test_links" do
-        pid = H.project_id!()
-        Tracer.set_attribute("spotter.project_id", pid)
-        Tracer.set_attribute("spotter.commit_hash", commit_hash)
-        Tracer.set_attribute("spotter.link_count", length(links))
+        case H.validate_project_scope(project_id) do
+          {:error, mismatch} ->
+            H.text_result(mismatch)
 
-        results = TTools.upsert_links(pid, commit_hash, links)
-        H.text_result(%{upserted: results.ok, skipped: results.skipped})
+          {:ok, pid} ->
+            Tracer.set_attribute("spotter.project_id", pid)
+            Tracer.set_attribute("spotter.commit_hash", commit_hash)
+            Tracer.set_attribute("spotter.link_count", length(links))
+
+            results = TTools.upsert_links(pid, commit_hash, links)
+            H.text_result(%{upserted: results.ok, skipped: results.skipped})
+        end
       end
     end
   end

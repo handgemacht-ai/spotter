@@ -9,35 +9,21 @@ Execute a code review by resolving open review annotations using Spotter MCP too
 
 ## Workflow
 
-### 1. Determine project_id
+### 1. List sessions for the current project
 
-Call `mcp__spotter__list_projects` and pick the relevant project:
+The MCP server automatically scopes all requests to the current project via the `x-spotter-project-dir` header. No need to select a project.
 
-```json
-{
-  "filter": {},
-  "limit": 25
-}
-```
-
-Each project returns `id`, `name`, `session_count`, and `open_review_annotation_count`. Pick by `name` and use `open_review_annotation_count` to prioritize projects with pending reviews.
-
-### 2. Determine review scope
-
-Call `mcp__spotter__list_sessions` to find sessions for the project:
+Call `mcp__spotter__list_sessions` to find sessions:
 
 ```json
 {
-  "filter": {
-    "project_id": { "eq": "<project_id>" }
-  },
   "limit": 50
 }
 ```
 
 Collect the `id` values from the returned sessions.
 
-### 3. List open review annotations
+### 2. List open review annotations
 
 Call `mcp__spotter__list_review_annotations` with:
 
@@ -53,7 +39,7 @@ Call `mcp__spotter__list_review_annotations` with:
 
 This tool is review-only: it never returns `purpose=explain` annotations, so no `purpose` filter is needed. Results include `state`, `purpose`, `source`, `selected_text`, `comment`, `inserted_at`, and loaded `subagent`, `file_refs`, and `message_refs` (with full message content).
 
-### 4. Resolve each annotation
+### 3. Resolve each annotation
 
 For each annotation, make the necessary code or process changes, then call `mcp__spotter__resolve_annotation`.
 

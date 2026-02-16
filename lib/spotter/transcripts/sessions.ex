@@ -39,10 +39,40 @@ defmodule Spotter.Transcripts.Sessions do
     end
   end
 
-  defp find_or_create_project(cwd) when is_binary(cwd) do
-    config = Config.read!()
+  @doc """
+  Matches a cwd path against configured project patterns and returns the
+  matching project name and pattern source.
 
-    case match_project(cwd, config.projects) do
+  Returns `{:ok, name, pattern_source}` or `:no_match`.
+  """
+  @spec match_project_by_cwd(String.t()) :: {:ok, String.t(), String.t()} | :no_match
+  def match_project_by_cwd(cwd) when is_binary(cwd) do
+    config = Config.read!()
+    match_project(cwd, config.projects)
+  end
+
+  @doc """
+  Resolves a cwd path to an existing project record without creating one.
+
+  Returns `{:ok, project}` or `{:error, reason}`.
+  """
+  @spec resolve_project_by_cwd(String.t()) :: {:ok, Project.t()} | {:error, term()}
+  def resolve_project_by_cwd(cwd) when is_binary(cwd) do
+    case match_project_by_cwd(cwd) do
+      {:ok, name, _pattern} ->
+        case Project |> Ash.Query.filter(name == ^name) |> Ash.read_one() do
+          {:ok, %Project{} = project} -> {:ok, project}
+          {:ok, nil} -> {:error, {:project_not_found, cwd}}
+          {:error, _} = error -> error
+        end
+
+      :no_match ->
+        {:error, {:project_not_found, cwd}}
+    end
+  end
+
+  defp find_or_create_project(cwd) when is_binary(cwd) do
+    case match_project_by_cwd(cwd) do
       {:ok, name, pattern} ->
         upsert_project(name, pattern)
 

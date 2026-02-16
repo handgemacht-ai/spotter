@@ -7,6 +7,7 @@ defmodule SpotterWeb.SpotterMcpPlug do
 
   @behaviour Plug
 
+  alias Spotter.Transcripts.Sessions
   alias SpotterWeb.OtelTraceHelpers
 
   require Logger
@@ -20,7 +21,7 @@ defmodule SpotterWeb.SpotterMcpPlug do
     otp_app: :spotter,
     mcp_name: "Spotter",
     mcp_server_version: "1.0.0",
-    tools: [:list_projects, :list_sessions, :list_review_annotations, :resolve_annotation]
+    tools: [:list_sessions, :list_review_annotations, :resolve_annotation]
   ]
 
   @impl true
@@ -71,6 +72,8 @@ defmodule SpotterWeb.SpotterMcpPlug do
 
     maybe_log_get_fingerprint(conn.method, peer_ip, accepts_sse, accept_str, user_agent)
 
+    conn = resolve_mcp_project_scope(conn, attrs)
+
     case {conn.method, accepts_sse} do
       {"GET", true} ->
         handle_sse_get(conn, attrs)
@@ -88,6 +91,36 @@ defmodule SpotterWeb.SpotterMcpPlug do
           |> OtelTraceHelpers.put_trace_response_header()
           |> call_router_with_rescue(router_opts, tool_name)
         end
+    end
+  end
+
+  defp resolve_mcp_project_scope(conn, _attrs) do
+    require OpenTelemetry.Tracer, as: Tracer
+
+    case Plug.Conn.get_req_header(conn, "x-spotter-project-dir") do
+      [project_dir | _] when project_dir != "" ->
+        Tracer.set_attribute("spotter.mcp.scope.project_dir_present", true)
+
+        case Sessions.resolve_project_by_cwd(project_dir) do
+          {:ok, project} ->
+            Tracer.set_attribute("spotter.mcp.scope.project_id", project.id)
+
+            Ash.PlugHelpers.set_context(conn, %{
+              spotter_mcp_scope: %{project_id: project.id, project_dir: project_dir}
+            })
+
+          {:error, reason} ->
+            error_str = inspect(reason)
+            Tracer.set_attribute("spotter.mcp.scope.error", error_str)
+
+            Ash.PlugHelpers.set_context(conn, %{spotter_mcp_scope_error: error_str})
+        end
+
+      _ ->
+        Tracer.set_attribute("spotter.mcp.scope.project_dir_present", false)
+        Tracer.set_attribute("spotter.mcp.scope.error", "missing_header")
+
+        Ash.PlugHelpers.set_context(conn, %{spotter_mcp_scope_error: "missing_header"})
     end
   end
 

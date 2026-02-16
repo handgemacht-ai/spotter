@@ -35,6 +35,21 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
     {conn.status, Jason.decode!(conn.resp_body), conn}
   end
 
+  defp mcp_post_with_project_dir(body, session_id, project_dir) do
+    conn =
+      Phoenix.ConnTest.build_conn()
+      |> Plug.Conn.put_req_header("content-type", "application/json")
+      |> Plug.Conn.put_req_header("x-spotter-project-dir", project_dir)
+
+    conn =
+      if session_id,
+        do: Plug.Conn.put_req_header(conn, "mcp-session-id", session_id),
+        else: conn
+
+    conn = Phoenix.ConnTest.dispatch(conn, @endpoint, :post, "/api/mcp", body)
+    {conn.status, Jason.decode!(conn.resp_body), conn}
+  end
+
   defp initialize do
     {200, body, conn} =
       mcp_post(%{
@@ -65,7 +80,7 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
   end
 
   describe "tools/list" do
-    test "returns all four tool names" do
+    test "returns scoped tool names without list_projects" do
       {_body, session_id} = initialize()
 
       {200, body, _conn} =
@@ -81,7 +96,7 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
 
       tool_names = Enum.map(body["result"]["tools"], & &1["name"]) |> Enum.sort()
 
-      assert "list_projects" in tool_names
+      refute "list_projects" in tool_names
       assert "list_sessions" in tool_names
       assert "list_review_annotations" in tool_names
       assert "resolve_annotation" in tool_names
@@ -155,152 +170,87 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
     end
   end
 
-  describe "tools/call" do
-    test "list_projects returns JSON text content", %{project: _project} do
+  describe "project scope resolution from x-spotter-project-dir header" do
+    test "valid header resolves project scope in Ash context", %{project: project} do
+      project_dir = "test-mcp-project"
+
       {_body, session_id} = initialize()
 
-      {200, body, _conn} =
+      {200, _body, conn} =
+        mcp_post_with_project_dir(
+          %{
+            "jsonrpc" => "2.0",
+            "id" => 100,
+            "method" => "tools/list",
+            "params" => %{}
+          },
+          session_id,
+          project_dir
+        )
+
+      ash_context = get_in(conn.private, [:ash, :context]) || %{}
+      scope = ash_context[:spotter_mcp_scope]
+      assert scope != nil
+      assert scope.project_id == project.id
+      assert scope.project_dir == project_dir
+    end
+
+    test "missing header sets scope error context" do
+      {_body, session_id} = initialize()
+
+      {200, _body, conn} =
         mcp_post(
           %{
             "jsonrpc" => "2.0",
-            "id" => 3,
-            "method" => "tools/call",
-            "params" => %{
-              "name" => "list_projects",
-              "arguments" => %{}
-            }
+            "id" => 101,
+            "method" => "tools/list",
+            "params" => %{}
           },
           session_id
         )
 
-      result = body["result"]
-      assert result["isError"] == false
-
-      [content | _] = result["content"]
-      assert content["type"] == "text"
-
-      decoded = Jason.decode!(content["text"])
-      assert is_list(decoded)
-      assert decoded != []
+      ash_context = get_in(conn.private, [:ash, :context]) || %{}
+      assert ash_context[:spotter_mcp_scope_error] == "missing_header"
     end
 
-    test "list_projects returns name, session_count, and open_review_annotation_count", %{
-      project: project,
-      session: session
-    } do
-      # Create a second session
-      session2 =
-        Ash.create!(Session, %{
-          session_id: Ash.UUID.generate(),
-          transcript_dir: "test-dir-2",
-          project_id: project.id
-        })
-
-      # 2 open review annotations (should be counted)
-      Ash.create!(Annotation, %{
-        session_id: session.id,
-        source: :transcript,
-        selected_text: "a",
-        comment: "review 1",
-        purpose: :review,
-        state: :open,
-        project_id: project.id
-      })
-
-      Ash.create!(Annotation, %{
-        session_id: session2.id,
-        source: :transcript,
-        selected_text: "b",
-        comment: "review 2",
-        purpose: :review,
-        state: :open,
-        project_id: project.id
-      })
-
-      # 1 closed review (should NOT be counted)
-      Ash.create!(Annotation, %{
-        session_id: session.id,
-        source: :transcript,
-        selected_text: "c",
-        comment: "closed review",
-        purpose: :review,
-        state: :closed,
-        project_id: project.id
-      })
-
-      # 1 open explain (should NOT be counted)
-      Ash.create!(Annotation, %{
-        session_id: session.id,
-        source: :transcript,
-        selected_text: "d",
-        comment: "explain",
-        purpose: :explain,
-        state: :open,
-        project_id: project.id
-      })
-
+    test "unmatched header sets scope error context" do
       {_body, session_id} = initialize()
 
-      {200, body, _conn} =
-        mcp_post(
+      {200, _body, conn} =
+        mcp_post_with_project_dir(
           %{
             "jsonrpc" => "2.0",
-            "id" => 13,
-            "method" => "tools/call",
-            "params" => %{
-              "name" => "list_projects",
-              "arguments" => %{}
-            }
+            "id" => 102,
+            "method" => "tools/list",
+            "params" => %{}
           },
-          session_id
+          session_id,
+          "/no-match-whatsoever"
         )
 
-      [content | _] = body["result"]["content"]
-      projects = Jason.decode!(content["text"])
-      entry = Enum.find(projects, &(&1["id"] == project.id))
-
-      assert entry["name"] == project.name
-      assert entry["session_count"] == 2
-      assert entry["open_review_annotation_count"] == 2
+      ash_context = get_in(conn.private, [:ash, :context]) || %{}
+      assert ash_context[:spotter_mcp_scope_error] != nil
+      assert ash_context[:spotter_mcp_scope] == nil
     end
 
-    test "list_projects returns name in output", %{project: project} do
+    test "scoped list_sessions only returns sessions for scoped project", %{project: project} do
+      project_dir = "test-mcp-project"
+
       {_body, session_id} = initialize()
 
       {200, body, _conn} =
-        mcp_post(
+        mcp_post_with_project_dir(
           %{
             "jsonrpc" => "2.0",
-            "id" => 10,
-            "method" => "tools/call",
-            "params" => %{
-              "name" => "list_projects",
-              "arguments" => %{}
-            }
-          },
-          session_id
-        )
-
-      [content | _] = body["result"]["content"]
-      [first | _] = Jason.decode!(content["text"])
-      assert first["name"] == project.name
-    end
-
-    test "list_sessions supports filtering by project_id", %{project: project} do
-      {_body, session_id} = initialize()
-
-      {200, body, _conn} =
-        mcp_post(
-          %{
-            "jsonrpc" => "2.0",
-            "id" => 11,
+            "id" => 103,
             "method" => "tools/call",
             "params" => %{
               "name" => "list_sessions",
-              "arguments" => %{"filter" => %{"project_id" => %{"eq" => project.id}}}
+              "arguments" => %{}
             }
           },
-          session_id
+          session_id,
+          project_dir
         )
 
       result = body["result"]
@@ -315,20 +265,83 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
       end)
     end
 
-    test "list_review_annotations output includes public fields", %{session: session} do
+    test "missing scope causes list_sessions to return error" do
+      {_body, session_id} = initialize()
+
+      {200, body, _conn} =
+        mcp_post(
+          %{
+            "jsonrpc" => "2.0",
+            "id" => 104,
+            "method" => "tools/call",
+            "params" => %{
+              "name" => "list_sessions",
+              "arguments" => %{}
+            }
+          },
+          session_id
+        )
+
+      # AshAi returns scope errors as isError result or JSON-RPC error
+      cond do
+        body["result"] != nil ->
+          assert body["result"]["isError"] == true
+
+        body["error"] != nil ->
+          assert is_binary(body["error"]["message"])
+      end
+    end
+  end
+
+  describe "tools/call" do
+    test "list_sessions returns scoped sessions", %{project: project} do
+      {_body, session_id} = initialize()
+
+      {200, body, _conn} =
+        mcp_post_with_project_dir(
+          %{
+            "jsonrpc" => "2.0",
+            "id" => 11,
+            "method" => "tools/call",
+            "params" => %{
+              "name" => "list_sessions",
+              "arguments" => %{}
+            }
+          },
+          session_id,
+          "test-mcp-project"
+        )
+
+      result = body["result"]
+      assert result["isError"] in [false, nil]
+
+      [content | _] = result["content"]
+      decoded = Jason.decode!(content["text"])
+      assert is_list(decoded)
+
+      Enum.each(decoded, fn session ->
+        assert session["project_id"] == project.id
+      end)
+    end
+
+    test "list_review_annotations output includes public fields", %{
+      session: session,
+      project: project
+    } do
       Ash.create!(Annotation, %{
         session_id: session.id,
         source: :transcript,
         selected_text: "check this",
         comment: "review comment",
         purpose: :review,
-        state: :open
+        state: :open,
+        project_id: project.id
       })
 
       {_body, session_id} = initialize()
 
       {200, body, _conn} =
-        mcp_post(
+        mcp_post_with_project_dir(
           %{
             "jsonrpc" => "2.0",
             "id" => 12,
@@ -338,7 +351,8 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
               "arguments" => %{}
             }
           },
-          session_id
+          session_id,
+          "test-mcp-project"
         )
 
       [content | _] = body["result"]["content"]
@@ -352,7 +366,10 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
       assert annotation["inserted_at"] != nil
     end
 
-    test "list_review_annotations excludes purpose=explain", %{session: session} do
+    test "list_review_annotations excludes purpose=explain", %{
+      session: session,
+      project: project
+    } do
       review =
         Ash.create!(Annotation, %{
           session_id: session.id,
@@ -360,7 +377,8 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
           selected_text: "review item",
           comment: "needs review",
           purpose: :review,
-          state: :open
+          state: :open,
+          project_id: project.id
         })
 
       _explain =
@@ -370,13 +388,14 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
           selected_text: "explain item",
           comment: "explanation",
           purpose: :explain,
-          state: :open
+          state: :open,
+          project_id: project.id
         })
 
       {_body, session_id} = initialize()
 
       {200, body, _conn} =
-        mcp_post(
+        mcp_post_with_project_dir(
           %{
             "jsonrpc" => "2.0",
             "id" => 14,
@@ -386,7 +405,8 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
               "arguments" => %{}
             }
           },
-          session_id
+          session_id,
+          "test-mcp-project"
         )
 
       [content | _] = body["result"]["content"]
@@ -398,11 +418,11 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
       refute "explain" in purposes
     end
 
-    test "tool call with invalid filter returns structured JSON-RPC error", %{} do
+    test "tool call with invalid filter returns error", %{} do
       {_body, session_id} = initialize()
 
       {200, body, _conn} =
-        mcp_post(
+        mcp_post_with_project_dir(
           %{
             "jsonrpc" => "2.0",
             "id" => 15,
@@ -412,7 +432,8 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
               "arguments" => %{"filter" => %{"cwd" => %{"eq" => "/fake"}}}
             }
           },
-          session_id
+          session_id,
+          "test-mcp-project"
         )
 
       # AshAi returns tool errors as isError result or JSON-RPC error
@@ -428,19 +449,23 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
       end
     end
 
-    test "resolve_annotation updates state and writes metadata", %{session: session} do
+    test "resolve_annotation updates state and writes metadata", %{
+      session: session,
+      project: project
+    } do
       annotation =
         Ash.create!(Annotation, %{
           session_id: session.id,
           source: :transcript,
           selected_text: "fix this",
-          comment: "needs work"
+          comment: "needs work",
+          project_id: project.id
         })
 
       {_body, session_id} = initialize()
 
       {200, body, _conn} =
-        mcp_post(
+        mcp_post_with_project_dir(
           %{
             "jsonrpc" => "2.0",
             "id" => 4,
@@ -456,7 +481,8 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
               }
             }
           },
-          session_id
+          session_id,
+          "test-mcp-project"
         )
 
       result = body["result"]

@@ -22,6 +22,22 @@ defmodule Spotter.Transcripts.Session do
       pagination keyset?: true, required?: false
     end
 
+    read :mcp_list do
+      pagination keyset?: true, required?: false
+
+      prepare fn query, _context ->
+        require Ash.Query
+
+        case query.context[:spotter_mcp_scope] do
+          %{project_id: project_id} when is_binary(project_id) ->
+            Ash.Query.filter(query, project_id == ^project_id)
+
+          _ ->
+            Ash.Query.add_error(query, "MCP project scope is required but missing or invalid")
+        end
+      end
+    end
+
     create :create do
       primary? true
 

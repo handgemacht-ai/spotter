@@ -154,6 +154,79 @@ defmodule Spotter.Agents.TestToolsTest do
     end
   end
 
+  describe "project scope mismatch guards" do
+    test "list_tests returns project_scope_mismatch on payload mismatch", %{
+      project_id: project_id
+    } do
+      wrong_id = Ecto.UUID.generate()
+
+      {:ok, result} =
+        ListTests.execute(%{
+          "project_id" => wrong_id,
+          "relative_path" => "test/foo_test.exs"
+        })
+
+      decoded = decode_result(result)
+      assert decoded["error"] == "project_scope_mismatch"
+      assert decoded["scoped_project_id"] == project_id
+      assert decoded["payload_project_id"] == wrong_id
+    end
+
+    test "create_test returns project_scope_mismatch and inserts zero rows", %{
+      project_id: project_id
+    } do
+      wrong_id = Ecto.UUID.generate()
+
+      {:ok, result} =
+        CreateTest.execute(%{
+          "project_id" => wrong_id,
+          "relative_path" => "test/mismatch_test.exs",
+          "framework" => "ExUnit",
+          "test_name" => "should not exist",
+          "source_commit_hash" => String.duplicate("a", 40)
+        })
+
+      decoded = decode_result(result)
+      assert decoded["error"] == "project_scope_mismatch"
+
+      # Verify nothing was inserted
+      {:ok, list_result} =
+        ListTests.execute(%{
+          "project_id" => project_id,
+          "relative_path" => "test/mismatch_test.exs"
+        })
+
+      assert %{"tests" => []} = decode_result(list_result)
+    end
+
+    test "update_test returns project_scope_mismatch on payload mismatch" do
+      wrong_id = Ecto.UUID.generate()
+
+      {:ok, result} =
+        UpdateTest.execute(%{
+          "project_id" => wrong_id,
+          "relative_path" => "test/foo_test.exs",
+          "test_id" => "1",
+          "patch" => %{"test_name" => "renamed"}
+        })
+
+      assert %{"error" => "project_scope_mismatch"} = decode_result(result)
+    end
+
+    test "delete_test returns project_scope_mismatch on payload mismatch" do
+      wrong_id = Ecto.UUID.generate()
+
+      {:ok, result} =
+        DeleteTest.execute(%{
+          "project_id" => wrong_id,
+          "relative_path" => "test/foo_test.exs",
+          "test_id" => "1"
+        })
+
+      assert %{"error" => "project_scope_mismatch"} = decode_result(result)
+    end
+  end
+
   defp decode_result(%{"content" => [%{"type" => "text", "text" => json}]}) do
     Jason.decode!(json)
   end

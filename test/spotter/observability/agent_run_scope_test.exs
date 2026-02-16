@@ -57,12 +57,12 @@ defmodule Spotter.Observability.AgentRunScopeTest do
   end
 
   describe "resolve_for_current_process/0" do
-    test "returns scope when exactly one entry exists" do
+    test "returns error when table has entries but current process has no ancestor link" do
       pid = spawn(fn -> Process.sleep(:infinity) end)
       scope = %{project_id: "proj-1", commit_hash: "abc123", agent_kind: "hotspot"}
 
       AgentRunScope.put(pid, scope)
-      assert {:ok, ^scope} = AgentRunScope.resolve_for_current_process()
+      assert {:error, :no_scope} = AgentRunScope.resolve_for_current_process()
 
       AgentRunScope.delete(pid)
       Process.exit(pid, :kill)
@@ -70,6 +70,22 @@ defmodule Spotter.Observability.AgentRunScopeTest do
 
     test "returns error when table is empty" do
       assert {:error, :no_scope} = AgentRunScope.resolve_for_current_process()
+    end
+
+    test "does not arbitrarily select from multiple ETS entries" do
+      pids =
+        for i <- 1..3 do
+          pid = spawn(fn -> Process.sleep(:infinity) end)
+          AgentRunScope.put(pid, %{project_id: "proj-#{i}", agent_kind: "test"})
+          pid
+        end
+
+      assert {:error, :no_scope} = AgentRunScope.resolve_for_current_process()
+
+      for pid <- pids do
+        AgentRunScope.delete(pid)
+        Process.exit(pid, :kill)
+      end
     end
 
     test "returns scope from ancestor pid if present in ETS" do

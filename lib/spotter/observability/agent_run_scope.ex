@@ -7,6 +7,12 @@ defmodule Spotter.Observability.AgentRunScope do
   `ClaudeAgentSDK.TaskSupervisor`) to resolve their parent agent's
   scope without relying on process dictionary inheritance.
 
+  Resolution is **fail-closed**: `resolve_for_current_process/0` only
+  resolves scope via the calling process's `$ancestors` chain. If no
+  ancestor pid has a matching ETS entry, `{:error, :no_scope}` is
+  returned. There is no global table scan fallback, preventing
+  cross-project scope leakage under concurrent agent runs.
+
   ## Usage
 
   Runners call `put/2` after creating the MCP server and `delete/1`
@@ -80,9 +86,8 @@ defmodule Spotter.Observability.AgentRunScope do
 
   @doc """
   Resolves the scope for the current process by inspecting `$ancestors`
-  for a pid with scope in ETS, falling back to a table scan when the
-  ancestor chain does not contain a direct match (common when tool
-  execution is dispatched via `TaskSupervisor`).
+  for a pid with scope in ETS. Fails closed with `{:error, :no_scope}`
+  when no ancestor has a matching entry — no global table scan is attempted.
 
   Returns `{:ok, scope_map}` or `{:error, :no_scope}`.
   """
@@ -92,7 +97,7 @@ defmodule Spotter.Observability.AgentRunScope do
 
     case resolve_via_ancestors() do
       {:ok, _} = hit -> hit
-      :error -> resolve_via_scan()
+      :error -> {:error, :no_scope}
     end
   rescue
     _ -> {:error, :no_scope}
@@ -112,16 +117,6 @@ defmodule Spotter.Observability.AgentRunScope do
       _name ->
         nil
     end)
-  end
-
-  # Fallback: scan the (tiny) table for a single matching entry.
-  # Safe because concurrent agent runs are rare and the table has < 10 entries.
-  defp resolve_via_scan do
-    case :ets.tab2list(@table) do
-      [{_pid, scope}] -> {:ok, scope}
-      [_ | _] = entries -> {:ok, elem(hd(entries), 1)}
-      [] -> {:error, :no_scope}
-    end
   end
 
   defp ensure_table do

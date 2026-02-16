@@ -16,6 +16,22 @@ defmodule Spotter.Transcripts.Annotation do
       filter expr(purpose == :review)
     end
 
+    read :mcp_read_review_annotations do
+      filter expr(purpose == :review)
+
+      prepare fn query, _context ->
+        require Ash.Query
+
+        case query.context[:spotter_mcp_scope] do
+          %{project_id: project_id} when is_binary(project_id) ->
+            Ash.Query.filter(query, project_id == ^project_id)
+
+          _ ->
+            Ash.Query.add_error(query, "MCP project scope is required but missing or invalid")
+        end
+      end
+    end
+
     create :create do
       primary? true
 
@@ -62,6 +78,65 @@ defmodule Spotter.Transcripts.Annotation do
         constraints: [
           one_of: [:code_change, :process_change, :tooling_change, :doc_change, :wont_fix]
         ]
+
+      change set_attribute(:state, :closed)
+
+      change fn changeset, _context ->
+        resolution =
+          changeset
+          |> Ash.Changeset.get_argument(:resolution)
+          |> to_string()
+          |> String.trim()
+
+        if resolution == "" do
+          Ash.Changeset.add_error(changeset, field: :resolution, message: "must be non-empty")
+        else
+          kind = Ash.Changeset.get_argument(changeset, :resolution_kind)
+          existing = Ash.Changeset.get_data(changeset, :metadata) || %{}
+
+          merged =
+            existing
+            |> Map.put("resolution", resolution)
+            |> Map.put("resolved_at", DateTime.utc_now() |> DateTime.to_iso8601())
+            |> then(fn m ->
+              if kind, do: Map.put(m, "resolution_kind", Atom.to_string(kind)), else: m
+            end)
+
+          Ash.Changeset.change_attribute(changeset, :metadata, merged)
+        end
+      end
+    end
+
+    update :mcp_resolve do
+      accept []
+      require_atomic? false
+
+      argument :resolution, :string, allow_nil?: false
+
+      argument :resolution_kind, :atom,
+        allow_nil?: true,
+        constraints: [
+          one_of: [:code_change, :process_change, :tooling_change, :doc_change, :wont_fix]
+        ]
+
+      validate fn changeset, _context ->
+        scope = changeset.context[:spotter_mcp_scope]
+        annotation_project_id = Ash.Changeset.get_data(changeset, :project_id)
+
+        cond do
+          is_nil(scope) or not is_map(scope) ->
+            {:error, "MCP project scope is required but missing or invalid"}
+
+          is_nil(annotation_project_id) ->
+            :ok
+
+          to_string(annotation_project_id) != to_string(scope.project_id) ->
+            {:error, "annotation belongs to a different project than the MCP scope"}
+
+          true ->
+            :ok
+        end
+      end
 
       change set_attribute(:state, :closed)
 
