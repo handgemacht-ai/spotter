@@ -6,6 +6,8 @@ defmodule Spotter.Observability.AgentRunScopeTest do
   @table AgentRunScope
 
   setup do
+    AgentRunScope.ensure_table_exists()
+
     if :ets.whereis(@table) != :undefined do
       :ets.delete_all_objects(@table)
     end
@@ -107,6 +109,40 @@ defmodule Spotter.Observability.AgentRunScopeTest do
       AgentRunScope.delete(registry_pid)
       Process.exit(registry_pid, :kill)
     end
+
+    test "returns scope from $callers lineage for Task.Supervisor child workers" do
+      sup_name = :"scope-lineage-sup-#{System.unique_integer([:positive])}"
+      sup = start_supervised!({Task.Supervisor, name: sup_name})
+
+      registry_pid =
+        spawn(fn ->
+          receive do
+            {:run, parent} ->
+              {:ok, _task_pid} =
+                Task.Supervisor.start_child(sup, fn ->
+                  send(parent, {
+                    :resolved_from_lineage,
+                    AgentRunScope.resolve_for_current_process(),
+                    Process.get(:"$ancestors", []),
+                    Process.get(:"$callers", [])
+                  })
+                end)
+
+              Process.sleep(250)
+          end
+        end)
+
+      scope = %{project_id: "proj-caller", agent_kind: "commit_test"}
+      AgentRunScope.put(registry_pid, scope)
+      send(registry_pid, {:run, self()})
+
+      assert_receive {:resolved_from_lineage, {:ok, ^scope}, ancestors, callers}, 1_000
+      refute registry_pid in ancestors
+      assert registry_pid in callers
+
+      AgentRunScope.delete(registry_pid)
+      Process.exit(registry_pid, :kill)
+    end
   end
 
   describe "deterministic and fail-safe behavior" do
@@ -127,8 +163,7 @@ defmodule Spotter.Observability.AgentRunScopeTest do
     end
 
     test "concurrent put/delete does not raise" do
-      # Ensure table exists before spawning concurrent tasks,
-      # so it's owned by the test process (not a short-lived Task).
+      # Ensure table exists before spawning concurrent tasks.
       AgentRunScope.ensure_table_exists()
 
       tasks =
@@ -146,6 +181,26 @@ defmodule Spotter.Observability.AgentRunScopeTest do
 
       results = Task.await_many(tasks, 5000)
       assert Enum.all?(results, &(&1 == :ok))
+    end
+
+    test "table is not owned by short-lived caller processes" do
+      owner_before = :ets.info(@table, :owner)
+      parent = self()
+
+      caller =
+        spawn(fn ->
+          AgentRunScope.ensure_table_exists()
+          send(parent, {:caller_done, self(), :ets.info(@table, :owner)})
+        end)
+
+      assert_receive {:caller_done, ^caller, owner_during}
+      assert owner_during == owner_before
+
+      Process.exit(caller, :kill)
+      Process.sleep(25)
+
+      assert :ets.whereis(@table) != :undefined
+      assert :ets.info(@table, :owner) == owner_before
     end
   end
 end

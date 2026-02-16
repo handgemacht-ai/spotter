@@ -8,10 +8,11 @@ defmodule Spotter.Observability.AgentRunScope do
   scope without relying on process dictionary inheritance.
 
   Resolution is **fail-closed**: `resolve_for_current_process/0` only
-  resolves scope via the calling process's `$ancestors` chain. If no
-  ancestor pid has a matching ETS entry, `{:error, :no_scope}` is
-  returned. There is no global table scan fallback, preventing
-  cross-project scope leakage under concurrent agent runs.
+  resolves scope via the calling process lineage (`$ancestors` and
+  `$callers`). If no lineage pid has a matching ETS entry,
+  `{:error, :no_scope}` is returned. There is no global table scan
+  fallback, preventing cross-project scope leakage under concurrent
+  agent runs.
 
   ## Usage
 
@@ -30,6 +31,8 @@ defmodule Spotter.Observability.AgentRunScope do
   """
 
   @table __MODULE__
+  @owner Spotter.Observability.AgentRunScopeOwner
+  @registry_hint_key :claude_agent_sdk_tool_registry_pid
 
   @type scope_map :: %{
           optional(:project_id) => String.t(),
@@ -41,7 +44,8 @@ defmodule Spotter.Observability.AgentRunScope do
 
   @doc false
   def create_table do
-    :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
+    ensure_owner_started()
+    :ok
   end
 
   @doc """
@@ -85,9 +89,10 @@ defmodule Spotter.Observability.AgentRunScope do
   end
 
   @doc """
-  Resolves the scope for the current process by inspecting `$ancestors`
-  for a pid with scope in ETS. Fails closed with `{:error, :no_scope}`
-  when no ancestor has a matching entry — no global table scan is attempted.
+  Resolves the scope for the current process by inspecting process
+  lineage (`$ancestors` and `$callers`) for a pid with scope in ETS.
+  Fails closed with `{:error, :no_scope}` when no lineage pid has a
+  matching entry — no global table scan is attempted.
 
   Returns `{:ok, scope_map}` or `{:error, :no_scope}`.
   """
@@ -95,36 +100,73 @@ defmodule Spotter.Observability.AgentRunScope do
   def resolve_for_current_process do
     ensure_table()
 
-    case resolve_via_ancestors() do
-      {:ok, _} = hit -> hit
-      :error -> {:error, :no_scope}
+    case resolve_via_registry_hint() do
+      {:ok, _} = hit ->
+        hit
+
+      :error ->
+        case resolve_via_lineage() do
+          {:ok, _} = hit -> hit
+          :error -> {:error, :no_scope}
+        end
     end
   rescue
     _ -> {:error, :no_scope}
   end
 
-  # Walk $ancestors looking for a pid that has scope stored in ETS.
-  defp resolve_via_ancestors do
-    ancestors = Process.get(:"$ancestors", [])
+  # Some SDK paths may provide the registry pid directly.
+  defp resolve_via_registry_hint do
+    case Process.get(@registry_hint_key) do
+      pid when is_pid(pid) -> lookup_scope(pid)
+      _ -> :error
+    end
+  end
 
-    Enum.find_value(ancestors, :error, fn
-      pid when is_pid(pid) ->
-        case :ets.lookup(@table, pid) do
-          [{^pid, scope}] -> {:ok, scope}
-          _ -> nil
-        end
+  # Walk process lineage looking for a pid that has scope in ETS.
+  defp resolve_via_lineage do
+    candidates = Process.get(:"$ancestors", []) ++ Process.get(:"$callers", [])
 
-      _name ->
-        nil
+    Enum.find_value(candidates, :error, fn candidate ->
+      case lookup_scope(candidate) do
+        {:ok, _} = hit -> hit
+        :error -> nil
+      end
     end)
   end
 
+  defp lookup_scope(pid) when is_pid(pid) do
+    case :ets.lookup(@table, pid) do
+      [{^pid, scope}] -> {:ok, scope}
+      _ -> :error
+    end
+  end
+
+  defp lookup_scope(_), do: :error
+
   defp ensure_table do
     case :ets.whereis(@table) do
-      :undefined -> create_table()
-      _ -> :ok
+      :undefined ->
+        ensure_owner_started()
+        @owner.ensure_table_exists(@owner)
+
+      _ ->
+        :ok
     end
   rescue
     ArgumentError -> :ok
+  end
+
+  defp ensure_owner_started do
+    case Process.whereis(@owner) do
+      nil ->
+        case @owner.start_link(name: @owner) do
+          {:ok, _pid} -> :ok
+          {:error, {:already_started, _pid}} -> :ok
+          {:error, _reason} -> :ok
+        end
+
+      _pid ->
+        :ok
+    end
   end
 end
