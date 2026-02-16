@@ -53,7 +53,7 @@ defmodule Spotter.TestSpec.SpecDiffTest do
 
     test "detects changed semantic fields" do
       from = [test_entry()]
-      to = [test_entry(%{test_name: "renamed test", line_start: 15})]
+      to = [test_entry(%{test_name: "renamed test", confidence: 0.5})]
 
       result = SpecDiff.diff(from, to)
 
@@ -63,12 +63,23 @@ defmodule Spotter.TestSpec.SpecDiffTest do
 
       change = hd(result.changed)
       assert :test_name in change.changed_fields
-      assert :line_start in change.changed_fields
+      assert :confidence in change.changed_fields
     end
 
     test "ignores updated_by_git_commit changes" do
       from = [test_entry()]
       to = [test_entry(%{updated_by_git_commit: "different_hash"})]
+
+      result = SpecDiff.diff(from, to)
+
+      assert result.added == []
+      assert result.removed == []
+      assert result.changed == []
+    end
+
+    test "ignores line_start and line_end changes" do
+      from = [test_entry()]
+      to = [test_entry(%{line_start: 50, line_end: 60})]
 
       result = SpecDiff.diff(from, to)
 
