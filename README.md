@@ -438,6 +438,14 @@ npm ci
 npm run build
 ```
 
+### Refresh landing screenshots (crop + optimize + WebP)
+
+```bash
+cd site
+npm ci
+npm run screenshots:process
+```
+
 ### Enable deployment in GitHub
 
 - Go to `Settings -> Pages` in `github.com/marot/spotter`

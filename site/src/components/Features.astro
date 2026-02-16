@@ -1,4 +1,17 @@
 ---
+import { screenshotPath } from "../lib/asset_path";
+
+const screenshot = (name: string) => ({
+  webp: screenshotPath(name, "webp"),
+  png: screenshotPath(name, "png")
+});
+
+const sessionTranscriptShot = screenshot("session-transcript");
+const reviewsShot = screenshot("reviews");
+const historyShot = screenshot("history");
+const commitDetailShot = screenshot("commit-detail");
+const fileMetricsShot = screenshot("file-metrics");
+const flowsShot = screenshot("flows");
 ---
 
 <section class="features" id="features">
@@ -19,7 +32,10 @@
       </div>
       <div class="feature-screenshot">
         <figure class="feature-shot">
-          <img src={`${import.meta.env.BASE_URL}screenshots/session-transcript.png`} alt="Session transcript view with synchronized terminal output and commit panel" loading="lazy" />
+          <picture>
+            <source srcset={sessionTranscriptShot.webp} type="image/webp" />
+            <img src={sessionTranscriptShot.png} alt="Session transcript view with synchronized terminal output and commit panel" loading="lazy" />
+          </picture>
           <figcaption>Session transcript with terminal timeline and review panels.</figcaption>
         </figure>
       </div>
@@ -36,7 +52,10 @@
       </div>
       <div class="feature-screenshot">
         <figure class="feature-shot">
-          <img src={`${import.meta.env.BASE_URL}screenshots/reviews.png`} alt="Reviews page with open and resolved annotations and MCP execution instructions" loading="lazy" />
+          <picture>
+            <source srcset={reviewsShot.webp} type="image/webp" />
+            <img src={reviewsShot.png} alt="Reviews page with open and resolved annotations and MCP execution instructions" loading="lazy" />
+          </picture>
           <figcaption>Reviews queue designed to run through Claude MCP workflows.</figcaption>
         </figure>
       </div>
@@ -53,7 +72,10 @@
       </div>
       <div class="feature-screenshot">
         <figure class="feature-shot">
-          <img src={`${import.meta.env.BASE_URL}screenshots/history.png`} alt="Commit history view with linked sessions and project filter controls" loading="lazy" />
+          <picture>
+            <source srcset={historyShot.webp} type="image/webp" />
+            <img src={historyShot.png} alt="Commit history view with linked sessions and project filter controls" loading="lazy" />
+          </picture>
           <figcaption>Commit history with linked sessions and project filters.</figcaption>
         </figure>
       </div>
@@ -70,7 +92,10 @@
       </div>
       <div class="feature-screenshot">
         <figure class="feature-shot">
-          <img src={`${import.meta.env.BASE_URL}screenshots/commit-detail.png`} alt="Commit detail page with changed file links, diff view, and linked sessions" loading="lazy" />
+          <picture>
+            <source srcset={commitDetailShot.webp} type="image/webp" />
+            <img src={commitDetailShot.png} alt="Commit detail page with changed file links, diff view, and linked sessions" loading="lazy" />
+          </picture>
           <figcaption>Commit detail: changed files, diffs, linked sessions, and co-change context.</figcaption>
         </figure>
       </div>
@@ -87,7 +112,10 @@
       </div>
       <div class="feature-screenshot">
         <figure class="feature-shot">
-          <img src={`${import.meta.env.BASE_URL}screenshots/file-metrics.png`} alt="File metrics page showing heat map and hotspot tabs" loading="lazy" />
+          <picture>
+            <source srcset={fileMetricsShot.webp} type="image/webp" />
+            <img src={fileMetricsShot.png} alt="File metrics page showing heat map and hotspot tabs" loading="lazy" />
+          </picture>
           <figcaption>File metrics and heat scoring for targeted review.</figcaption>
         </figure>
       </div>
@@ -104,7 +132,10 @@
       </div>
       <div class="feature-screenshot">
         <figure class="feature-shot">
-          <img src={`${import.meta.env.BASE_URL}screenshots/flows.png`} alt="Flows page showing live nodes and edges across hooks jobs and agents" loading="lazy" />
+          <picture>
+            <source srcset={flowsShot.webp} type="image/webp" />
+            <img src={flowsShot.png} alt="Flows page showing live nodes and edges across hooks jobs and agents" loading="lazy" />
+          </picture>
           <figcaption>Live flow DAG for hooks, jobs, and agent activity.</figcaption>
         </figure>
       </div>
@@ -195,6 +226,10 @@
     border-radius: 12px;
     background: var(--bg-elevated);
     overflow: hidden;
+  }
+
+  .feature-shot picture {
+    display: block;
   }
 
   .feature-shot img {

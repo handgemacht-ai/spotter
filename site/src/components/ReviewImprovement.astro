@@ -1,4 +1,8 @@
 ---
+import { screenshotPath } from "../lib/asset_path";
+
+const fileDetailWebp = screenshotPath("file-detail", "webp");
+const fileDetailPng = screenshotPath("file-detail", "png");
 ---
 
 <section class="review-improvement">
@@ -61,7 +65,10 @@
 
         <div class="ri-screenshot">
           <figure class="ri-shot">
-          <img src={`${import.meta.env.BASE_URL}screenshots/file-detail.png`} alt="File detail view with annotations and linked sessions for review follow-up" loading="lazy" />
+            <picture>
+              <source srcset={fileDetailWebp} type="image/webp" />
+              <img src={fileDetailPng} alt="File detail view with annotations and linked sessions for review follow-up" loading="lazy" />
+            </picture>
             <figcaption>File-level review context with annotations, sessions, and commit links.</figcaption>
           </figure>
         </div>
@@ -184,6 +191,10 @@
     border-radius: 12px;
     background: var(--bg-elevated);
     overflow: hidden;
+  }
+
+  .ri-shot picture {
+    display: block;
   }
 
   .ri-shot img {

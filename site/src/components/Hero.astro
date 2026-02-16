@@ -1,4 +1,8 @@
 ---
+import { screenshotPath } from "../lib/asset_path";
+
+const dashboardWebp = screenshotPath("dashboard", "webp");
+const dashboardPng = screenshotPath("dashboard", "png");
 ---
 
 <section class="hero">
@@ -36,7 +40,10 @@
 
     <div class="hero-right">
       <figure class="hero-shot">
-        <img src={`${import.meta.env.BASE_URL}screenshots/dashboard.png`} alt="Spotter dashboard with session queue and study queue due items" loading="eager" />
+        <picture>
+          <source srcset={dashboardWebp} type="image/webp" />
+          <img src={dashboardPng} alt="Spotter dashboard with session queue and study queue due items" loading="eager" />
+        </picture>
         <figcaption>Live dashboard: session queue, freshness, and study queue.</figcaption>
       </figure>
     </div>
@@ -226,6 +233,10 @@
     border-radius: 12px;
     background: var(--bg-elevated);
     overflow: hidden;
+  }
+
+  .hero-shot picture {
+    display: block;
   }
 
   .hero-shot img {
