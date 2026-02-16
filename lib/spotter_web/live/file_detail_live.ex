@@ -30,6 +30,33 @@ defmodule SpotterWeb.FileDetailLive do
   end
 
   @impl true
+  def handle_params(%{"project_id" => project_id, "relative_path" => path_parts}, _uri, socket)
+      when is_list(path_parts) do
+    relative_path = Enum.join(path_parts, "/")
+
+    socket =
+      socket
+      |> mount_computers(%{
+        file_detail: %{project_id: project_id, relative_path: relative_path}
+      })
+      |> assign(selected_text: nil, selection_line_start: nil, selection_line_end: nil)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_params(%{"project_id" => project_id}, _uri, socket) do
+    socket =
+      socket
+      |> mount_computers(%{
+        file_detail: %{project_id: project_id, relative_path: nil}
+      })
+      |> assign(selected_text: nil, selection_line_start: nil, selection_line_end: nil)
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("select_session", %{"session-id" => session_id}, socket) do
     {:noreply, update_computer_inputs(socket, :file_detail, %{selected_session_id: session_id})}
   end
@@ -221,6 +248,54 @@ defmodule SpotterWeb.FileDetailLive do
     Calendar.strftime(dt, "%Y-%m-%d %H:%M")
   end
 
+  defp short_hash(nil), do: "unknown"
+  defp short_hash(hash) when is_binary(hash) and byte_size(hash) > 8, do: String.slice(hash, 0, 8)
+  defp short_hash(hash), do: hash
+
+  defp short_session_id(nil), do: "unknown"
+
+  defp short_session_id(session_id) when is_binary(session_id) and byte_size(session_id) > 8,
+    do: String.slice(session_id, 0, 8)
+
+  defp short_session_id(session_id), do: session_id
+
+  defp path_label(nil), do: "/"
+  defp path_label(""), do: "Root"
+  defp path_label(path), do: path
+
+  defp directory_parent(nil), do: nil
+  defp directory_parent(""), do: nil
+  defp directory_parent(relative_path) do
+    parts = String.split(relative_path, "/", trim: true)
+
+    if length(parts) <= 1 do
+      ""
+    else
+      parts |> Enum.drop(-1) |> Enum.join("/")
+    end
+  end
+
+  defp file_detail_url(project_id, nil), do: "/projects/#{project_id}/files"
+  defp file_detail_url(project_id, ""), do: "/projects/#{project_id}/files"
+  defp file_detail_url(project_id, relative_path), do: "/projects/#{project_id}/files/#{relative_path}"
+
+  defp path_segments(nil), do: []
+  defp path_segments(""), do: []
+
+  defp path_segments(relative_path) do
+    parts = String.split(relative_path, "/", trim: true)
+    total = length(parts)
+
+    Enum.with_index(parts, 0)
+    |> Enum.map(fn {part, index} ->
+      %{
+        name: part,
+        relative_path: Enum.join(Enum.take(parts, index + 1), "/"),
+        is_last: index == total - 1
+      }
+    end)
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -247,187 +322,305 @@ defmodule SpotterWeb.FileDetailLive do
             {@file_detail_project.name}
           </a>
           <span class="breadcrumb-sep">/</span>
-          <span class="breadcrumb-current">{@file_detail_relative_path}</span>
+          <%= if @file_detail_is_directory do %>
+            <%= if path_segments(@file_detail_relative_path) == [] do %>
+              <span class="breadcrumb-current">Root</span>
+            <% else %>
+              <%= for segment <- path_segments(@file_detail_relative_path) do %>
+                <%= if !segment.is_last do %>
+                  <a
+                    href={file_detail_url(@file_detail_project_id, segment.relative_path)}
+                    phx-link="patch"
+                    phx-link-state="push"
+                  >
+                    {segment.name}
+                  </a>
+                  <span class="breadcrumb-sep">/</span>
+                <% else %>
+                  <span class="breadcrumb-current">{segment.name}</span>
+                <% end %>
+              <% end %>
+            <% end %>
+          <% else %>
+            <a href={file_detail_url(@file_detail_project_id, "")} phx-link="patch" phx-link-state="push">
+              Root
+            </a>
+            <span class="breadcrumb-sep">/</span>
+            <%= if path_segments(@file_detail_relative_path) == [] do %>
+              <span class="breadcrumb-current">File</span>
+            <% else %>
+              <%= for segment <- path_segments(@file_detail_relative_path) do %>
+                <%= if !segment.is_last do %>
+                  <a
+                    href={file_detail_url(@file_detail_project_id, segment.relative_path)}
+                    phx-link="patch"
+                    phx-link-state="push"
+                  >
+                    {segment.name}
+                  </a>
+                  <span class="breadcrumb-sep">/</span>
+                <% else %>
+                  <span class="breadcrumb-current">{segment.name}</span>
+                <% end %>
+              <% end %>
+            <% end %>
+          <% end %>
         </div>
 
         <div class="file-detail-layout">
           <%!-- File code pane --%>
           <div class="file-detail-code" data-testid="file-code-panel">
             <div class="file-detail-header">
-              <h2 class="file-detail-path">{@file_detail_relative_path}</h2>
-              <span class="text-muted text-xs">
-                {@file_detail_language_class}
-              </span>
-              <div class="filter-bar ml-auto" data-testid="view-mode-toggle">
-                <button
-                  phx-click="toggle_view_mode"
-                  phx-value-mode="blame"
-                  class={"filter-btn#{if @file_detail_view_mode == :blame, do: " is-active"}"}
-                >
-                  Blame
-                </button>
-                <button
-                  phx-click="toggle_view_mode"
-                  phx-value-mode="raw"
-                  class={"filter-btn#{if @file_detail_view_mode == :raw, do: " is-active"}"}
-                >
-                  Raw
-                </button>
-              </div>
+              <h2 class="file-detail-path">
+                <%= if @file_detail_is_directory do %>
+                  {path_label(@file_detail_relative_path)}
+                <% else %>
+                  <%= if path_segments(@file_detail_relative_path) == [] do %>
+                    File
+                  <% else %>
+                    <%= for segment <- path_segments(@file_detail_relative_path) do %>
+                      <%= if !segment.is_last do %>
+                        <a
+                          href={file_detail_url(@file_detail_project_id, segment.relative_path)}
+                          phx-link="patch"
+                          phx-link-state="push"
+                          class="file-detail-path-link"
+                        >
+                          {segment.name}
+                        </a>
+                        <span class="breadcrumb-sep">/</span>
+                      <% else %>
+                        <span>{segment.name}</span>
+                      <% end %>
+                    <% end %>
+                  <% end %>
+                <% end %>
+              </h2>
+              <%= if @file_detail_is_directory do %>
+                <span class="text-muted text-xs">Folder</span>
+              <% else %>
+                <span class="text-muted text-xs">
+                  {@file_detail_language_class}
+                </span>
+                <div class="filter-bar ml-auto" data-testid="view-mode-toggle">
+                  <button
+                    phx-click="toggle_view_mode"
+                    phx-value-mode="blame"
+                    class={"filter-btn#{if @file_detail_view_mode == :blame, do: " is-active"}"}
+                  >
+                    Blame
+                  </button>
+                  <button
+                    phx-click="toggle_view_mode"
+                    phx-value-mode="raw"
+                    class={"filter-btn#{if @file_detail_view_mode == :raw, do: " is-active"}"}
+                  >
+                    Raw
+                  </button>
+                </div>
+              <% end %>
             </div>
 
-            <%= if @file_detail_view_mode == :blame do %>
-              <%= if @file_detail_blame_rows do %>
-                <div class="file-detail-blame" data-testid="blame-view">
-                  <table class="blame-table">
-                    <tbody>
-                      <tr :for={row <- @file_detail_blame_rows} class="blame-row">
-                        <td class="blame-gutter">
+            <%= if @file_detail_is_directory do %>
+              <div class="file-detail-folder-view">
+                <div :if={directory_parent(@file_detail_relative_path) != nil} class="file-detail-folder-list">
+                <a
+                  phx-link="patch"
+                  phx-link-state="push"
+                  class="file-detail-folder-row file-detail-folder-up"
+                  href={file_detail_url(@file_detail_project_id, directory_parent(@file_detail_relative_path))}
+                >
+                    <span class="file-detail-folder-kind">↩</span>
+                    <span class="file-detail-folder-name">..</span>
+                  </a>
+                </div>
+
+                <%= if @file_detail_directory_entries == [] do %>
+                  <div class="empty-state text-muted text-sm">This folder is empty.</div>
+                <% else %>
+                  <div class="file-detail-folder-list">
+                    <a
+                      :for={entry <- @file_detail_directory_entries}
+                      href={file_detail_url(@file_detail_project_id, entry.relative_path)}
+                      phx-link="patch"
+                      phx-link-state="push"
+                      class={"file-detail-folder-row file-detail-folder-#{if entry.kind == :directory, do: "directory", else: "file"}"}
+                    >
+                      <span class="file-detail-folder-kind">
+                        <%= if entry.kind == :directory, do: "📁", else: "📄" %>
+                      </span>
+                      <span class="file-detail-folder-name">{entry.name}</span>
+                    </a>
+                  </div>
+                <% end %>
+              </div>
+            <% else %>
+              <%= if @file_detail_view_mode == :blame do %>
+                <%= if @file_detail_blame_rows do %>
+                  <div
+                    id="file-blame-container"
+                    class="file-detail-blame"
+                    data-testid="blame-view"
+                    phx-hook="FileHighlighter"
+                  >
+                    <div class="blame-lines">
+                      <div :for={row <- @file_detail_blame_rows} class={"blame-line blame-session-band--#{row.session_band}"}>
+                        <div class="blame-gutter">
                           <a
                             :if={row.commit_id}
                             href={"/history/commits/#{row.commit_id}"}
-                            class="blame-hash"
-                            title={row.summary}
+                            class="blame-meta-link blame-commit-link"
+                            title={"Commit " <> (row.commit_hash || "")}
                           >
-                            {String.slice(row.commit_hash, 0, 8)}
+                            <span class="blame-meta-kind">commit:</span>
+                            <span class="blame-meta-value">{short_hash(row.commit_hash)}</span>
                           </a>
                           <a
                             :if={row.session_link}
                             href={"/sessions/#{row.session_link.session_id}"}
-                            class="blame-session-link"
-                            title="Linked session"
+                            class="blame-meta-link blame-session-link"
+                            title={"Session " <> (row.session_link.session_id || "")}
                           >
-                            S
+                            <span class="blame-meta-kind">session:</span>
+                            <span class="blame-meta-value">{short_session_id(row.session_link.session_id)}</span>
                           </a>
-                          <span :if={row.author} class="blame-author" title={row.author}>
-                            {String.slice(row.author, 0, 12)}
-                          </span>
-                        </td>
-                        <td class="blame-line-no">{row.line_no}</td>
-                        <td class="blame-code"><pre>{row.text}</pre></td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              <% else %>
-                <div class="empty-state" data-testid="blame-error">
-                  <p>Blame not available.</p>
-                  <p :if={@file_detail_blame_error} class="text-muted text-sm">
-                    {format_blame_error(@file_detail_blame_error)}
-                  </p>
-                </div>
-              <% end %>
-            <% else %>
-              <%= if @file_detail_file_content do %>
-                <div
-                  id="file-content-container"
-                  phx-hook="FileHighlighter"
-                  class="file-detail-content"
-                  data-testid="file-content"
-                >
-                  <pre><code class={"language-#{@file_detail_language_class}"}>{@file_detail_file_content}</code></pre>
-                </div>
-              <% else %>
-                <div class="empty-state" data-testid="file-error">
-                  <p>File content not available.</p>
-                  <div :if={@file_detail_file_error} class="text-muted text-sm mt-2">
-                    <p>
-                      <strong>Reason:</strong> {format_file_error(@file_detail_file_error)}
-                    </p>
-                    <p :if={@file_detail_repo_root}>
-                      <strong>Repo root:</strong> {@file_detail_repo_root}
-                    </p>
-                    <p>
-                      <strong>Requested path:</strong> {@file_detail_relative_path}
+                        </div>
+                        <div class="blame-line-main">
+                          <span class="blame-line-no">{row.line_no}</span>
+                          <pre class="blame-code"><code class={"language-#{@file_detail_language_class}"}>{row.text}</code></pre>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                <% else %>
+                  <div class="empty-state" data-testid="blame-error">
+                    <p>Blame not available.</p>
+                    <p :if={@file_detail_blame_error} class="text-muted text-sm">
+                      {format_blame_error(@file_detail_blame_error)}
                     </p>
                   </div>
+                <% end %>
+              <% else %>
+                <%= if @file_detail_file_content do %>
+                  <div
+                    id="file-content-container"
+                    phx-hook="FileHighlighter"
+                    class="file-detail-content"
+                    data-testid="file-content"
+                  >
+                    <pre><code class={"language-#{@file_detail_language_class}"}>{@file_detail_file_content}</code></pre>
+                  </div>
+                <% else %>
+                  <div class="empty-state" data-testid="file-error">
+                    <p>File content not available.</p>
+                    <div :if={@file_detail_file_error} class="text-muted text-sm mt-2">
+                      <p>
+                        <strong>Reason:</strong> {format_file_error(@file_detail_file_error)}
+                      </p>
+                      <p :if={@file_detail_repo_root}>
+                        <strong>Repo root:</strong> {@file_detail_repo_root}
+                      </p>
+                      <p>
+                        <strong>Requested path:</strong> {@file_detail_relative_path}
+                      </p>
+                    </div>
+                  </div>
+                <% end %>
+                <% end %>
+              <% end %>
+
+              <%= unless @file_detail_is_directory do %>
+                <%!-- Commits touching this file --%>
+                <div :if={@file_detail_commit_rows != []} class="file-detail-commits">
+                  <div class="file-detail-section-title">
+                    Commits ({length(@file_detail_commit_rows)})
+                  </div>
+                  <div :for={row <- @file_detail_commit_rows} class="file-detail-commit-row">
+                    <a
+                      href={"/history/commits/#{row.commit.id}"}
+                      class="history-commit-hash"
+                    >
+                      {String.slice(row.commit.commit_hash, 0, 8)}
+                    </a>
+                    <span class={change_type_class(row.change_type)}>
+                      {row.change_type}
+                    </span>
+                    <span class="file-detail-commit-subject">
+                      {row.commit.subject || "(no subject)"}
+                    </span>
+                    <span class="text-muted text-xs">
+                      {format_timestamp(row.commit.committed_at || row.commit.inserted_at)}
+                    </span>
+                  </div>
+                </div>
+
+                <%!-- Annotations --%>
+                <div class="file-detail-annotations" data-testid="file-annotations">
+                  <div class="file-detail-section-title">Annotations</div>
+
+                  <%= if @selected_text do %>
+                    <.annotation_editor
+                      selected_text={@selected_text}
+                      selection_label={selection_label(:file, [])}
+                      save_event="save_annotation"
+                      clear_event="clear_selection"
+                    />
+                  <% end %>
+
+                  <.annotation_cards
+                    annotations={@file_detail_annotation_rows}
+                    explain_streams={@explain_streams}
+                    highlight_event="highlight_annotation"
+                    delete_event="delete_annotation"
+                  />
                 </div>
               <% end %>
-            <% end %>
-
-            <%!-- Commits touching this file --%>
-            <div :if={@file_detail_commit_rows != []} class="file-detail-commits">
-              <div class="file-detail-section-title">
-                Commits ({length(@file_detail_commit_rows)})
-              </div>
-              <div :for={row <- @file_detail_commit_rows} class="file-detail-commit-row">
-                <a
-                  href={"/history/commits/#{row.commit.id}"}
-                  class="history-commit-hash"
-                >
-                  {String.slice(row.commit.commit_hash, 0, 8)}
-                </a>
-                <span class={change_type_class(row.change_type)}>
-                  {row.change_type}
-                </span>
-                <span class="file-detail-commit-subject">
-                  {row.commit.subject || "(no subject)"}
-                </span>
-                <span class="text-muted text-xs">
-                  {format_timestamp(row.commit.committed_at || row.commit.inserted_at)}
-                </span>
-              </div>
-            </div>
-
-            <%!-- Annotations --%>
-            <div class="file-detail-annotations" data-testid="file-annotations">
-              <div class="file-detail-section-title">Annotations</div>
-
-              <%= if @selected_text do %>
-                <.annotation_editor
-                  selected_text={@selected_text}
-                  selection_label={selection_label(:file, [])}
-                  save_event="save_annotation"
-                  clear_event="clear_selection"
-                />
-              <% end %>
-
-              <.annotation_cards
-                annotations={@file_detail_annotation_rows}
-                explain_streams={@explain_streams}
-                highlight_event="highlight_annotation"
-                delete_event="delete_annotation"
-              />
-            </div>
           </div>
 
           <%!-- Transcript panel --%>
           <div class="file-detail-transcript" data-testid="transcript-panel">
-            <div class="file-detail-section-title mb-2">
-              Linked Sessions ({length(@file_detail_linked_sessions)})
-            </div>
-
-            <%= if @file_detail_linked_sessions == [] do %>
-              <p class="text-muted text-sm">No linked sessions.</p>
+            <%= if @file_detail_is_directory do %>
+              <div class="file-detail-section-title mb-2">Folder mode</div>
+              <p class="text-muted text-sm">
+                Open a file to view blame, commits, and linked sessions.
+              </p>
             <% else %>
-              <div class="file-detail-session-list">
-                <button
-                  :for={entry <- @file_detail_linked_sessions}
-                  phx-click="select_session"
-                  phx-value-session-id={entry.session.id}
-                  class={"file-detail-session-btn#{if @file_detail_selected_session_id == entry.session.id, do: " is-active"}"}
-                >
-                  <span class="file-detail-session-name">
-                    {session_label(entry.session)}
-                  </span>
-                  <span :for={lt <- entry.link_types} class={badge_class(lt)}>
-                    {badge_text(lt, entry.max_confidence)}
-                  </span>
-                </button>
+              <div class="file-detail-section-title mb-2">
+                Linked Sessions ({length(@file_detail_linked_sessions)})
               </div>
 
-              <%= if @file_detail_selected_session_id do %>
-                <div class="mt-3">
-                  <.transcript_panel
-                    rendered_lines={@file_detail_transcript_rendered_lines}
-                    panel_id="file-transcript-messages"
-                    empty_message="No transcript available for this session."
-                  />
-                </div>
+              <%= if @file_detail_linked_sessions == [] do %>
+                <p class="text-muted text-sm">No linked sessions.</p>
               <% else %>
-                <p class="text-muted text-sm mt-3">
-                  Select a session to view its transcript.
-                </p>
+                <div class="file-detail-session-list">
+                  <button
+                    :for={entry <- @file_detail_linked_sessions}
+                    phx-click="select_session"
+                    phx-value-session-id={entry.session.id}
+                    class={"file-detail-session-btn#{if @file_detail_selected_session_id == entry.session.id, do: " is-active"}"}
+                  >
+                    <span class="file-detail-session-name">
+                      {session_label(entry.session)}
+                    </span>
+                    <span :for={lt <- entry.link_types} class={badge_class(lt)}>
+                      {badge_text(lt, entry.max_confidence)}
+                    </span>
+                  </button>
+                </div>
+
+                <%= if @file_detail_selected_session_id do %>
+                  <div class="mt-3">
+                    <.transcript_panel
+                      rendered_lines={@file_detail_transcript_rendered_lines}
+                      panel_id="file-transcript-messages"
+                      empty_message="No transcript available for this session."
+                    />
+                  </div>
+                <% else %>
+                  <p class="text-muted text-sm mt-3">
+                    Select a session to view its transcript.
+                  </p>
+                <% end %>
               <% end %>
             <% end %>
           </div>
@@ -436,4 +629,5 @@ defmodule SpotterWeb.FileDetailLive do
     </div>
     """
   end
+
 end
