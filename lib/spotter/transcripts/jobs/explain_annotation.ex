@@ -41,6 +41,7 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
       |> Ash.load!([:session, :file_refs, message_refs: :message])
 
     run_id = "explain-#{annotation.id}-job-#{job_id || "unknown"}"
+    ctx = %{run_id: run_id, annotation_id: annotation.id, job_id: job_id}
 
     flow_keys =
       [
@@ -60,54 +61,16 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
 
     Tracer.set_attribute(:session_id, annotation.session_id)
 
-    emit_flow_event("agent.run.start", :running, flow_keys, traceparent, %{
-      "run_id" => run_id,
-      "annotation_id" => annotation.id,
-      "job_id" => job_id
-    })
+    emit_flow_event(
+      "agent.run.start",
+      :running,
+      flow_keys,
+      traceparent,
+      Map.new(ctx, fn {k, v} -> {to_string(k), v} end)
+    )
 
-    case stream_explanation(annotation, flow_keys, traceparent) do
-      {:ok, answer, references} ->
-        case finalize_success(annotation, answer, references) do
-          :ok ->
-            emit_flow_event("agent.run.stop", :ok, flow_keys, traceparent, %{"run_id" => run_id})
-
-          {:error, reason} ->
-            error_payload =
-              ErrorReport.trace_error(
-                "annotation_explain_failed",
-                inspect(reason),
-                "transcripts.jobs.explain_annotation",
-                %{
-                  "run_id" => run_id,
-                  "annotation_id" => annotation.id,
-                  "job_id" => job_id
-                }
-              )
-
-            emit_flow_event("agent.run.stop", :error, flow_keys, traceparent, error_payload)
-
-            {:error, reason}
-        end
-
-      {:error, reason} ->
-        finalize_error(annotation, reason)
-
-        error_payload =
-          ErrorReport.trace_error(
-            "annotation_explain_failed",
-            if(is_binary(reason), do: reason, else: inspect(reason)),
-            "transcripts.jobs.explain_annotation",
-            %{
-              "run_id" => run_id,
-              "annotation_id" => annotation.id,
-              "job_id" => job_id
-            }
-          )
-
-        emit_flow_event("agent.run.stop", :error, flow_keys, traceparent, error_payload)
-        {:error, reason}
-    end
+    result = stream_explanation(annotation, flow_keys, traceparent)
+    handle_stream_result(result, annotation, ctx, flow_keys, traceparent)
   rescue
     e ->
       reason = Exception.message(e)
@@ -126,6 +89,39 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
       end
 
       {:error, reason}
+  end
+
+  defp handle_stream_result({:ok, answer, references}, annotation, ctx, flow_keys, traceparent) do
+    case finalize_success(annotation, answer, references) do
+      :ok ->
+        emit_flow_event("agent.run.stop", :ok, flow_keys, traceparent, %{"run_id" => ctx.run_id})
+
+      {:error, reason} ->
+        emit_explain_error(reason, ctx, flow_keys, traceparent)
+        {:error, reason}
+    end
+  end
+
+  defp handle_stream_result({:error, reason}, annotation, ctx, flow_keys, traceparent) do
+    finalize_error(annotation, reason)
+    emit_explain_error(reason, ctx, flow_keys, traceparent)
+    {:error, reason}
+  end
+
+  defp emit_explain_error(reason, ctx, flow_keys, traceparent) do
+    error_payload =
+      ErrorReport.trace_error(
+        "annotation_explain_failed",
+        if(is_binary(reason), do: reason, else: inspect(reason)),
+        "transcripts.jobs.explain_annotation",
+        %{
+          "run_id" => ctx.run_id,
+          "annotation_id" => ctx.annotation_id,
+          "job_id" => ctx.job_id
+        }
+      )
+
+    emit_flow_event("agent.run.stop", :error, flow_keys, traceparent, error_payload)
   end
 
   defp stream_explanation(annotation, flow_keys, _traceparent) do
