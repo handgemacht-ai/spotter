@@ -183,8 +183,9 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
     ensure_hotspot_review_items(project_id, commit)
   end
 
-  defp model_for_strategy(:single_run), do: "claude-opus-4-6"
-  defp model_for_strategy(:explore_then_chunked), do: "claude-opus-4-6+haiku"
+  # TODO: revert to Opus model tags after Haiku experiment
+  defp model_for_strategy(:single_run), do: "claude-haiku-4-5-20251001"
+  defp model_for_strategy(:explore_then_chunked), do: "claude-haiku-4-5-20251001"
   defp model_for_strategy(_), do: "unknown"
 
   defp ensure_hotspot_review_items(project_id, commit) do

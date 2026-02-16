@@ -3,9 +3,9 @@ defmodule Spotter.Services.CommitHotspotAgent do
   Orchestrates commit hotspot analysis using Claude via `claude_agent_sdk`.
 
   Implements a size-aware strategy:
-  - Small diffs: single main run (Opus)
+  - Small diffs: single main run (Haiku)
   - Large diffs: explore-only run (Haiku) to select relevant regions,
-    then chunked main runs (Opus)
+    then chunked main runs (Haiku)
   """
 
   require Logger
@@ -20,9 +20,10 @@ defmodule Spotter.Services.CommitHotspotAgent do
   @default_max_changed_lines 2000
   @default_max_patch_bytes 500_000
 
+  # TODO: revert to Opus models after this Haiku experiment.
   # Models
   @explore_model "claude-haiku-4-5-20251001"
-  @main_model "claude-opus-4-6-20250918"
+  @main_model "claude-haiku-4-5-20251001"
 
   @explore_prompt """
   You are a code review triage analyst. Given diff statistics and hunk summaries for a commit,
@@ -236,7 +237,7 @@ defmodule Spotter.Services.CommitHotspotAgent do
     |> Enum.sum()
   end
 
-  # Single run: send all context windows to Opus in one call
+  # Single run: send all context windows to Haiku in one call
   defp run_single(commit_hash, commit_subject, diff_context) do
     Tracer.with_span "spotter.commit_hotspots.agent.main" do
       regions = build_all_regions(diff_context)
@@ -272,7 +273,7 @@ defmodule Spotter.Services.CommitHotspotAgent do
     end
   end
 
-  # Explore then chunked: Haiku selects regions, Opus analyzes in chunks
+  # Explore then chunked: Haiku selects regions, Haiku analyzes in chunks
   defp run_explore_then_chunked(commit_hash, commit_subject, diff_context, opts) do
     explore_input = format_explore_input(diff_context)
 
