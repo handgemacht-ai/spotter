@@ -26,7 +26,8 @@ defmodule Spotter.Services.CommitHistory do
     branch = filters[:branch]
 
     commits = load_commits(branch)
-    sorted = sort_commits(commits)
+    scoped = scope_commits_to_project(commits, project_id)
+    sorted = sort_commits(scoped)
     after_cursor = apply_cursor(sorted, cursor)
     {page, has_more} = paginate(after_cursor, limit)
     rows = build_rows(page, project_id)
@@ -91,6 +92,29 @@ defmodule Spotter.Services.CommitHistory do
       end
 
     Ash.read!(query)
+  end
+
+  defp scope_commits_to_project(commits, nil), do: commits
+
+  defp scope_commits_to_project(commits, project_id) do
+    project_session_ids =
+      Session
+      |> Ash.Query.filter(project_id == ^project_id)
+      |> Ash.Query.select([:id])
+      |> Ash.read!()
+      |> MapSet.new(& &1.id)
+
+    commit_ids = Enum.map(commits, & &1.id)
+
+    linked_commit_ids =
+      SessionCommitLink
+      |> Ash.Query.filter(commit_id in ^commit_ids)
+      |> Ash.Query.select([:commit_id, :session_id])
+      |> Ash.read!()
+      |> Enum.filter(&MapSet.member?(project_session_ids, &1.session_id))
+      |> MapSet.new(& &1.commit_id)
+
+    Enum.filter(commits, &MapSet.member?(linked_commit_ids, &1.id))
   end
 
   defp sort_commits(commits) do

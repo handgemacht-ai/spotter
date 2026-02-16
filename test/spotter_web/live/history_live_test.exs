@@ -219,7 +219,7 @@ defmodule SpotterWeb.HistoryLiveTest do
   end
 
   describe "empty state" do
-    test "project-filtered commit with no sessions shows No linked sessions" do
+    test "project-filtered commit with no sessions shows empty state" do
       proj_a = create_project("empty-proj-a")
       proj_b = create_project("empty-proj-b")
       sess_a = create_session(proj_a)
@@ -235,11 +235,11 @@ defmodule SpotterWeb.HistoryLiveTest do
 
       {:ok, view, _html} = live(build_conn(), "/history?branch=")
 
-      # Filter to project with no matching sessions - commit still renders
+      # Filter to project with no matching sessions - commit is excluded
       html = render_click(view, "filter_project", %{"project-id" => proj_b.id})
 
-      assert html =~ "es-commi"
-      assert html =~ "No linked sessions."
+      refute html =~ "es-commi"
+      assert html =~ "No commits found for the selected filters."
     end
   end
 

@@ -189,7 +189,7 @@ defmodule Spotter.Services.CommitHistoryTest do
       assert hd(hd(result.rows).sessions).project.id == proj_a.id
     end
 
-    test "project filter with no matching sessions still returns commit rows" do
+    test "project filter excludes commits with no matching sessions" do
       proj_a = create_project("proj-empty")
       proj_b = create_project("proj-with-data")
       sess_b = create_session(proj_b)
@@ -198,8 +198,27 @@ defmodule Spotter.Services.CommitHistoryTest do
       create_link(sess_b, commit)
 
       result = CommitHistory.list_commits_with_sessions(%{project_id: proj_a.id})
-      assert length(result.rows) == 1
-      assert hd(result.rows).sessions == []
+      assert result.rows == []
+    end
+
+    test "project filter isolates commits across projects" do
+      proj_a = create_project("iso-a")
+      proj_b = create_project("iso-b")
+      sess_a = create_session(proj_a)
+      sess_b = create_session(proj_b)
+
+      c_a = create_commit(branch: "main", hash: "iso1", committed_at: ~U[2026-01-01 12:00:00Z])
+      c_b = create_commit(branch: "main", hash: "iso2", committed_at: ~U[2026-01-01 13:00:00Z])
+      create_link(sess_a, c_a)
+      create_link(sess_b, c_b)
+
+      result_a = CommitHistory.list_commits_with_sessions(%{project_id: proj_a.id})
+      assert length(result_a.rows) == 1
+      assert hd(result_a.rows).commit.id == c_a.id
+
+      result_b = CommitHistory.list_commits_with_sessions(%{project_id: proj_b.id})
+      assert length(result_b.rows) == 1
+      assert hd(result_b.rows).commit.id == c_b.id
     end
 
     test "multiple sessions per commit" do

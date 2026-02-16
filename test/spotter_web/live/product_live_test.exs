@@ -6,7 +6,7 @@ defmodule SpotterWeb.ProductLiveTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Spotter.Repo
-  alias Spotter.Transcripts.{Commit, Project, Session, SessionCommitLink, SpecTestLink}
+  alias Spotter.Transcripts.{Commit, Project, Session, SessionCommitLink}
 
   @endpoint SpotterWeb.Endpoint
 
@@ -110,6 +110,38 @@ defmodule SpotterWeb.ProductLiveTest do
         live(conn, "/product?project_id=#{project.id}&commit_id=#{commit.id}")
 
       assert html =~ commit.commit_hash
+    end
+
+    test "timeline isolates commits by project", %{project: project} do
+      other_project = Ash.create!(Project, %{name: "other-prod", pattern: "^other-prod"})
+
+      other_session =
+        Ash.create!(Session, %{
+          session_id: Ash.UUID.generate(),
+          transcript_dir: "/tmp/other-prod",
+          project_id: other_project.id
+        })
+
+      other_commit =
+        Ash.create!(Commit, %{
+          commit_hash: String.duplicate("x", 40),
+          subject: "feat: other project only",
+          committed_at: ~U[2026-02-14 13:00:00Z]
+        })
+
+      Ash.create!(SessionCommitLink, %{
+        session_id: other_session.id,
+        commit_id: other_commit.id,
+        link_type: :observed_in_session,
+        confidence: 1.0
+      })
+
+      conn = build_conn()
+      {:ok, _view, html} = live(conn, "/product?project_id=#{project.id}")
+
+      # The other project's commit should not appear
+      refute html =~ "other project only"
+      refute html =~ String.slice(other_commit.commit_hash, 0, 8)
     end
 
     test "toggling between Diff and Snapshot updates URL", %{

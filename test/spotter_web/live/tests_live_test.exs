@@ -97,6 +97,38 @@ defmodule SpotterWeb.TestsLiveTest do
       assert html =~ commit.commit_hash
     end
 
+    test "timeline isolates commits by project", %{project: project} do
+      other_project = Ash.create!(Project, %{name: "other-test", pattern: "^other-test"})
+
+      other_session =
+        Ash.create!(Session, %{
+          session_id: Ash.UUID.generate(),
+          transcript_dir: "/tmp/other-test",
+          project_id: other_project.id
+        })
+
+      other_commit =
+        Ash.create!(Commit, %{
+          commit_hash: String.duplicate("y", 40),
+          subject: "test: other project only",
+          committed_at: ~U[2026-02-14 13:00:00Z]
+        })
+
+      Ash.create!(SessionCommitLink, %{
+        session_id: other_session.id,
+        commit_id: other_commit.id,
+        link_type: :observed_in_session,
+        confidence: 1.0
+      })
+
+      conn = build_conn()
+      {:ok, _view, html} = live(conn, "/tests?project_id=#{project.id}")
+
+      # The other project's commit should not appear
+      refute html =~ "other project only"
+      refute html =~ String.slice(other_commit.commit_hash, 0, 8)
+    end
+
     test "toggling between Diff and Snapshot updates URL", %{
       project: project,
       commit: commit
