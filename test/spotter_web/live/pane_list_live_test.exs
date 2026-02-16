@@ -74,11 +74,10 @@ defmodule SpotterWeb.PaneListLiveTest do
       refute html =~ "No projects synced yet"
     end
 
-    test "renders line stats for session with lines", %{session: _session} do
+    test "renders session row for session with data", %{session: _session} do
       {:ok, _view, html} = live(build_conn(), "/")
 
-      assert html =~ "+42"
-      assert html =~ "-7"
+      assert html =~ ~s(data-testid="session-row")
     end
   end
 

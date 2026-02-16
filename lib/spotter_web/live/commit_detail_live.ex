@@ -182,21 +182,24 @@ defmodule SpotterWeb.CommitDetailLive do
                     :for={group <- @commit_detail_co_change_rows}
                     class="commit-detail-cochange-group"
                   >
-                    <span class="text-muted text-xs">
-                      {group.frequency_30d}x/30d
-                    </span>
-                    <%= for member <- group.members do %>
-                      <a
-                        :if={@commit_detail_project}
-                        href={"/projects/#{@commit_detail_project.id}/files/#{member}"}
-                        class="commit-detail-cochange-member file-link"
-                      >
-                        {member}
-                      </a>
-                      <span :if={!@commit_detail_project} class="commit-detail-cochange-member">
-                        {member}
-                      </span>
-                    <% end %>
+                    <div class="commit-detail-cochange-header">
+                      <span class="cochange-frequency-badge">{group.frequency_30d}&times;/30d</span>
+                      <span class="text-muted text-xs">{length(group.members)} files</span>
+                    </div>
+                    <div class="commit-detail-cochange-members">
+                      <%= for member <- group.members do %>
+                        <a
+                          :if={@commit_detail_project}
+                          href={"/projects/#{@commit_detail_project.id}/files/#{member}"}
+                          class="commit-detail-cochange-member"
+                        >
+                          {member}
+                        </a>
+                        <span :if={!@commit_detail_project} class="commit-detail-cochange-member">
+                          {member}
+                        </span>
+                      <% end %>
+                    </div>
                   </div>
                 </div>
               </div>

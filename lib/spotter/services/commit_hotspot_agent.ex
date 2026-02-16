@@ -20,9 +20,9 @@ defmodule Spotter.Services.CommitHotspotAgent do
   alias Spotter.Services.ClaudeCode.ResultExtractor
   alias Spotter.Telemetry.TraceContext
 
-  @model "claude-opus-4-6-20250918"
+  @model "claude-sonnet-4-5-20250929"
   @max_turns 12
-  @timeout_ms 180_000
+  @timeout_ms 300_000
 
   @system_prompt """
   You are a senior code reviewer analyzing a Git commit for quality hotspots.

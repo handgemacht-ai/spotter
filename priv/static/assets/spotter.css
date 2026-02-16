@@ -1809,30 +1809,231 @@ input::placeholder, textarea::placeholder {
   font-family: var(--font-mono);
 }
 
-.commit-detail-cochange {
-  background: var(--surface-1);
+/* --- Co-change Components --- */
+
+/* Shared co-change building blocks */
+.cochange-group-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: var(--space-3);
-  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
-.commit-detail-cochange-group {
+.cochange-group-header {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
   align-items: center;
-  padding: var(--space-1) 0;
+  justify-content: space-between;
+  padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.commit-detail-cochange-group:last-child {
-  border-bottom: none;
+.cochange-group-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.cochange-frequency-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  background: rgba(91, 156, 245, 0.15);
+  color: var(--accent-blue);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.cochange-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cochange-section-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cochange-member-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.cochange-member-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.cochange-member-path {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--accent-blue);
+  text-decoration: none;
+}
+
+.cochange-member-path:hover {
+  text-decoration: underline;
+}
+
+.cochange-member-meta {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.cochange-commit-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.commit-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+}
+
+.commit-link-btn:hover code {
+  text-decoration: underline;
+}
+
+.commit-link-btn code {
+  font-family: var(--font-mono);
+  color: var(--accent-amber);
+}
+
+.commit-detail-inline {
+  margin: var(--space-2) 0 0 var(--space-4);
+  padding: var(--space-3);
+  background: var(--surface-0);
+  border-left: 2px solid var(--border-default);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.commit-detail-inline strong {
+  color: var(--text-primary);
+}
+
+.commit-detail-inline code {
+  color: var(--accent-amber);
+  font-family: var(--font-mono);
+}
+
+.commit-changed-files {
+  list-style: none;
+  margin: var(--space-1) 0 0 var(--space-3);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.commit-changed-files li {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.empty-state-small {
+  padding: var(--space-1) 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-style: italic;
+}
+
+/* File metrics co-change detail panel */
+.cochange-detail-panel {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.cochange-group-count {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Commit detail page co-change section */
+.commit-detail-cochange {
+  background: var(--surface-1);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.commit-detail-cochange-group {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.commit-detail-cochange-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.commit-detail-cochange-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
 }
 
 .commit-detail-cochange-member {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--accent-blue);
+  padding: 2px var(--space-2);
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.commit-detail-cochange-member:hover {
+  background: var(--surface-3);
+  text-decoration: none;
+}
+
+span.commit-detail-cochange-member {
+  color: var(--text-secondary);
 }
 
 .commit-detail-session-list {
@@ -3556,4 +3757,64 @@ input::placeholder, textarea::placeholder {
   border-radius: 3px;
   background: var(--surface-3);
   font-size: 0.7rem;
+}
+
+/* --- Code snippets (hotspot cards, study cards) --- */
+.hotspot-snippet {
+  margin: var(--space-2) 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.hotspot-snippet pre {
+  margin: 0;
+  padding: 0;
+  background: var(--surface-0);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  max-height: 400px;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  display: flex;
+}
+
+.hotspot-snippet code {
+  font-family: var(--font-mono);
+  padding: var(--space-3);
+  flex: 1;
+  min-width: 0;
+}
+
+.snippet-line-numbers {
+  padding: var(--space-3) var(--space-2);
+  text-align: right;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  user-select: none;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--surface-1);
+  flex-shrink: 0;
+}
+
+/* Rubric details toggle (collapsed by default in hotspot cards) */
+.rubric-details {
+  margin-top: var(--space-2);
+}
+
+.rubric-details summary {
+  cursor: pointer;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  user-select: none;
+}
+
+.rubric-details summary:hover {
+  color: var(--text-secondary);
+}
+
+.rubric-details[open] summary {
+  margin-bottom: var(--space-2);
 }

@@ -2,7 +2,7 @@ defmodule SpotterWeb.FileMetricsLive do
   use Phoenix.LiveView
 
   alias Spotter.Observability.ErrorReport
-  alias Spotter.Services.FileMetrics
+  alias Spotter.Services.{FileDetail, FileMetrics}
   alias Spotter.Transcripts.{CoChangeGroupCommit, CoChangeGroupMemberStat, Commit, Project}
   alias Spotter.Transcripts.Jobs.IngestRecentCommits
 
@@ -434,6 +434,15 @@ defmodule SpotterWeb.FileMetricsLive do
     name |> String.replace("_", " ") |> String.capitalize()
   end
 
+  defp snippet_language(relative_path), do: FileDetail.language_class(relative_path)
+
+  defp snippet_line_numbers(line_start, line_end)
+       when is_integer(line_start) and is_integer(line_end) do
+    line_start..line_end |> Enum.map_join("\n", &to_string/1)
+  end
+
+  defp snippet_line_numbers(_, _), do: ""
+
   defp relative_time(nil), do: "\u2014"
 
   defp relative_time(dt) do
@@ -467,9 +476,24 @@ defmodule SpotterWeb.FileMetricsLive do
 
   defp strategy_label(_), do: nil
 
-  defp format_group(group) do
-    members = Enum.join(group.members, " + ")
-    "#{members} \u00d7#{group.frequency_30d}"
+  defp format_group_title(group) do
+    Enum.map_join(group.members, " + ", &Path.basename/1)
+  end
+
+  defp format_group_count(groups) do
+    count = length(groups)
+    if count == 1, do: "1 group", else: "#{count} groups"
+  end
+
+  defp member_meta_text(stat) do
+    parts =
+      [
+        if(stat.size_bytes, do: format_bytes(stat.size_bytes)),
+        if(stat.loc, do: "#{stat.loc} LOC")
+      ]
+      |> Enum.reject(&is_nil/1)
+
+    Enum.join(parts, " \u00b7 ")
   end
 
   defp scope_label(:file), do: "File"
@@ -706,7 +730,7 @@ defmodule SpotterWeb.FileMetricsLive do
             Select a project and click "Analyze recent commits" to get started.
           </div>
         <% else %>
-          <div class="hotspot-list">
+          <div class="hotspot-list" id="hotspot-list" phx-hook="SnippetHighlighter">
             <div :for={%{hotspot: entry, commit: commit} <- @hotspot_entries} class="hotspot-card">
               <div class="hotspot-header">
                 <div class="hotspot-path-group">
@@ -735,59 +759,66 @@ defmodule SpotterWeb.FileMetricsLive do
 
               <div :if={entry.reason} class="hotspot-reason">{entry.reason}</div>
 
-              <div class="rubric-factors">
-                <div :for={{name, score} <- entry.rubric || %{}} class="rubric-row">
-                  <span class="rubric-name">{format_rubric_name(name)}</span>
-                  <div class="rubric-bar-bg">
-                    <div
-                      class="rubric-bar-fill"
-                      style={"width: #{rubric_bar_width(score)}; background: #{rubric_bar_color(score)}"}
-                    >
-                    </div>
-                  </div>
-                  <span class="rubric-value">{round(score)}</span>
-                </div>
+              <div class="hotspot-snippet">
+                <pre><span class="snippet-line-numbers">{snippet_line_numbers(entry.line_start, entry.line_end)}</span><code class={"language-#{snippet_language(entry.relative_path)}"}>{entry.snippet}</code></pre>
               </div>
 
-              <div
-                :if={has_score_components?(entry.metadata)}
-                class="score-components"
-                data-testid="score-components"
-              >
-                <h4 class="score-components-heading">Score Components</h4>
-                <div class="score-components-grid">
-                  <div class="score-component">
-                    <span class="score-component-label">Complexity</span>
-                    <span class="score-component-value">
-                      {format_metric(entry.metadata, "complexity_score")}
-                    </span>
-                  </div>
-                  <div class="score-component">
-                    <span class="score-component-label">Churn</span>
-                    <span class="score-component-value">
-                      {format_metric(entry.metadata, "change_churn_score")}
-                    </span>
-                  </div>
-                  <div class="score-component">
-                    <span class="score-component-label">Blast radius</span>
-                    <span class="score-component-value">
-                      {format_metric(entry.metadata, "blast_radius_score")}
-                    </span>
-                  </div>
-                  <div class="score-component">
-                    <span class="score-component-label">Test exposure</span>
-                    <span class="score-component-value">
-                      {format_metric(entry.metadata, "test_exposure_score")}
-                    </span>
-                  </div>
-                  <div class="score-component">
-                    <span class="score-component-label">Confidence</span>
-                    <span class={"confidence-badge confidence-#{blast_confidence(entry.metadata)}"}>
-                      {blast_confidence(entry.metadata)}
-                    </span>
+              <details class="rubric-details">
+                <summary>Scoring breakdown</summary>
+                <div class="rubric-factors">
+                  <div :for={{name, score} <- entry.rubric || %{}} class="rubric-row">
+                    <span class="rubric-name">{format_rubric_name(name)}</span>
+                    <div class="rubric-bar-bg">
+                      <div
+                        class="rubric-bar-fill"
+                        style={"width: #{rubric_bar_width(score)}; background: #{rubric_bar_color(score)}"}
+                      >
+                      </div>
+                    </div>
+                    <span class="rubric-value">{round(score)}</span>
                   </div>
                 </div>
-              </div>
+
+                <div
+                  :if={has_score_components?(entry.metadata)}
+                  class="score-components"
+                  data-testid="score-components"
+                >
+                  <h4 class="score-components-heading">Score Components</h4>
+                  <div class="score-components-grid">
+                    <div class="score-component">
+                      <span class="score-component-label">Complexity</span>
+                      <span class="score-component-value">
+                        {format_metric(entry.metadata, "complexity_score")}
+                      </span>
+                    </div>
+                    <div class="score-component">
+                      <span class="score-component-label">Churn</span>
+                      <span class="score-component-value">
+                        {format_metric(entry.metadata, "change_churn_score")}
+                      </span>
+                    </div>
+                    <div class="score-component">
+                      <span class="score-component-label">Blast radius</span>
+                      <span class="score-component-value">
+                        {format_metric(entry.metadata, "blast_radius_score")}
+                      </span>
+                    </div>
+                    <div class="score-component">
+                      <span class="score-component-label">Test exposure</span>
+                      <span class="score-component-value">
+                        {format_metric(entry.metadata, "test_exposure_score")}
+                      </span>
+                    </div>
+                    <div class="score-component">
+                      <span class="score-component-label">Confidence</span>
+                      <span class={"confidence-badge confidence-#{blast_confidence(entry.metadata)}"}>
+                        {blast_confidence(entry.metadata)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </details>
 
               <div class="hotspot-meta">
                 <span>Lines {entry.line_start}-{entry.line_end}</span>
@@ -797,11 +828,6 @@ defmodule SpotterWeb.FileMetricsLive do
                   {strategy_label(entry.metadata)}
                 </span>
               </div>
-
-              <details class="snippet-details">
-                <summary>Preview snippet</summary>
-                <pre class="snippet-pre"><code>{entry.snippet}</code></pre>
-              </details>
             </div>
           </div>
         <% end %>
@@ -855,7 +881,7 @@ defmodule SpotterWeb.FileMetricsLive do
                   </th>
                   <th>
                     <button phx-click="cc_sort" phx-value-field="max_frequency_30d" class="sort-btn">
-                      Max Co-Change (30d){cc_sort_indicator(assigns, :max_frequency_30d)}
+                      Max Freq (30d){cc_sort_indicator(assigns, :max_frequency_30d)}
                     </button>
                   </th>
                   <th>
@@ -863,7 +889,7 @@ defmodule SpotterWeb.FileMetricsLive do
                       Last Seen{cc_sort_indicator(assigns, :last_seen_at)}
                     </button>
                   </th>
-                  <th>Co-change groups</th>
+                  <th>Groups</th>
                 </tr>
               </thead>
               <tbody>
@@ -888,55 +914,50 @@ defmodule SpotterWeb.FileMetricsLive do
                     <td>{row.max_frequency_30d}</td>
                     <td>{format_datetime(row.last_seen_at)}</td>
                     <td>
-                      <span :for={group <- row.groups} class="badge" style="margin-right: 0.5rem;">
-                        {format_group(group)}
-                      </span>
+                      <span class="cochange-group-count">{format_group_count(row.groups)}</span>
                     </td>
                   </tr>
                   <%= if @cc_expanded_member == row.member do %>
                     <tr class="detail-row">
                       <td colspan="4">
-                        <div class="detail-panel" style="padding: 1rem;">
+                        <div class="cochange-detail-panel">
                           <%= for group <- row.groups do %>
-                            <div style="margin-bottom: 1.5rem;">
-                              <h4 style="margin: 0 0 0.5rem 0;">{format_group(group)}</h4>
+                            <div class="cochange-group-card">
+                              <div class="cochange-group-header">
+                                <span class="cochange-group-title">{format_group_title(group)}</span>
+                                <span class="cochange-frequency-badge">&times;{group.frequency_30d}</span>
+                              </div>
 
-                              <div style="margin-bottom: 0.75rem;">
-                                <strong>Members</strong>
+                              <div class="cochange-section">
+                                <span class="cochange-section-label">Members</span>
                                 <% stats = Map.get(@cc_member_stats, group.group_key, []) %>
                                 <%= if stats == [] do %>
-                                  <div class="empty-state-small" style="padding: 0.25rem 0; opacity: 0.6;">No file metrics available.</div>
+                                  <div class="empty-state-small">No file metrics available.</div>
                                 <% else %>
-                                  <table class="inner-table" style="margin-top: 0.25rem;">
-                                    <thead>
-                                      <tr>
-                                        <th>Path</th>
-                                        <th>Size</th>
-                                        <th>LOC</th>
-                                        <th>Measured at</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      <tr :for={stat <- stats}>
-                                        <td>{stat.member_path}</td>
-                                        <td>{format_bytes(stat.size_bytes)}</td>
-                                        <td>{stat.loc || "-"}</td>
-                                        <td>{format_datetime(stat.measured_at)}</td>
-                                      </tr>
-                                    </tbody>
-                                  </table>
+                                  <div class="cochange-member-list">
+                                    <div :for={stat <- stats} class="cochange-member-item">
+                                      <%= if file_link(@selected_project_id, stat.member_path) do %>
+                                        <a href={file_link(@selected_project_id, stat.member_path)} class="cochange-member-path">{stat.member_path}</a>
+                                      <% else %>
+                                        <span class="cochange-member-path">{stat.member_path}</span>
+                                      <% end %>
+                                      <span :if={member_meta_text(stat) != ""} class="cochange-member-meta">
+                                        {member_meta_text(stat)}
+                                      </span>
+                                    </div>
+                                  </div>
                                 <% end %>
                               </div>
 
-                              <div>
-                                <strong>Relevant Commits</strong>
+                              <div class="cochange-section">
+                                <span class="cochange-section-label">Relevant Commits</span>
                                 <% commits = Map.get(@cc_group_commits, group.group_key, []) %>
                                 <%= if commits == [] do %>
-                                  <div class="empty-state-small" style="padding: 0.25rem 0; opacity: 0.6;">No commit provenance recorded.</div>
+                                  <div class="empty-state-small">No commit provenance recorded.</div>
                                 <% else %>
-                                  <div style="margin-top: 0.25rem;">
+                                  <div class="cochange-commit-list">
                                     <%= for gc <- commits do %>
-                                      <div style="margin-bottom: 0.5rem;">
+                                      <div>
                                         <button
                                           phx-click="cc_toggle_commit_detail"
                                           phx-value-hash={gc.commit_hash}
@@ -945,24 +966,24 @@ defmodule SpotterWeb.FileMetricsLive do
                                           aria-label={"Show details for commit #{String.slice(gc.commit_hash, 0, 8)}"}
                                         >
                                           <code>{String.slice(gc.commit_hash, 0, 8)}</code>
+                                          <span class="text-muted text-xs">{format_datetime(gc.committed_at)}</span>
                                         </button>
-                                        <span style="opacity: 0.6; margin-left: 0.5rem;">{format_datetime(gc.committed_at)}</span>
 
                                         <%= if @cc_expanded_commit_hash == gc.commit_hash do %>
                                           <% detail = Map.get(@cc_commit_details, gc.commit_hash) %>
-                                          <div class="commit-detail-panel" style="margin: 0.5rem 0 0 1rem; padding: 0.5rem; border-left: 2px solid var(--border-color, #444);">
+                                          <div class="commit-detail-inline">
                                             <%= if detail do %>
                                               <div><strong>Hash:</strong> <code>{detail.commit_hash}</code></div>
                                               <div><strong>Date:</strong> {format_datetime(detail.committed_at)}</div>
                                               <div :if={detail.git_branch}><strong>Branch:</strong> {detail.git_branch}</div>
                                               <div :if={detail.changed_files != []}>
                                                 <strong>Changed files ({length(detail.changed_files)}):</strong>
-                                                <ul style="margin: 0.25rem 0 0 1rem; padding: 0;">
-                                                  <li :for={f <- detail.changed_files} style="font-size: 0.85em;">{f}</li>
+                                                <ul class="commit-changed-files">
+                                                  <li :for={f <- detail.changed_files}>{f}</li>
                                                 </ul>
                                               </div>
                                             <% else %>
-                                              <div style="opacity: 0.6;">Commit details not available in database.</div>
+                                              <div class="empty-state-small">Commit details not available in database.</div>
                                             <% end %>
                                           </div>
                                         <% end %>
@@ -1169,22 +1190,6 @@ defmodule SpotterWeb.FileMetricsLive do
         padding: 0.1rem 0.4rem;
         border-radius: 4px;
         font-family: monospace;
-      }
-
-      .snippet-details { margin-top: 0.5rem; }
-      .snippet-details summary {
-        cursor: pointer;
-        font-size: 0.8rem;
-        color: #9ca3af;
-      }
-      .snippet-pre {
-        margin-top: 0.5rem;
-        padding: 0.75rem;
-        background: #0d1117;
-        border-radius: 6px;
-        overflow-x: auto;
-        font-size: 0.8rem;
-        max-height: 300px;
       }
 
       .score-components {

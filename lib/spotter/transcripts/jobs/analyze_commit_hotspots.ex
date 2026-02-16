@@ -24,7 +24,7 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
   alias Spotter.Transcripts.{Commit, CommitHotspot, ReviewItem, Session}
 
   @impl Oban.Worker
-  def timeout(_job), do: :timer.minutes(6)
+  def timeout(_job), do: :timer.minutes(10)
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"project_id" => project_id, "commit_hash" => commit_hash}}) do

@@ -115,6 +115,7 @@ Hooks.StudyCard = {
   mounted() {
     this._currentCardId = this._getCardId()
     this._animateEntrance()
+    this._highlightCode()
   },
 
   beforeUpdate() {
@@ -126,6 +127,16 @@ Hooks.StudyCard = {
     if (newCardId && newCardId !== this._previousCardId) {
       this._currentCardId = newCardId
       this._animateEntrance()
+    }
+    this._highlightCode()
+  },
+
+  _highlightCode() {
+    const blocks = this.el.querySelectorAll("pre code[class*='language-']")
+    for (const block of blocks) {
+      if (block.dataset.hljs === "done") continue
+      hljs.highlightElement(block)
+      block.dataset.hljs = "done"
     }
   },
 
@@ -500,6 +511,19 @@ Hooks.DiffHighlighter = {
   updated() { this._highlight() },
   _highlight() {
     const blocks = this.el.querySelectorAll("code.language-diff")
+    for (const block of blocks) {
+      if (block.dataset.hljs === "done") continue
+      hljs.highlightElement(block)
+      block.dataset.hljs = "done"
+    }
+  },
+}
+
+Hooks.SnippetHighlighter = {
+  mounted() { this._highlight() },
+  updated() { this._highlight() },
+  _highlight() {
+    const blocks = this.el.querySelectorAll("pre code[class*='language-']")
     for (const block of blocks) {
       if (block.dataset.hljs === "done") continue
       hljs.highlightElement(block)

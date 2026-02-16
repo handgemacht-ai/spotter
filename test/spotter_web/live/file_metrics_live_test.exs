@@ -269,12 +269,12 @@ defmodule SpotterWeb.FileMetricsLiveTest do
       {:ok, view, html} =
         live(build_conn(), "/file-metrics?project_id=#{project.id}&tab=co-change")
 
-      refute html =~ ~s(\u00d78)
+      refute html =~ "1 group"
 
       html = render_click(view, "cc_toggle_scope", %{"scope" => "directory"})
       assert html =~ "lib"
       assert html =~ "test"
-      assert html =~ ~s(\u00d78)
+      assert html =~ "1 group"
     end
 
     test "expand shows detail panel" do
