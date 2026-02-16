@@ -7,7 +7,6 @@ defmodule Spotter.Services.FileMetricsTest do
 
   alias Spotter.Transcripts.{
     CoChangeGroup,
-    CoChangeGroupMemberStat,
     Commit,
     CommitHotspot,
     FileHeatmap,
@@ -206,26 +205,22 @@ defmodule Spotter.Services.FileMetricsTest do
     test "ranks files by size_bytes descending" do
       p = create_project("fm-fs-rank")
 
-      Ash.create!(CoChangeGroupMemberStat, %{
+      Ash.create!(FileHeatmap, %{
         project_id: p.id,
-        scope: :file,
-        group_key: "g1",
-        member_path: "lib/big.ex",
+        relative_path: "lib/big.ex",
+        heat_score: 50.0,
+        change_count_30d: 5,
         size_bytes: 5000,
-        loc: 100,
-        measured_commit_hash: String.duplicate("a", 40),
-        measured_at: ~U[2026-02-10 12:00:00Z]
+        loc: 100
       })
 
-      Ash.create!(CoChangeGroupMemberStat, %{
+      Ash.create!(FileHeatmap, %{
         project_id: p.id,
-        scope: :file,
-        group_key: "g1",
-        member_path: "lib/small.ex",
+        relative_path: "lib/small.ex",
+        heat_score: 30.0,
+        change_count_30d: 2,
         size_bytes: 500,
-        loc: 20,
-        measured_commit_hash: String.duplicate("a", 40),
-        measured_at: ~U[2026-02-10 12:00:00Z]
+        loc: 20
       })
 
       result = FileMetrics.list_file_sizes(p.id)
@@ -234,61 +229,50 @@ defmodule Spotter.Services.FileMetricsTest do
       assert List.last(result).member_path == "lib/small.ex"
     end
 
-    test "deduplicates by member_path keeping latest measured_at" do
-      p = create_project("fm-fs-dedup")
+    test "excludes entries without size_bytes" do
+      p = create_project("fm-fs-nil")
 
-      Ash.create!(CoChangeGroupMemberStat, %{
+      Ash.create!(FileHeatmap, %{
         project_id: p.id,
-        scope: :file,
-        group_key: "g1",
-        member_path: "lib/file.ex",
+        relative_path: "lib/measured.ex",
+        heat_score: 50.0,
+        change_count_30d: 5,
         size_bytes: 1000,
-        loc: 50,
-        measured_commit_hash: String.duplicate("a", 40),
-        measured_at: ~U[2026-02-01 12:00:00Z]
+        loc: 50
       })
 
-      Ash.create!(CoChangeGroupMemberStat, %{
+      Ash.create!(FileHeatmap, %{
         project_id: p.id,
-        scope: :file,
-        group_key: "g2",
-        member_path: "lib/file.ex",
-        size_bytes: 1500,
-        loc: 60,
-        measured_commit_hash: String.duplicate("b", 40),
-        measured_at: ~U[2026-02-10 12:00:00Z]
+        relative_path: "lib/unmeasured.ex",
+        heat_score: 30.0,
+        change_count_30d: 2
       })
 
       result = FileMetrics.list_file_sizes(p.id)
       assert length(result) == 1
-      assert hd(result).size_bytes == 1500
-      assert hd(result).loc == 60
+      assert hd(result).member_path == "lib/measured.ex"
     end
 
     test "filters by project_id" do
       p1 = create_project("fm-fs-filter-a")
       p2 = create_project("fm-fs-filter-b")
 
-      Ash.create!(CoChangeGroupMemberStat, %{
+      Ash.create!(FileHeatmap, %{
         project_id: p1.id,
-        scope: :file,
-        group_key: "g1",
-        member_path: "lib/a.ex",
+        relative_path: "lib/a.ex",
+        heat_score: 50.0,
+        change_count_30d: 5,
         size_bytes: 1000,
-        loc: 50,
-        measured_commit_hash: String.duplicate("a", 40),
-        measured_at: ~U[2026-02-10 12:00:00Z]
+        loc: 50
       })
 
-      Ash.create!(CoChangeGroupMemberStat, %{
+      Ash.create!(FileHeatmap, %{
         project_id: p2.id,
-        scope: :file,
-        group_key: "g1",
-        member_path: "lib/b.ex",
+        relative_path: "lib/b.ex",
+        heat_score: 40.0,
+        change_count_30d: 3,
         size_bytes: 2000,
-        loc: 80,
-        measured_commit_hash: String.duplicate("a", 40),
-        measured_at: ~U[2026-02-10 12:00:00Z]
+        loc: 80
       })
 
       result = FileMetrics.list_file_sizes(p1.id)
@@ -307,15 +291,13 @@ defmodule Spotter.Services.FileMetricsTest do
     test "returns expected keys in each row" do
       p = create_project("fm-fs-keys")
 
-      Ash.create!(CoChangeGroupMemberStat, %{
+      Ash.create!(FileHeatmap, %{
         project_id: p.id,
-        scope: :file,
-        group_key: "g1",
-        member_path: "lib/file.ex",
+        relative_path: "lib/file.ex",
+        heat_score: 50.0,
+        change_count_30d: 5,
         size_bytes: 1000,
-        loc: 50,
-        measured_commit_hash: String.duplicate("c", 40),
-        measured_at: ~U[2026-02-10 12:00:00Z]
+        loc: 50
       })
 
       [row] = FileMetrics.list_file_sizes(p.id)
@@ -324,7 +306,6 @@ defmodule Spotter.Services.FileMetricsTest do
       assert Map.has_key?(row, :size_bytes)
       assert Map.has_key?(row, :loc)
       assert Map.has_key?(row, :measured_at)
-      assert Map.has_key?(row, :measured_commit_hash)
     end
   end
 end

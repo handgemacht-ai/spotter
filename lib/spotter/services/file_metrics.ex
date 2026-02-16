@@ -6,7 +6,6 @@ defmodule Spotter.Services.FileMetrics do
 
   alias Spotter.Transcripts.{
     CoChangeGroup,
-    CoChangeGroupMemberStat,
     Commit,
     CommitHotspot,
     FileHeatmap
@@ -86,32 +85,30 @@ defmodule Spotter.Services.FileMetrics do
   @doc """
   List file sizes ranked by `size_bytes` descending.
 
-  Reads `scope == :file` stats, deduplicates by `member_path` (keeping latest
-  `measured_at`, with tie-breaks on higher `size_bytes` then higher `loc`).
+  Reads from `FileHeatmap` records that have `size_bytes` populated.
   """
   def list_file_sizes(project_id, limit \\ @max_rows) do
     Tracer.with_span "spotter.file_metrics.list_file_sizes" do
       Tracer.set_attribute("spotter.project_id", project_id || "all")
 
-      query = Ash.Query.filter(CoChangeGroupMemberStat, scope == :file)
+      query =
+        FileHeatmap
+        |> Ash.Query.filter(not is_nil(size_bytes))
+        |> Ash.Query.sort(size_bytes: :desc)
+        |> Ash.Query.limit(limit)
+
       query = maybe_filter_project(query, project_id)
 
-      stats = Ash.read!(query)
+      entries = Ash.read!(query)
 
       rows =
-        stats
-        |> Enum.group_by(& &1.member_path)
-        |> Enum.map(fn {_path, entries} -> pick_latest(entries) end)
-        |> Enum.sort_by(fn row -> {-(row.size_bytes || 0), -(row.loc || 0), row.member_path} end)
-        |> Enum.take(limit)
-        |> Enum.map(fn stat ->
+        Enum.map(entries, fn h ->
           %{
-            project_id: stat.project_id,
-            member_path: stat.member_path,
-            size_bytes: stat.size_bytes,
-            loc: stat.loc,
-            measured_at: stat.measured_at,
-            measured_commit_hash: stat.measured_commit_hash
+            project_id: h.project_id,
+            member_path: h.relative_path,
+            size_bytes: h.size_bytes,
+            loc: h.loc,
+            measured_at: h.updated_at
           }
         end)
 
@@ -169,9 +166,4 @@ defmodule Spotter.Services.FileMetrics do
     end)
   end
 
-  defp pick_latest(entries) do
-    Enum.max_by(entries, fn e ->
-      {e.measured_at || ~U[1970-01-01 00:00:00Z], e.size_bytes || 0, e.loc || 0}
-    end)
-  end
 end

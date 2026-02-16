@@ -10,7 +10,6 @@ defmodule SpotterWeb.FileMetricsLiveTest do
 
   alias Spotter.Transcripts.{
     CoChangeGroup,
-    CoChangeGroupMemberStat,
     Commit,
     CommitHotspot,
     FileHeatmap,
@@ -302,15 +301,13 @@ defmodule SpotterWeb.FileMetricsLiveTest do
     test "renders LOC and Size columns" do
       project = create_project("fm-fs-cols")
 
-      Ash.create!(CoChangeGroupMemberStat, %{
+      Ash.create!(FileHeatmap, %{
         project_id: project.id,
-        scope: :file,
-        group_key: "g1",
-        member_path: "lib/big.ex",
+        relative_path: "lib/big.ex",
+        heat_score: 50.0,
+        change_count_30d: 5,
         size_bytes: 5000,
-        loc: 100,
-        measured_commit_hash: String.duplicate("a", 40),
-        measured_at: ~U[2026-02-10 12:00:00Z]
+        loc: 100
       })
 
       {:ok, _view, html} =
@@ -324,26 +321,22 @@ defmodule SpotterWeb.FileMetricsLiveTest do
     test "ranks by bytes descending by default" do
       project = create_project("fm-fs-rank")
 
-      Ash.create!(CoChangeGroupMemberStat, %{
+      Ash.create!(FileHeatmap, %{
         project_id: project.id,
-        scope: :file,
-        group_key: "g1",
-        member_path: "lib/big.ex",
+        relative_path: "lib/big.ex",
+        heat_score: 50.0,
+        change_count_30d: 5,
         size_bytes: 5000,
-        loc: 50,
-        measured_commit_hash: String.duplicate("a", 40),
-        measured_at: ~U[2026-02-10 12:00:00Z]
+        loc: 50
       })
 
-      Ash.create!(CoChangeGroupMemberStat, %{
+      Ash.create!(FileHeatmap, %{
         project_id: project.id,
-        scope: :file,
-        group_key: "g1",
-        member_path: "lib/small.ex",
+        relative_path: "lib/small.ex",
+        heat_score: 30.0,
+        change_count_30d: 2,
         size_bytes: 500,
-        loc: 20,
-        measured_commit_hash: String.duplicate("a", 40),
-        measured_at: ~U[2026-02-10 12:00:00Z]
+        loc: 20
       })
 
       {:ok, _view, html} =
@@ -357,26 +350,22 @@ defmodule SpotterWeb.FileMetricsLiveTest do
     test "sort toggle for LOC" do
       project = create_project("fm-fs-sort-loc")
 
-      Ash.create!(CoChangeGroupMemberStat, %{
+      Ash.create!(FileHeatmap, %{
         project_id: project.id,
-        scope: :file,
-        group_key: "g1",
-        member_path: "lib/many_lines.ex",
+        relative_path: "lib/many_lines.ex",
+        heat_score: 30.0,
+        change_count_30d: 2,
         size_bytes: 500,
-        loc: 200,
-        measured_commit_hash: String.duplicate("a", 40),
-        measured_at: ~U[2026-02-10 12:00:00Z]
+        loc: 200
       })
 
-      Ash.create!(CoChangeGroupMemberStat, %{
+      Ash.create!(FileHeatmap, %{
         project_id: project.id,
-        scope: :file,
-        group_key: "g1",
-        member_path: "lib/big_bytes.ex",
+        relative_path: "lib/big_bytes.ex",
+        heat_score: 50.0,
+        change_count_30d: 5,
         size_bytes: 5000,
-        loc: 10,
-        measured_commit_hash: String.duplicate("a", 40),
-        measured_at: ~U[2026-02-10 12:00:00Z]
+        loc: 10
       })
 
       {:ok, view, _html} =
@@ -397,15 +386,13 @@ defmodule SpotterWeb.FileMetricsLiveTest do
     test "file links work in project-scoped mode" do
       project = create_project("fm-fs-links")
 
-      Ash.create!(CoChangeGroupMemberStat, %{
+      Ash.create!(FileHeatmap, %{
         project_id: project.id,
-        scope: :file,
-        group_key: "g1",
-        member_path: "lib/linked.ex",
+        relative_path: "lib/linked.ex",
+        heat_score: 50.0,
+        change_count_30d: 5,
         size_bytes: 1000,
-        loc: 50,
-        measured_commit_hash: String.duplicate("a", 40),
-        measured_at: ~U[2026-02-10 12:00:00Z]
+        loc: 50
       })
 
       {:ok, _view, html} =

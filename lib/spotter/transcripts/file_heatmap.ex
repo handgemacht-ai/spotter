@@ -26,6 +26,8 @@ defmodule Spotter.Transcripts.FileHeatmap do
         :change_count_30d,
         :heat_score,
         :last_changed_at,
+        :size_bytes,
+        :loc,
         :project_id
       ]
 
@@ -39,7 +41,9 @@ defmodule Spotter.Transcripts.FileHeatmap do
       accept [
         :change_count_30d,
         :heat_score,
-        :last_changed_at
+        :last_changed_at,
+        :size_bytes,
+        :loc
       ]
     end
   end
@@ -56,6 +60,9 @@ defmodule Spotter.Transcripts.FileHeatmap do
       default 0.0
       constraints min: 0.0, max: 100.0
     end
+
+    attribute :size_bytes, :integer
+    attribute :loc, :integer
 
     create_timestamp :inserted_at
     update_timestamp :updated_at

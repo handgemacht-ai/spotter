@@ -68,8 +68,10 @@ defmodule Spotter.Services.HeatmapCalculator do
       git_data = load_git_data(project_id, since: since, until: reference_date)
 
       file_map = merge_data(snapshot_data, git_data)
+      repo_path = resolve_repo_path(project_id)
+      file_sizes = read_all_file_sizes(repo_path)
 
-      upsert_heatmaps(project_id, file_map, reference_date)
+      upsert_heatmaps(project_id, file_map, reference_date, file_sizes)
       delete_stale_rows(project_id, file_map)
       persist_watermark(project_id, reference_date, window_days)
 
@@ -223,13 +225,16 @@ defmodule Spotter.Services.HeatmapCalculator do
       )
 
     heat_score = calculate_heat_score(new_count, last_changed, ctx.ref_date)
+    {size_bytes, loc} = read_file_metrics(ctx.repo_path, path)
 
     Ash.create!(FileHeatmap, %{
       project_id: ctx.project_id,
       relative_path: path,
       change_count_30d: new_count,
       heat_score: heat_score,
-      last_changed_at: last_changed
+      last_changed_at: last_changed,
+      size_bytes: size_bytes,
+      loc: loc
     })
   end
 
@@ -378,16 +383,19 @@ defmodule Spotter.Services.HeatmapCalculator do
     ext in @binary_extensions
   end
 
-  defp upsert_heatmaps(project_id, file_map, reference_date) do
+  defp upsert_heatmaps(project_id, file_map, reference_date, file_sizes) do
     Enum.each(file_map, fn {path, data} ->
       heat_score = calculate_heat_score(data.change_count, data.last_changed_at, reference_date)
+      {size_bytes, loc} = Map.get(file_sizes, path, {nil, nil})
 
       Ash.create!(FileHeatmap, %{
         project_id: project_id,
         relative_path: path,
         change_count_30d: data.change_count,
         heat_score: heat_score,
-        last_changed_at: data.last_changed_at
+        last_changed_at: data.last_changed_at,
+        size_bytes: size_bytes,
+        loc: loc
       })
     end)
   end
@@ -419,5 +427,80 @@ defmodule Spotter.Services.HeatmapCalculator do
     recency_norm = :math.exp(-days_since / 14)
 
     Float.round((0.65 * frequency_norm + 0.35 * recency_norm) * 100, 2)
+  end
+
+  # --- File size helpers ---
+
+  @doc false
+  @spec read_all_file_sizes({:ok, String.t()} | :skip) :: %{String.t() => {integer(), integer()}}
+  def read_all_file_sizes({:ok, repo_path}) do
+    size_map = parse_ls_tree(repo_path)
+
+    Map.new(size_map, fn {path, size_bytes} ->
+      loc =
+        if binary_file?(path) or size_bytes > 1_048_576 do
+          nil
+        else
+          read_loc(repo_path, path)
+        end
+
+      {path, {size_bytes, loc}}
+    end)
+  end
+
+  def read_all_file_sizes(:skip), do: %{}
+
+  defp parse_ls_tree(repo_path) do
+    case System.cmd("git", ["-C", repo_path, "ls-tree", "-r", "-l", "HEAD"],
+           stderr_to_stdout: true
+         ) do
+      {output, 0} ->
+        output
+        |> String.split("\n", trim: true)
+        |> Enum.flat_map(&parse_ls_tree_line/1)
+        |> Map.new()
+
+      _ ->
+        %{}
+    end
+  end
+
+  # Format: <mode> <type> <hash> <size>\t<path>
+  defp parse_ls_tree_line(line) do
+    case Regex.run(~r/^\S+\s+\S+\s+\S+\s+(\d+)\t(.+)$/, line) do
+      [_, size_str, path] -> [{path, String.to_integer(size_str)}]
+      _ -> []
+    end
+  end
+
+  defp read_file_metrics({:ok, repo_path}, path) do
+    case System.cmd("git", ["-C", repo_path, "show", "HEAD:#{path}"], stderr_to_stdout: true) do
+      {content, 0} ->
+        size = byte_size(content)
+
+        loc =
+          content
+          |> String.split("\n")
+          |> Enum.count(fn line -> String.trim(line) != "" end)
+
+        {size, loc}
+
+      _ ->
+        {nil, nil}
+    end
+  end
+
+  defp read_file_metrics(:skip, _path), do: {nil, nil}
+
+  defp read_loc(repo_path, path) do
+    case System.cmd("git", ["-C", repo_path, "show", "HEAD:#{path}"], stderr_to_stdout: true) do
+      {content, 0} ->
+        content
+        |> String.split("\n")
+        |> Enum.count(fn line -> String.trim(line) != "" end)
+
+      _ ->
+        nil
+    end
   end
 end
