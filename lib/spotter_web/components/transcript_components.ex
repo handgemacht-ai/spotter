@@ -29,6 +29,9 @@ defmodule SpotterWeb.TranscriptComponents do
   attr(:expanded_hook_groups, :any, default: nil)
   attr(:current_message_id, :any, default: nil)
   attr(:clicked_subagent, :string, default: nil)
+  attr(:session_id, :string, default: nil)
+  attr(:subagent_labels, :map, default: %{})
+  attr(:current_agent_id, :string, default: nil)
   attr(:show_debug, :boolean, default: false)
   attr(:anchors, :list, default: [])
   attr(:panel_id, :string, default: "transcript-messages")
@@ -58,6 +61,9 @@ defmodule SpotterWeb.TranscriptComponents do
             line={line}
             current_message_id={@current_message_id}
             clicked_subagent={@clicked_subagent}
+            session_id={@session_id}
+            subagent_labels={@subagent_labels}
+            current_agent_id={@current_agent_id}
             show_debug={@show_debug}
             anchors={@anchors}
             tool_hook_controls={@tool_hook_controls}
@@ -85,6 +91,9 @@ defmodule SpotterWeb.TranscriptComponents do
   attr(:line, :map, required: true)
   attr(:current_message_id, :any, default: nil)
   attr(:clicked_subagent, :string, default: nil)
+  attr(:session_id, :string, default: nil)
+  attr(:subagent_labels, :map, default: %{})
+  attr(:current_agent_id, :string, default: nil)
   attr(:show_debug, :boolean, default: false)
   attr(:anchors, :list, default: [])
   attr(:tool_hook_controls, :map, default: %{})
@@ -114,14 +123,26 @@ defmodule SpotterWeb.TranscriptComponents do
               title={"#{anchor.type} → terminal line #{anchor.t}"}
             />
           <% end %>
-          <%= if @line[:subagent_ref] do %>
-            <span
+          <%= if @line[:subagent_invocation?] == true and is_binary(@line[:subagent_ref]) and is_binary(@session_id) and @current_agent_id != @line.subagent_ref do %>
+            <% agent_id = @line.subagent_ref %>
+            <% label = Map.get(@subagent_labels, agent_id) || String.slice(agent_id, 0, 7) %>
+            <a
               class="subagent-badge"
-              phx-click="subagent_reference_clicked"
-              phx-value-ref={@line.subagent_ref}
+              href={"/sessions/#{@session_id}/agents/#{agent_id}"}
+              title={"type=#{@line[:subagent_type]} model=#{@line[:subagent_model]} agent_id=#{agent_id}"}
             >
-              agent
-            </span>
+              Subagent {label}
+            </a>
+          <% else %>
+            <%= if @line[:subagent_ref] && is_binary(@line[:subagent_ref]) && is_binary(@session_id) do %>
+              <% agent_id = @line.subagent_ref %>
+              <a
+                class="subagent-badge"
+                href={"/sessions/#{@session_id}/agents/#{agent_id}"}
+              >
+                agent
+              </a>
+            <% end %>
           <% end %>
           <span :if={@line[:kind] == :thinking} class="thinking-icon">💡</span>
           <span :if={tool_status_dot_visible?(@line)} class={"row-status-dot #{status_dot_class(@line)}"}></span>

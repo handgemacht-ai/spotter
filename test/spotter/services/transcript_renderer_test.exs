@@ -505,7 +505,7 @@ defmodule Spotter.Services.TranscriptRendererTest do
       ]
 
       result = TranscriptRenderer.render(messages)
-      assert Enum.any?(result, &(&1.subagent_ref == "agent-abc123"))
+      assert Enum.any?(result, &(&1.subagent_ref == "abc123"))
     end
 
     test "subagent_ref is nil when no agent reference" do
@@ -519,6 +519,54 @@ defmodule Spotter.Services.TranscriptRendererTest do
 
       result = TranscriptRenderer.render(messages)
       assert Enum.all?(result, &is_nil(&1.subagent_ref))
+    end
+
+    test "Task tool_use correlates with agent_progress to produce subagent invocation" do
+      messages = load_fixture("subagent.jsonl")
+      result = TranscriptRenderer.render(messages)
+
+      task_lines =
+        Enum.filter(result, fn line ->
+          line.kind == :tool_use and line.tool_name == "Task"
+        end)
+
+      assert task_lines != [], "Expected at least one Task tool_use line"
+
+      invocation = Enum.find(task_lines, & &1[:subagent_invocation?])
+      assert invocation, "Expected a subagent invocation line"
+      assert String.starts_with?(invocation.line, "● Subagent(")
+      assert invocation.subagent_ref == "afb92ff"
+      assert is_binary(invocation.subagent_type)
+    end
+
+    test "Task tool_use without agent_progress still renders as subagent invocation" do
+      messages = [
+        %{
+          type: :assistant,
+          content: %{
+            "blocks" => [
+              %{
+                "type" => "tool_use",
+                "name" => "Task",
+                "id" => "toolu_orphan",
+                "input" => %{
+                  "description" => "Do something",
+                  "subagent_type" => "Explore",
+                  "prompt" => "Find files"
+                }
+              }
+            ]
+          },
+          uuid: "msg-task-orphan"
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+
+      line = Enum.find(result, &(&1[:subagent_invocation?] == true))
+      assert line, "Expected subagent invocation line"
+      assert String.starts_with?(line.line, "● Subagent(Explore):")
+      assert is_nil(line.subagent_ref)
     end
   end
 

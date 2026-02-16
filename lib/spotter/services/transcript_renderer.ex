@@ -7,7 +7,7 @@ defmodule Spotter.Services.TranscriptRenderer do
   """
 
   @default_visible_lines 10
-  @subagent_pattern ~r/agent-[a-zA-Z0-9]+/
+  @subagent_pattern ~r/agent-([a-zA-Z0-9]+)/
   @noisy_success_pattern ~r/^The file .* has been updated successfully\.$/
 
   @extension_to_language %{
@@ -58,6 +58,7 @@ defmodule Spotter.Services.TranscriptRenderer do
     tool_use_index = build_tool_use_index(messages)
     tool_outcome_index = build_tool_outcome_index(messages)
     tool_result_timestamp_index = build_tool_result_timestamp_index(messages)
+    subagent_invocation_index = build_subagent_invocation_index(messages)
 
     messages
     |> Enum.flat_map(fn msg ->
@@ -65,7 +66,12 @@ defmodule Spotter.Services.TranscriptRenderer do
       timestamp = extract_timestamp(msg)
 
       msg
-      |> render_message_enriched(session_cwd, tool_use_index, tool_outcome_index)
+      |> render_message_enriched(
+        session_cwd,
+        tool_use_index,
+        tool_outcome_index,
+        subagent_invocation_index
+      )
       |> Enum.with_index()
       |> Enum.map(fn {line_meta, line_idx} ->
         line_meta
@@ -424,6 +430,64 @@ defmodule Spotter.Services.TranscriptRenderer do
     |> Map.new()
   end
 
+  # ── Subagent invocation index (Task tool_use -> agent_id correlation) ──
+
+  defp build_subagent_invocation_index(messages) do
+    # A) Extract Task tool_use metadata keyed by tool_use_id
+    task_meta =
+      messages
+      |> Enum.flat_map(fn
+        %{type: :assistant, content: %{"blocks" => blocks}} when is_list(blocks) ->
+          blocks
+          |> Enum.filter(fn block ->
+            block["type"] == "tool_use" and block["name"] == "Task" and is_binary(block["id"])
+          end)
+          |> Enum.map(fn block ->
+            {block["id"],
+             %{
+               description: get_in(block, ["input", "description"]),
+               subagent_type: get_in(block, ["input", "subagent_type"]),
+               model: get_in(block, ["input", "model"])
+             }}
+          end)
+
+        _ ->
+          []
+      end)
+      |> Map.new()
+
+    # B) Extract agent_id keyed by parentToolUseID from progress events
+    agent_id_by_parent =
+      messages
+      |> Enum.flat_map(fn
+        %{
+          type: :progress,
+          raw_payload: %{"data" => %{"type" => "agent_progress"} = data} = payload
+        } ->
+          agent_id =
+            data["agentId"] || data["agentID"]
+
+          parent_tool_use_id =
+            payload["parentToolUseID"] || payload["parentToolUseId"] || payload["toolUseID"]
+
+          if is_binary(agent_id) and is_binary(parent_tool_use_id) do
+            [{parent_tool_use_id, agent_id}]
+          else
+            []
+          end
+
+        _ ->
+          []
+      end)
+      |> Map.new()
+
+    # C) Join: for each Task tool_use_id, merge with correlated agent_id
+    Map.new(task_meta, fn {tool_use_id, meta} ->
+      agent_id = Map.get(agent_id_by_parent, tool_use_id)
+      {tool_use_id, Map.put(meta, :agent_id, agent_id)}
+    end)
+  end
+
   defp put_tool_duration(line_meta, tool_use_ts, tool_result_ts_index) do
     if line_meta[:kind] == :tool_use && line_meta[:tool_use_id] do
       case {tool_use_ts, Map.get(tool_result_ts_index, line_meta.tool_use_id)} do
@@ -495,11 +559,17 @@ defmodule Spotter.Services.TranscriptRenderer do
 
   # ── Enriched rendering (used by render/2) ──────────────────────────
 
-  defp render_message_enriched(%{type: :progress} = msg, _session_cwd, _tui, _toi) do
+  defp render_message_enriched(%{type: :progress} = msg, _session_cwd, _tui, _toi, _sai) do
     render_hook_progress(msg)
   end
 
-  defp render_message_enriched(%{type: type}, _session_cwd, _tool_use_index, _tool_outcome_index)
+  defp render_message_enriched(
+         %{type: type},
+         _session_cwd,
+         _tool_use_index,
+         _tool_outcome_index,
+         _subagent_invocation_index
+       )
        when type in [:system, :file_history_snapshot] do
     []
   end
@@ -508,7 +578,8 @@ defmodule Spotter.Services.TranscriptRenderer do
          %{content: nil},
          _session_cwd,
          _tool_use_index,
-         _tool_outcome_index
+         _tool_outcome_index,
+         _subagent_invocation_index
        ),
        do: []
 
@@ -516,7 +587,8 @@ defmodule Spotter.Services.TranscriptRenderer do
          %{type: :thinking, content: content},
          _session_cwd,
          _tool_use_index,
-         _tool_outcome_index
+         _tool_outcome_index,
+         _subagent_invocation_index
        ) do
     content
     |> extract_thinking_text()
@@ -528,39 +600,60 @@ defmodule Spotter.Services.TranscriptRenderer do
          %{type: :assistant, content: content},
          session_cwd,
          _tool_use_index,
-         tool_outcome_index
+         tool_outcome_index,
+         subagent_invocation_index
        ) do
-    render_assistant_content_enriched(content, session_cwd, tool_outcome_index)
+    render_assistant_content_enriched(
+      content,
+      session_cwd,
+      tool_outcome_index,
+      subagent_invocation_index
+    )
   end
 
   defp render_message_enriched(
          %{type: :user} = msg,
          session_cwd,
          tool_use_index,
-         _tool_outcome_index
+         _tool_outcome_index,
+         _subagent_invocation_index
        ) do
     render_user_content_enriched(msg, session_cwd, tool_use_index)
   end
 
-  defp render_message_enriched(_msg, _session_cwd, _tool_use_index, _tool_outcome_index), do: []
+  defp render_message_enriched(_msg, _session_cwd, _tui, _toi, _sai), do: []
 
   # ── Enriched assistant rendering ───────────────────────────────────
 
-  defp render_assistant_content_enriched(%{"blocks" => blocks}, session_cwd, tool_outcome_index)
+  defp render_assistant_content_enriched(
+         %{"blocks" => blocks},
+         session_cwd,
+         tool_outcome_index,
+         subagent_invocation_index
+       )
        when is_list(blocks) do
-    Enum.flat_map(blocks, &render_assistant_block_enriched(&1, session_cwd, tool_outcome_index))
+    Enum.flat_map(
+      blocks,
+      &render_assistant_block_enriched(
+        &1,
+        session_cwd,
+        tool_outcome_index,
+        subagent_invocation_index
+      )
+    )
   end
 
-  defp render_assistant_content_enriched(%{"text" => text}, _session_cwd, _tool_outcome_index) do
+  defp render_assistant_content_enriched(%{"text" => text}, _scwd, _toi, _sai) do
     classify_text_lines(String.split(text, "\n"), :text)
   end
 
-  defp render_assistant_content_enriched(_content, _session_cwd, _tool_outcome_index), do: []
+  defp render_assistant_content_enriched(_content, _scwd, _toi, _sai), do: []
 
   defp render_assistant_block_enriched(
          %{"type" => "text", "text" => text},
          _session_cwd,
-         _tool_outcome_index
+         _tool_outcome_index,
+         _subagent_invocation_index
        ) do
     classify_text_lines(String.split(text, "\n"), :text)
   end
@@ -568,7 +661,8 @@ defmodule Spotter.Services.TranscriptRenderer do
   defp render_assistant_block_enriched(
          %{"type" => "thinking", "thinking" => text},
          _session_cwd,
-         _tool_outcome_index
+         _tool_outcome_index,
+         _subagent_invocation_index
        ) do
     text
     |> String.split("\n")
@@ -576,9 +670,51 @@ defmodule Spotter.Services.TranscriptRenderer do
   end
 
   defp render_assistant_block_enriched(
+         %{"type" => "tool_use", "name" => "Task"} = block,
+         session_cwd,
+         _tool_outcome_index,
+         subagent_invocation_index
+       ) do
+    tool_id = block["id"]
+    thread_key = tool_id || "tool-use-Task"
+    invocation = if tool_id, do: Map.get(subagent_invocation_index, tool_id), else: nil
+
+    subagent_type =
+      if invocation, do: invocation.subagent_type, else: get_in(block, ["input", "subagent_type"])
+
+    type_label = subagent_type || "agent"
+
+    description =
+      if invocation && invocation.description do
+        invocation.description
+      else
+        tool_use_preview_enriched(block, session_cwd)
+      end
+
+    [
+      %{
+        line: "● Subagent(#{type_label}): #{description}",
+        kind: :tool_use,
+        tool_name: "Task",
+        tool_use_id: tool_id,
+        thread_key: thread_key,
+        subagent_invocation?: true,
+        subagent_ref: if(invocation, do: invocation.agent_id),
+        subagent_type: type_label,
+        subagent_model: if(invocation, do: invocation.model),
+        subagent_invocation_description: description,
+        code_language: nil,
+        render_mode: :plain,
+        source_line_number: nil
+      }
+    ]
+  end
+
+  defp render_assistant_block_enriched(
          %{"type" => "tool_use", "name" => "AskUserQuestion"} = block,
          _session_cwd,
-         _tool_outcome_index
+         _tool_outcome_index,
+         _subagent_invocation_index
        ) do
     tool_id = block["id"]
     thread_key = tool_id || "tool-use-AskUserQuestion"
@@ -624,7 +760,8 @@ defmodule Spotter.Services.TranscriptRenderer do
   defp render_assistant_block_enriched(
          %{"type" => "tool_use", "name" => "ExitPlanMode"} = block,
          _session_cwd,
-         _tool_outcome_index
+         _tool_outcome_index,
+         _subagent_invocation_index
        ) do
     tool_id = block["id"]
     thread_key = tool_id || "tool-use-ExitPlanMode"
@@ -646,7 +783,8 @@ defmodule Spotter.Services.TranscriptRenderer do
   defp render_assistant_block_enriched(
          %{"type" => "tool_use", "name" => name} = block,
          session_cwd,
-         tool_outcome_index
+         tool_outcome_index,
+         _subagent_invocation_index
        ) do
     preview = tool_use_preview_enriched(block, session_cwd)
     tool_id = block["id"]
@@ -681,7 +819,7 @@ defmodule Spotter.Services.TranscriptRenderer do
     end
   end
 
-  defp render_assistant_block_enriched(_block, _session_cwd, _tool_outcome_index), do: []
+  defp render_assistant_block_enriched(_block, _session_cwd, _tool_outcome_index, _sai), do: []
 
   # ── Enriched user rendering ────────────────────────────────────────
 
@@ -1403,6 +1541,11 @@ defmodule Spotter.Services.TranscriptRenderer do
 
   # ── Subagent detection ─────────────────────────────────────────────
 
+  defp put_subagent_ref(%{subagent_ref: existing} = line_meta, _msg)
+       when is_binary(existing) do
+    line_meta
+  end
+
   defp put_subagent_ref(line_meta, msg) do
     ref = msg[:agent_id] || detect_subagent_in_text(line_meta.line)
     Map.put(line_meta, :subagent_ref, ref)
@@ -1410,7 +1553,7 @@ defmodule Spotter.Services.TranscriptRenderer do
 
   defp detect_subagent_in_text(text) when is_binary(text) do
     case Regex.run(@subagent_pattern, text) do
-      [match] -> match
+      [_match, capture] -> capture
       _ -> nil
     end
   end

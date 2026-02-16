@@ -175,7 +175,7 @@ defmodule SpotterWeb.SessionLiveTest do
   end
 
   describe "subagent rendering" do
-    test "subagent rows detected by text pattern have is-subagent class and badge", %{
+    test "subagent rows detected by text pattern have is-subagent class and link", %{
       session: session,
       session_id: session_id
     } do
@@ -191,31 +191,7 @@ defmodule SpotterWeb.SessionLiveTest do
 
       assert html =~ "is-subagent"
       assert html =~ "subagent-badge"
-      # Accessibility: badge has readable text label, not just color
-      assert html =~ "subagent-badge"
-      assert html =~ "agent"
-    end
-
-    test "subagent click updates clicked_subagent state", %{
-      session: session,
-      session_id: session_id
-    } do
-      create_message(session, %{
-        content: %{
-          "blocks" => [
-            %{"type" => "text", "text" => "Using agent-clickTest for this work"}
-          ]
-        }
-      })
-
-      {:ok, view, _html} = live(build_conn(), "/sessions/#{session_id}")
-
-      html =
-        view
-        |> element(".subagent-badge")
-        |> render_click()
-
-      assert html =~ "is-clicked"
+      assert html =~ "href=\"/sessions/#{session_id}/agents/abc123\""
     end
   end
 

@@ -23,6 +23,7 @@ defmodule SpotterWeb.SessionLive do
     Session,
     SessionCommitLink,
     SessionRework,
+    Subagent,
     ToolCall
   }
 
@@ -58,6 +59,7 @@ defmodule SpotterWeb.SessionLive do
     errors = load_errors(session_record)
     rework_events = load_rework_events(session_record)
     commit_links = load_commit_links(session_id)
+    subagent_labels = load_subagent_labels(session_record)
     session_cwd = if session_record, do: session_record.cwd, else: nil
 
     socket =
@@ -81,6 +83,7 @@ defmodule SpotterWeb.SessionLive do
         errors: errors,
         rework_events: rework_events,
         commit_links: commit_links,
+        subagent_labels: subagent_labels,
         current_message_id: nil,
         show_transcript: true,
         clicked_subagent: nil,
@@ -342,10 +345,6 @@ defmodule SpotterWeb.SessionLive do
     {:noreply, update_computer_inputs(socket, :transcript_view, %{show_debug: new_debug})}
   end
 
-  def handle_event("subagent_reference_clicked", %{"ref" => ref}, socket) do
-    {:noreply, assign(socket, clicked_subagent: ref)}
-  end
-
   def handle_event("switch_sidebar_tab", %{"tab" => tab}, socket) do
     {:noreply, assign(socket, active_sidebar_tab: String.to_existing_atom(tab))}
   end
@@ -498,7 +497,8 @@ defmodule SpotterWeb.SessionLive do
         session_record: session_record,
         errors: errors,
         rework_events: rework_events,
-        commit_links: commit_links
+        commit_links: commit_links,
+        subagent_labels: load_subagent_labels(session_record)
       )
       |> update_computer_inputs(:transcript_view, %{
         messages: messages,
@@ -543,6 +543,18 @@ defmodule SpotterWeb.SessionLive do
   end
 
   defp maybe_bootstrap_sync(session), do: session
+
+  defp load_subagent_labels(nil), do: %{}
+
+  defp load_subagent_labels(session) do
+    Subagent
+    |> Ash.Query.filter(session_id == ^session.id)
+    |> Ash.Query.select([:agent_id, :slug])
+    |> Ash.read!()
+    |> Map.new(fn sa ->
+      {sa.agent_id, sa.slug || String.slice(sa.agent_id, 0, 7)}
+    end)
+  end
 
   defp load_errors(nil), do: []
 
@@ -677,6 +689,8 @@ defmodule SpotterWeb.SessionLive do
             expanded_hook_groups={@transcript_view_expanded_hook_groups}
             current_message_id={@current_message_id}
             clicked_subagent={@clicked_subagent}
+            session_id={@session_id}
+            subagent_labels={@subagent_labels}
             show_debug={@transcript_view_show_debug}
             anchors={@anchors}
             empty_message="No transcript available for this session."
