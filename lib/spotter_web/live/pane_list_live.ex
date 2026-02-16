@@ -8,8 +8,6 @@ defmodule SpotterWeb.PaneListLive do
     Flashcard,
     ProjectIngestState,
     ProjectRollingSummary,
-    PromptPattern,
-    PromptPatternRun,
     ReviewItem,
     Session,
     SessionPresenter,
@@ -18,10 +16,9 @@ defmodule SpotterWeb.PaneListLive do
     ToolCall
   }
 
-  alias Spotter.Services.{PromptPatternScheduler, Tmux}
+  alias Spotter.Services.Tmux
 
   alias Spotter.Transcripts.Jobs.{
-    ComputePromptPatterns,
     DistillProjectRollingSummary,
     IngestRecentCommits
   }
@@ -179,13 +176,6 @@ defmodule SpotterWeb.PaneListLive do
       |> assign(hidden_expanded: %{})
       |> assign(expanded_subagents: %{})
       |> assign(subagents_by_session: %{})
-      |> assign(
-        pp_project_id: "all",
-        pp_timespan: "30",
-        pp_run: nil,
-        pp_patterns: [],
-        pp_progress: %{remaining: 0, cadence: 10, latest_status: nil}
-      )
       |> mount_computers()
       |> load_session_data()
       |> ensure_default_project_filter()
@@ -193,61 +183,6 @@ defmodule SpotterWeb.PaneListLive do
     if connected?(socket), do: maybe_enqueue_commit_ingest(socket)
 
     {:ok, socket}
-  end
-
-  @impl true
-  def handle_params(params, _uri, socket) do
-    pp_project_id =
-      params["prompt_patterns_project_id"] ||
-        default_prompt_patterns_project_id(socket.assigns.session_data_projects)
-
-    pp_timespan = normalize_prompt_patterns_timespan(params["prompt_patterns_timespan"])
-
-    socket =
-      socket
-      |> assign(pp_project_id: pp_project_id, pp_timespan: pp_timespan)
-      |> load_latest_pp_run()
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("run_prompt_patterns", _params, socket) do
-    Tracer.with_span "spotter.pane_list_live.run_prompt_patterns" do
-      scope = if socket.assigns.pp_project_id == "all", do: "global", else: "project"
-
-      project_id =
-        if scope == "project", do: socket.assigns.pp_project_id, else: nil
-
-      timespan_days =
-        parse_timespan_days(socket.assigns.pp_timespan)
-
-      %{"scope" => scope, "project_id" => project_id, "timespan_days" => timespan_days}
-      |> ComputePromptPatterns.new()
-      |> Oban.insert()
-    end
-
-    {:noreply, load_latest_pp_run(socket)}
-  end
-
-  def handle_event("view_pattern_detail", %{"pattern-id" => pattern_id}, socket) do
-    {:noreply, push_navigate(socket, to: "/patterns/#{pattern_id}")}
-  end
-
-  def handle_event("set_pp_project", %{"id" => id}, socket) do
-    {:noreply,
-     push_patch(socket,
-       to: pp_path(id, socket.assigns.pp_timespan)
-     )}
-  end
-
-  def handle_event("set_pp_timespan", %{"value" => value}, socket) do
-    value = normalize_prompt_patterns_timespan(value)
-
-    {:noreply,
-     push_patch(socket,
-       to: pp_path(socket.assigns.pp_project_id, value)
-     )}
   end
 
   def handle_event("filter_project", %{"project-id" => raw_id}, socket) do
@@ -476,88 +411,6 @@ defmodule SpotterWeb.PaneListLive do
   defp interval_multiplier(:high), do: 2.0
   defp interval_multiplier(:medium), do: 2.5
   defp interval_multiplier(:low), do: 3.0
-
-  defp find_project_name(projects, project_id) do
-    case Enum.find(projects, &(&1.id == project_id)) do
-      nil -> String.slice(project_id, 0, 8)
-      project -> project.name
-    end
-  end
-
-  defp pp_path(project_id, timespan) do
-    "/?prompt_patterns_project_id=#{project_id}&prompt_patterns_timespan=#{timespan}"
-  end
-
-  defp default_prompt_patterns_project_id([project]), do: project.id
-  defp default_prompt_patterns_project_id(_projects), do: "all"
-
-  defp normalize_prompt_patterns_timespan(nil), do: "30"
-
-  defp normalize_prompt_patterns_timespan(timespan) when is_binary(timespan) do
-    timespan
-    |> String.trim()
-    |> case do
-      "" -> "30"
-      "all" -> "all"
-      value -> value
-    end
-  end
-
-  defp parse_timespan_days("all"), do: nil
-
-  defp parse_timespan_days(timespan) when is_binary(timespan) do
-    case Integer.parse(timespan) do
-      {days, ""} -> days
-      _ -> 30
-    end
-  end
-
-  defp parse_timespan_days(_), do: 30
-
-  defp load_latest_pp_run(socket) do
-    scope = if socket.assigns.pp_project_id == "all", do: :global, else: :project
-
-    project_id =
-      if scope == :project, do: socket.assigns.pp_project_id, else: nil
-
-    timespan_days = parse_timespan_days(socket.assigns.pp_timespan)
-
-    query =
-      PromptPatternRun
-      |> Ash.Query.filter(scope == ^scope)
-      |> Ash.Query.sort(inserted_at: :desc)
-      |> Ash.Query.limit(1)
-
-    query =
-      if timespan_days do
-        Ash.Query.filter(query, timespan_days == ^timespan_days)
-      else
-        Ash.Query.filter(query, is_nil(timespan_days))
-      end
-
-    query =
-      if project_id do
-        Ash.Query.filter(query, project_id == ^project_id)
-      else
-        query
-      end
-
-    progress = PromptPatternScheduler.run_progress_for_ui()
-
-    case Ash.read(query) do
-      {:ok, [run]} ->
-        patterns =
-          PromptPattern
-          |> Ash.Query.filter(run_id == ^run.id)
-          |> Ash.Query.sort(count_total: :desc)
-          |> Ash.read!()
-
-        assign(socket, pp_run: run, pp_patterns: patterns, pp_progress: progress)
-
-      _ ->
-        assign(socket, pp_run: nil, pp_patterns: [], pp_progress: progress)
-    end
-  end
 
   defp maybe_track_seen_upcoming(socket, entry)
        when is_map(entry) and is_map_key(entry, :upcoming) do
@@ -1181,107 +1034,6 @@ defmodule SpotterWeb.PaneListLive do
               </div>
             </div>
           </div>
-        <% end %>
-      </div>
-
-      <%!-- Prompt Patterns Section --%>
-      <div class="prompt-patterns-section mb-4" data-testid="prompt-patterns-section">
-        <div class="page-header">
-          <h2 class="section-heading">Repetitive Prompt Patterns</h2>
-          <button
-            class="btn btn-success"
-            phx-click="run_prompt_patterns"
-            data-testid="analyze-patterns-btn"
-          >
-            Analyze patterns
-          </button>
-        </div>
-
-        <div class="filter-bar">
-          <button
-            :for={project <- @session_data_projects}
-            phx-click="set_pp_project"
-            phx-value-id={project.id}
-            class={"filter-btn#{if @pp_project_id == project.id, do: " is-active"}"}
-          >
-            {project.name}
-          </button>
-        </div>
-
-        <div class="filter-bar mt-1">
-          <button
-            :for={{label, val} <- [{"7d", "7"}, {"30d", "30"}, {"90d", "90"}, {"All-time", "all"}]}
-            phx-click="set_pp_timespan"
-            phx-value-value={val}
-            class={"filter-btn#{if @pp_timespan == val, do: " is-active"}"}
-          >
-            {label}
-          </button>
-        </div>
-
-        <%= cond do %>
-          <% is_nil(@pp_run) -> %>
-            <div class="empty-state" data-testid="pp-empty-state">
-              <%= if @pp_progress.remaining == 0 do %>
-                <p>Automatic analysis is ready to start. Click <strong>Analyze patterns</strong> to run now.</p>
-              <% else %>
-                <p>
-                  No prompt pattern analysis yet.
-                  <span data-testid="pp-remaining-count">{@pp_progress.remaining}</span>
-                  more completed
-                  {if @pp_progress.remaining == 1, do: "session", else: "sessions"}
-                  until automatic analysis (every {@pp_progress.cadence} sessions).
-                </p>
-                <p class="text-muted text-sm">Or click <strong>Analyze patterns</strong> to run now.</p>
-              <% end %>
-            </div>
-          <% @pp_run.status in [:queued, :running] -> %>
-            <div class="empty-state">Analyzing...</div>
-          <% @pp_run.status == :error -> %>
-            <div class="empty-state text-error">Analysis failed: {@pp_run.error}</div>
-          <% @pp_run.status == :completed and @pp_patterns == [] -> %>
-            <div class="empty-state">No repeated patterns found in this timespan.</div>
-          <% @pp_run.status == :completed -> %>
-            <table>
-              <thead>
-                <tr>
-                  <th>Pattern</th>
-                  <th>Count</th>
-                  <th>Example</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  :for={pattern <- @pp_patterns}
-                  data-testid="pattern-row"
-                  class="pattern-table-row"
-                  phx-click="view_pattern_detail"
-                  phx-value-pattern-id={pattern.id}
-                >
-                  <td>
-                    <div class="text-sm font-medium">{pattern.label}</div>
-                    <div class="text-xs text-muted">{pattern.needle}</div>
-                  </td>
-                  <td>
-                    {pattern.count_total}
-                    <%= if @pp_project_id == "all" and pattern.project_counts != %{} do %>
-                      <div class="pp-project-counts">
-                        <span
-                          :for={{pid, cnt} <- pattern.project_counts}
-                          class="badge text-xs"
-                        >
-                          {find_project_name(@session_data_projects, pid)}: {cnt}
-                        </span>
-                      </div>
-                    <% end %>
-                  </td>
-                  <td>
-                    <% example = List.first(Map.get(pattern.examples, "items", [])) %>
-                    <span :if={example} class="text-sm text-muted">{String.slice(example, 0, 80)}</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
         <% end %>
       </div>
 

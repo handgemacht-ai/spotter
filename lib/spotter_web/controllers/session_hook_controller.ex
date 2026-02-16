@@ -7,7 +7,6 @@ defmodule SpotterWeb.SessionHookController do
   alias Spotter.Observability.FlowHub
   alias Spotter.Observability.FlowKeys
   alias Spotter.Services.ActiveSessionRegistry
-  alias Spotter.Services.PromptPatternScheduler
   alias Spotter.Services.SessionRegistry
   alias Spotter.Services.TranscriptTailSupervisor
   alias Spotter.Services.WaitingSummary
@@ -195,7 +194,6 @@ defmodule SpotterWeb.SessionHookController do
       TranscriptTailSupervisor.stop_worker(session_id)
       maybe_enqueue_ingest_for_session(session_id)
       mark_ended_and_enqueue_distillation(session_id, params)
-      maybe_schedule_prompt_patterns()
 
       emit_hook_outcome("session_end", :ok, flow_keys)
 
@@ -313,14 +311,6 @@ defmodule SpotterWeb.SessionHookController do
       {:error, reason} ->
         Logger.warning("Failed to mark session ended #{session_id}: #{inspect(reason)}")
     end
-  end
-
-  defp maybe_schedule_prompt_patterns do
-    PromptPatternScheduler.schedule_auto_run_if_ready()
-  rescue
-    error ->
-      Logger.warning("Prompt pattern scheduler failed: #{inspect(error)}")
-      :ok
   end
 
   defp maybe_start_tail_worker(session_id, cwd) when is_binary(cwd) do

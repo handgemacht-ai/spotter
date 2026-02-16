@@ -72,23 +72,15 @@ defmodule SpotterWeb.ConfigLiveTest do
     end
   end
 
-  describe "prompt_patterns_sessions_per_run" do
-    test "form renders with default value" do
+  describe "prompt patterns disabled" do
+    test "prompt-pattern settings are not rendered" do
       {:ok, _view, html} = live(build_conn(), "/settings/config")
 
-      assert html =~ "prompt_patterns_sessions_per_run"
-    end
-
-    test "invalid value keeps prior value" do
-      {:ok, view, _html} = live(build_conn(), "/settings/config")
-
-      view
-      |> element(~s(form[phx-submit="save_prompt_patterns_sessions_per_run"]))
-      |> render_submit(%{"value" => "not-a-number"})
-
-      html = render(view)
-      # Default value should still be shown
-      assert html =~ "10"
+      refute html =~ "prompt_patterns_model"
+      refute html =~ "prompt_patterns_sessions_per_run"
+      refute html =~ "prompt_patterns_max_prompts_per_run"
+      refute html =~ "prompt_patterns_max_prompt_chars"
+      refute html =~ "prompt_pattern_system_prompt"
     end
   end
 

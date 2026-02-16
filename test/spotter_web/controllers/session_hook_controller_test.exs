@@ -203,13 +203,8 @@ defmodule SpotterWeb.SessionHookControllerTest do
     end
   end
 
-  describe "POST /api/hooks/session-end (prompt pattern scheduling)" do
-    test "session_end returns 200 even when scheduler would run" do
-      Ash.create!(Spotter.Config.Setting, %{
-        key: "prompt_patterns_sessions_per_run",
-        value: "1"
-      })
-
+  describe "POST /api/hooks/session-end (prompt pattern scheduling disabled)" do
+    test "session_end does not enqueue prompt-pattern jobs" do
       params = valid_params()
       post_session_start(params)
 
@@ -217,13 +212,19 @@ defmodule SpotterWeb.SessionHookControllerTest do
 
       assert status == 200
       assert body["ok"] == true
-    end
 
-    test "session_end remains non-blocking when no session exists" do
-      {status, body, _conn} = post_session_end(%{"session_id" => Ash.UUID.generate()})
+      # No ComputePromptPatterns jobs should be enqueued
+      import Ecto.Query
 
-      assert status == 200
-      assert body["ok"] == true
+      jobs =
+        Spotter.Repo.all(
+          from(j in Oban.Job,
+            where: j.worker == "Spotter.Transcripts.Jobs.ComputePromptPatterns",
+            where: j.state == "available"
+          )
+        )
+
+      assert jobs == []
     end
   end
 

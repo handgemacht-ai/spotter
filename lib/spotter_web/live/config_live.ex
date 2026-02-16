@@ -90,79 +90,6 @@ defmodule SpotterWeb.ConfigLive do
     end
   end
 
-  def handle_event("save_prompt_patterns_sessions_per_run", %{"value" => raw}, socket) do
-    Tracer.with_span "spotter.config_live.save_setting" do
-      Tracer.set_attribute("config.key", "prompt_patterns_sessions_per_run")
-
-      case parse_positive_integer(raw) do
-        {:ok, _int} ->
-          case upsert_setting("prompt_patterns_sessions_per_run", String.trim(raw)) do
-            {:ok, _} ->
-              {:noreply,
-               socket
-               |> put_flash(:info, "Saved prompt_patterns_sessions_per_run")
-               |> load_all()}
-
-            {:error, reason} ->
-              ErrorReport.set_trace_error("ash_error", "ash_error", "live.config_live")
-              {:noreply, put_flash(socket, :error, "Failed to save: #{inspect(reason)}")}
-          end
-
-        :error ->
-          ErrorReport.set_trace_error("validation_error", "validation_error", "live.config_live")
-          {:noreply, put_flash(socket, :error, "Sessions per run must be a positive integer")}
-      end
-    end
-  end
-
-  def handle_event("save_prompt_patterns_max_prompts_per_run", %{"value" => raw}, socket) do
-    Tracer.with_span "spotter.config_live.save_setting" do
-      Tracer.set_attribute("config.key", "prompt_patterns_max_prompts_per_run")
-
-      case parse_positive_integer(raw) do
-        {:ok, _int} ->
-          case upsert_setting("prompt_patterns_max_prompts_per_run", String.trim(raw)) do
-            {:ok, _} ->
-              {:noreply,
-               socket
-               |> put_flash(:info, "Saved prompt_patterns_max_prompts_per_run")
-               |> load_all()}
-
-            {:error, reason} ->
-              ErrorReport.set_trace_error("ash_error", "ash_error", "live.config_live")
-              {:noreply, put_flash(socket, :error, "Failed to save: #{inspect(reason)}")}
-          end
-
-        :error ->
-          ErrorReport.set_trace_error("validation_error", "validation_error", "live.config_live")
-          {:noreply, put_flash(socket, :error, "Max prompts per run must be a positive integer")}
-      end
-    end
-  end
-
-  def handle_event("save_prompt_patterns_max_prompt_chars", %{"value" => raw}, socket) do
-    Tracer.with_span "spotter.config_live.save_setting" do
-      Tracer.set_attribute("config.key", "prompt_patterns_max_prompt_chars")
-
-      case parse_positive_integer(raw) do
-        {:ok, _int} ->
-          case upsert_setting("prompt_patterns_max_prompt_chars", String.trim(raw)) do
-            {:ok, _} ->
-              {:noreply,
-               socket |> put_flash(:info, "Saved prompt_patterns_max_prompt_chars") |> load_all()}
-
-            {:error, reason} ->
-              ErrorReport.set_trace_error("ash_error", "ash_error", "live.config_live")
-              {:noreply, put_flash(socket, :error, "Failed to save: #{inspect(reason)}")}
-          end
-
-        :error ->
-          ErrorReport.set_trace_error("validation_error", "validation_error", "live.config_live")
-          {:noreply, put_flash(socket, :error, "Max prompt chars must be a positive integer")}
-      end
-    end
-  end
-
   def handle_event("project_create", %{"name" => name, "pattern" => pattern}, socket) do
     Tracer.with_span "spotter.config_live.project_create" do
       Tracer.set_attribute("project.name", name)
@@ -298,20 +225,6 @@ defmodule SpotterWeb.ConfigLive do
     {summary_model, summary_model_source} = Runtime.summary_model()
     {summary_budget, summary_budget_source} = Runtime.summary_token_budget()
 
-    {prompt_patterns_max_prompts_per_run, prompt_patterns_max_prompts_per_run_source} =
-      Runtime.prompt_patterns_max_prompts_per_run()
-
-    {prompt_patterns_max_prompt_chars, prompt_patterns_max_prompt_chars_source} =
-      Runtime.prompt_patterns_max_prompt_chars()
-
-    {prompt_patterns_sessions_per_run, prompt_patterns_sessions_per_run_source} =
-      Runtime.prompt_patterns_sessions_per_run()
-
-    {prompt_patterns_model, prompt_patterns_model_source} = Runtime.prompt_patterns_model()
-
-    {prompt_pattern_system_prompt, prompt_pattern_system_prompt_source} =
-      Runtime.prompt_pattern_system_prompt()
-
     {session_distiller_system_prompt, session_distiller_system_prompt_source} =
       Runtime.session_distiller_system_prompt()
 
@@ -345,16 +258,6 @@ defmodule SpotterWeb.ConfigLive do
       summary_model_source: summary_model_source,
       summary_budget: summary_budget,
       summary_budget_source: summary_budget_source,
-      prompt_patterns_max_prompts_per_run: prompt_patterns_max_prompts_per_run,
-      prompt_patterns_max_prompts_per_run_source: prompt_patterns_max_prompts_per_run_source,
-      prompt_patterns_max_prompt_chars: prompt_patterns_max_prompt_chars,
-      prompt_patterns_max_prompt_chars_source: prompt_patterns_max_prompt_chars_source,
-      prompt_patterns_sessions_per_run: prompt_patterns_sessions_per_run,
-      prompt_patterns_sessions_per_run_source: prompt_patterns_sessions_per_run_source,
-      prompt_patterns_model: prompt_patterns_model,
-      prompt_patterns_model_source: prompt_patterns_model_source,
-      prompt_pattern_system_prompt: prompt_pattern_system_prompt,
-      prompt_pattern_system_prompt_source: prompt_pattern_system_prompt_source,
       product_spec_system_prompt: product_spec_system_prompt,
       product_spec_system_prompt_source: product_spec_system_prompt_source,
       session_distiller_system_prompt: session_distiller_system_prompt,
@@ -514,89 +417,9 @@ defmodule SpotterWeb.ConfigLive do
         </div>
       </section>
 
-      <%!-- Prompt Patterns Section --%>
-      <section class="config-section">
-        <h2>Prompt Patterns</h2>
-
-        <div class="config-row">
-          <div class="config-label-group">
-            <label class="config-label">prompt_patterns_model</label>
-            <span class="config-source">{source_label(@prompt_patterns_model_source)}</span>
-          </div>
-          <form phx-submit="save_setting" class="config-inline-form">
-            <input type="hidden" name="key" value="prompt_patterns_model" />
-            <input type="text" name="value" value={@prompt_patterns_model} class="config-input" />
-            <button type="submit" class="btn btn-sm">Save</button>
-          </form>
-        </div>
-
-        <div class="config-row">
-          <div class="config-label-group">
-            <label class="config-label">prompt_patterns_sessions_per_run</label>
-            <span class="config-source">{source_label(@prompt_patterns_sessions_per_run_source)}</span>
-          </div>
-          <form phx-submit="save_prompt_patterns_sessions_per_run" class="config-inline-form">
-            <input
-              type="number"
-              name="value"
-              value={@prompt_patterns_sessions_per_run}
-              min="1"
-              class="config-input"
-            />
-            <button type="submit" class="btn btn-sm">Save</button>
-          </form>
-        </div>
-
-        <div class="config-row">
-          <div class="config-label-group">
-            <label class="config-label">prompt_patterns_max_prompts_per_run</label>
-            <span class="config-source">{source_label(@prompt_patterns_max_prompts_per_run_source)}</span>
-          </div>
-          <form phx-submit="save_prompt_patterns_max_prompts_per_run" class="config-inline-form">
-            <input
-              type="number"
-              name="value"
-              value={@prompt_patterns_max_prompts_per_run}
-              min="1"
-              class="config-input"
-            />
-            <button type="submit" class="btn btn-sm">Save</button>
-          </form>
-        </div>
-
-        <div class="config-row">
-          <div class="config-label-group">
-            <label class="config-label">prompt_patterns_max_prompt_chars</label>
-            <span class="config-source">{source_label(@prompt_patterns_max_prompt_chars_source)}</span>
-          </div>
-          <form phx-submit="save_prompt_patterns_max_prompt_chars" class="config-inline-form">
-            <input
-              type="number"
-              name="value"
-              value={@prompt_patterns_max_prompt_chars}
-              min="1"
-              class="config-input"
-            />
-            <button type="submit" class="btn btn-sm">Save</button>
-          </form>
-        </div>
-      </section>
-
       <%!-- Agent System Prompts Section --%>
       <section class="config-section">
         <h2>Agent System Prompts</h2>
-
-          <div class="config-row">
-            <div class="config-label-group">
-              <label class="config-label">prompt_pattern_system_prompt</label>
-              <span class="config-source">{source_label(@prompt_pattern_system_prompt_source)}</span>
-            </div>
-            <form phx-submit="save_setting" class="config-inline-form config-inline-form--textarea">
-              <input type="hidden" name="key" value="prompt_pattern_system_prompt" />
-              <textarea name="value" class="config-textarea" rows="10">{@prompt_pattern_system_prompt}</textarea>
-              <button type="submit" class="btn btn-sm">Save</button>
-            </form>
-          </div>
 
           <div class="config-row">
             <div class="config-label-group">

@@ -18,7 +18,17 @@ defmodule Spotter.Transcripts.Jobs.ComputePromptPatterns do
   def timeout(_job), do: :timer.minutes(5)
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: args}) do
+  def perform(%Oban.Job{args: _args}) do
+    Tracer.with_span "spotter.compute_prompt_patterns.perform" do
+      Tracer.set_attribute("spotter.feature_disabled", true)
+      Tracer.set_attribute("spotter.result", "noop_disabled")
+      :ok
+    end
+  end
+
+  # Kept behind disabled gate for future re-enable
+  @doc false
+  def perform_enabled(%Oban.Job{args: args}) do
     Tracer.with_span "spotter.compute_prompt_patterns.perform" do
       scope = parse_scope(args["scope"])
       project_id = args["project_id"]
