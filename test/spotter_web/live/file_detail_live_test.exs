@@ -196,7 +196,9 @@ defmodule SpotterWeb.FileDetailLiveTest do
   end
 
   describe "annotation session guard" do
-    test "saving annotation without selected session shows error", %{project: project} do
+    test "saving annotation without selected session creates unbound annotation", %{
+      project: project
+    } do
       {:ok, view, _html} =
         live(build_conn(), "/projects/#{project.id}/files/lib/foo.ex")
 
@@ -212,8 +214,13 @@ defmodule SpotterWeb.FileDetailLiveTest do
       |> form(".annotation-form form", %{"comment" => "test note", "purpose" => "review"})
       |> render_submit()
 
-      # Should NOT create an annotation
-      assert Ash.read!(Annotation) == []
+      # Should create an unbound file annotation
+      annotations = Ash.read!(Annotation)
+      assert length(annotations) == 1
+      ann = hd(annotations)
+      assert ann.session_id == nil
+      assert ann.source == :file
+      assert ann.project_id == project.id
     end
 
     test "saving annotation with selected session succeeds", %{

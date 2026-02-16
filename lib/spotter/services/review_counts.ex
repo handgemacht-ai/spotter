@@ -18,10 +18,12 @@ defmodule Spotter.Services.ReviewCounts do
     open_annotations =
       Annotation
       |> Ash.Query.filter(state == :open and purpose == :review)
-      |> Ash.Query.select([:session_id])
+      |> Ash.Query.select([:session_id, :project_id])
       |> Ash.read!()
 
-    session_ids = open_annotations |> Enum.map(& &1.session_id) |> Enum.uniq()
+    {unbound, session_bound} = Enum.split_with(open_annotations, &is_nil(&1.session_id))
+
+    session_ids = session_bound |> Enum.map(& &1.session_id) |> Enum.uniq()
 
     sessions_by_id =
       if session_ids == [] do
@@ -34,11 +36,17 @@ defmodule Spotter.Services.ReviewCounts do
         |> Map.new(&{&1.id, &1})
       end
 
-    counts_by_project =
-      open_annotations
+    session_project_ids =
+      session_bound
       |> Enum.map(fn a -> get_in(sessions_by_id, [a.session_id, Access.key(:project_id)]) end)
       |> Enum.reject(&is_nil/1)
-      |> Enum.frequencies()
+
+    unbound_project_ids =
+      unbound
+      |> Enum.map(& &1.project_id)
+      |> Enum.reject(&is_nil/1)
+
+    counts_by_project = Enum.frequencies(session_project_ids ++ unbound_project_ids)
 
     Enum.map(projects, fn project ->
       %{

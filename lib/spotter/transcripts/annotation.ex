@@ -92,6 +92,20 @@ defmodule Spotter.Transcripts.Annotation do
     end
   end
 
+  validations do
+    validate fn changeset, _context ->
+               source = Ash.Changeset.get_attribute(changeset, :source)
+               session_id = Ash.Changeset.get_attribute(changeset, :session_id)
+
+               if source != :file && is_nil(session_id) do
+                 {:error, field: :session_id, message: "is required when source is not :file"}
+               else
+                 :ok
+               end
+             end,
+             on: [:create]
+  end
+
   attributes do
     uuid_v7_primary_key :id
 
@@ -138,7 +152,7 @@ defmodule Spotter.Transcripts.Annotation do
 
   relationships do
     belongs_to :session, Spotter.Transcripts.Session do
-      allow_nil? false
+      allow_nil? true
       attribute_public? true
     end
 

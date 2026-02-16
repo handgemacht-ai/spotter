@@ -1,7 +1,7 @@
 defmodule Spotter.Services.AnnotationExplainPrompt do
   @moduledoc false
 
-  alias Spotter.Services.TranscriptRenderer
+  alias Spotter.Services.{FileDetail, TranscriptRenderer}
   alias Spotter.Transcripts.Message
 
   require Ash.Query
@@ -119,13 +119,21 @@ defmodule Spotter.Services.AnnotationExplainPrompt do
   end
 
   defp try_read_file(annotation, ref) do
-    with %{cwd: cwd} when is_binary(cwd) <- annotation.session,
-         path when is_binary(path) <- ref.relative_path do
-      read_file_slice(Path.join(cwd, path), ref)
+    with path when is_binary(path) <- ref.relative_path,
+         {:ok, root} <- resolve_root(annotation) do
+      read_file_slice(Path.join(root, path), ref)
     else
       _ -> nil
     end
   end
+
+  defp resolve_root(%{session: %{cwd: cwd}} = _annotation) when is_binary(cwd), do: {:ok, cwd}
+
+  defp resolve_root(%{project_id: project_id}) when not is_nil(project_id) do
+    FileDetail.resolve_repo_root(project_id)
+  end
+
+  defp resolve_root(_), do: :error
 
   defp read_file_slice(path, ref) do
     case File.read(path) do

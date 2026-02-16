@@ -278,6 +278,76 @@ defmodule SpotterWeb.ReviewsLiveTest do
     end
   end
 
+  describe "unbound file annotations" do
+    test "unbound file annotations appear in project review" do
+      project = create_project("alpha")
+
+      Ash.create!(Annotation, %{
+        source: :file,
+        selected_text: "unbound-file-text",
+        comment: "unbound review",
+        project_id: project.id,
+        purpose: :review
+      })
+
+      {:ok, _view, html} = live(build_conn(), "/reviews?project_id=#{project.id}")
+
+      assert html =~ "unbound-file-text"
+    end
+
+    test "unbound file annotations counted in project chips" do
+      project = create_project("alpha")
+      session = create_session(project)
+      create_annotation(session, :open)
+
+      Ash.create!(Annotation, %{
+        source: :file,
+        selected_text: "unbound",
+        comment: "unbound",
+        project_id: project.id,
+        purpose: :review
+      })
+
+      {:ok, _view, html} = live(build_conn(), "/reviews")
+
+      assert html =~ "alpha (2)"
+    end
+
+    test "unbound file annotations do not leak across projects" do
+      proj_a = create_project("alpha")
+      proj_b = create_project("beta")
+
+      Ash.create!(Annotation, %{
+        source: :file,
+        selected_text: "alpha-only-unbound",
+        comment: "unbound",
+        project_id: proj_a.id,
+        purpose: :review
+      })
+
+      {:ok, _view, html} = live(build_conn(), "/reviews?project_id=#{proj_b.id}")
+
+      refute html =~ "alpha-only-unbound"
+    end
+
+    test "close_review_session closes unbound file annotations" do
+      project = create_project("alpha")
+
+      Ash.create!(Annotation, %{
+        source: :file,
+        selected_text: "unbound-close",
+        comment: "will close",
+        project_id: project.id,
+        purpose: :review
+      })
+
+      {:ok, view, _html} = live(build_conn(), "/reviews?project_id=#{project.id}")
+      html = render_click(view, "close_review_session")
+
+      assert html =~ "Closed 1 annotations"
+    end
+  end
+
   describe "sidebar badge" do
     test "shows badge with positive count" do
       project = create_project("alpha")

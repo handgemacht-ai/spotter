@@ -37,18 +37,13 @@ defmodule SpotterWeb.ProjectReviewLive do
 
     session_ids = Enum.map(sessions, & &1.id)
 
+    open_annotations = load_review_annotations(session_ids, project.id, :open)
+
     closed_count =
-      if session_ids == [] do
-        0
-      else
-        Annotation
-        |> Ash.Query.filter(session_id in ^session_ids and state == :open and purpose == :review)
-        |> Ash.read!()
-        |> Enum.reduce(0, fn ann, acc ->
-          Ash.update!(ann, %{}, action: :close)
-          acc + 1
-        end)
-      end
+      Enum.reduce(open_annotations, 0, fn ann, acc ->
+        Ash.update!(ann, %{}, action: :close)
+        acc + 1
+      end)
 
     if closed_count > 0, do: ReviewUpdates.broadcast_counts()
 
@@ -71,28 +66,14 @@ defmodule SpotterWeb.ProjectReviewLive do
     sessions_by_id = Map.new(sessions, &{&1.id, &1})
 
     open_annotations =
-      if session_ids == [] do
-        []
-      else
-        Annotation
-        |> Ash.Query.filter(session_id in ^session_ids and state == :open and purpose == :review)
-        |> Ash.Query.sort(inserted_at: :desc)
-        |> Ash.read!()
-        |> Ash.load!([:subagent, message_refs: :message])
-      end
+      load_review_annotations(session_ids, project.id, :open)
+      |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
+      |> Ash.load!([:subagent, message_refs: :message])
 
     resolved_annotations =
-      if session_ids == [] do
-        []
-      else
-        Annotation
-        |> Ash.Query.filter(
-          session_id in ^session_ids and state == :closed and purpose == :review
-        )
-        |> Ash.Query.sort(updated_at: :desc)
-        |> Ash.read!()
-        |> Ash.load!([:subagent, message_refs: :message])
-      end
+      load_review_annotations(session_ids, project.id, :closed)
+      |> Enum.sort_by(& &1.updated_at, {:desc, DateTime})
+      |> Ash.load!([:subagent, message_refs: :message])
 
     assign(socket,
       sessions: sessions,
@@ -100,6 +81,27 @@ defmodule SpotterWeb.ProjectReviewLive do
       open_annotations: open_annotations,
       resolved_annotations: resolved_annotations
     )
+  end
+
+  defp load_review_annotations(session_ids, project_id, state) do
+    session_bound =
+      if session_ids == [] do
+        []
+      else
+        Annotation
+        |> Ash.Query.filter(session_id in ^session_ids and state == ^state and purpose == :review)
+        |> Ash.read!()
+      end
+
+    unbound =
+      Annotation
+      |> Ash.Query.filter(
+        is_nil(session_id) and project_id == ^project_id and state == ^state and
+          purpose == :review
+      )
+      |> Ash.read!()
+
+    session_bound ++ unbound
   end
 
   defp session_label(session) do

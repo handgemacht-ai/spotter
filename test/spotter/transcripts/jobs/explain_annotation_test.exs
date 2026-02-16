@@ -209,6 +209,35 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotationTest do
     assert explain["answer"] != nil
   end
 
+  test "performs explain job for unbound file annotation (no session)", %{project: project} do
+    annotation =
+      Ash.create!(Annotation, %{
+        source: :file,
+        selected_text: "def unbound, do: :ok",
+        comment: "Explain this unbound annotation",
+        purpose: :explain,
+        project_id: project.id
+      })
+
+    job = build_job(%{"annotation_id" => annotation.id})
+    assert :ok = ExplainAnnotation.perform(job)
+
+    updated = Ash.get!(Annotation, annotation.id)
+    explain = updated.metadata["explain"]
+
+    assert explain["status"] == "complete"
+    assert explain["answer"] =~ "hello world"
+
+    flashcards =
+      Flashcard
+      |> Ash.Query.filter(annotation_id == ^annotation.id)
+      |> Ash.read!()
+
+    assert length(flashcards) == 1
+    flashcard = hd(flashcards)
+    assert flashcard.project_id == project.id
+  end
+
   defp build_job(args) do
     %Oban.Job{args: args}
   end

@@ -49,26 +49,16 @@ defmodule SpotterWeb.ReviewsLive do
   def handle_event("close_review_session", _params, socket) do
     project_id = socket.assigns.selected_project_id
 
-    sessions =
-      Session
-      |> Ash.Query.filter(project_id == ^project_id)
-      |> Ash.Query.select([:id])
-      |> Ash.read!()
-
+    sessions = load_sessions(project_id)
     session_ids = Enum.map(sessions, & &1.id)
 
+    open_annotations = load_review_annotations(session_ids, project_id, :open)
+
     closed_count =
-      if session_ids == [] do
-        0
-      else
-        Annotation
-        |> Ash.Query.filter(session_id in ^session_ids and state == :open and purpose == :review)
-        |> Ash.read!()
-        |> Enum.reduce(0, fn ann, acc ->
-          Ash.update!(ann, %{}, action: :close)
-          acc + 1
-        end)
-      end
+      Enum.reduce(open_annotations, 0, fn ann, acc ->
+        Ash.update!(ann, %{}, action: :close)
+        acc + 1
+      end)
 
     if closed_count > 0, do: ReviewUpdates.broadcast_counts()
 
@@ -114,41 +104,17 @@ defmodule SpotterWeb.ReviewsLive do
     session_ids = Enum.map(sessions, & &1.id)
     sessions_by_id = Map.new(sessions, &{&1.id, &1})
 
-    project_ids = sessions |> Enum.map(& &1.project_id) |> Enum.uniq()
-
-    projects_by_id =
-      if project_ids == [] do
-        %{}
-      else
-        Project
-        |> Ash.Query.filter(id in ^project_ids)
-        |> Ash.read!()
-        |> Map.new(&{&1.id, &1})
-      end
+    projects_by_id = load_projects_by_id(sessions)
 
     open_annotations =
-      if session_ids == [] do
-        []
-      else
-        Annotation
-        |> Ash.Query.filter(session_id in ^session_ids and state == :open and purpose == :review)
-        |> Ash.Query.sort(inserted_at: :desc)
-        |> Ash.read!()
-        |> Ash.load!([:subagent, :file_refs, message_refs: :message])
-      end
+      load_review_annotations(session_ids, project_id, :open)
+      |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
+      |> Ash.load!([:subagent, :file_refs, message_refs: :message])
 
     resolved_annotations =
-      if session_ids == [] || project_id == nil do
-        []
-      else
-        Annotation
-        |> Ash.Query.filter(
-          session_id in ^session_ids and state == :closed and purpose == :review
-        )
-        |> Ash.Query.sort(updated_at: :desc)
-        |> Ash.read!()
-        |> Ash.load!([:subagent, :file_refs, message_refs: :message])
-      end
+      load_review_annotations(session_ids, project_id, :closed)
+      |> Enum.sort_by(& &1.updated_at, {:desc, DateTime})
+      |> Ash.load!([:subagent, :file_refs, message_refs: :message])
 
     assign(socket,
       open_annotations: open_annotations,
@@ -156,6 +122,44 @@ defmodule SpotterWeb.ReviewsLive do
       sessions_by_id: sessions_by_id,
       projects_by_id: projects_by_id
     )
+  end
+
+  defp load_projects_by_id(sessions) do
+    project_ids = sessions |> Enum.map(& &1.project_id) |> Enum.uniq()
+
+    if project_ids == [] do
+      %{}
+    else
+      Project
+      |> Ash.Query.filter(id in ^project_ids)
+      |> Ash.read!()
+      |> Map.new(&{&1.id, &1})
+    end
+  end
+
+  defp load_review_annotations(session_ids, project_id, state) do
+    session_bound =
+      if session_ids == [] do
+        []
+      else
+        Annotation
+        |> Ash.Query.filter(session_id in ^session_ids and state == ^state and purpose == :review)
+        |> Ash.read!()
+      end
+
+    unbound =
+      if project_id do
+        Annotation
+        |> Ash.Query.filter(
+          is_nil(session_id) and project_id == ^project_id and state == ^state and
+            purpose == :review
+        )
+        |> Ash.read!()
+      else
+        []
+      end
+
+    session_bound ++ unbound
   end
 
   defp load_sessions(nil) do

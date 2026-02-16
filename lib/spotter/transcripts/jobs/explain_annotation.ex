@@ -45,7 +45,7 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
     flow_keys =
       [
         FlowKeys.agent_run(run_id),
-        FlowKeys.session(annotation.session.session_id),
+        if(annotation.session, do: FlowKeys.session(annotation.session.session_id)),
         if(job_id, do: FlowKeys.oban(to_string(job_id)))
       ]
       |> Enum.reject(&is_nil/1)
@@ -218,7 +218,7 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
       {:error, :empty_answer}
     else
       question = non_empty(annotation.comment)
-      project_id = annotation.session.project_id
+      project_id = annotation.project_id || (annotation.session && annotation.session.project_id)
 
       with {:ok, flashcard} <-
              Ash.create(Flashcard, %{

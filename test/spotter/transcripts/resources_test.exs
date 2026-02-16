@@ -1046,7 +1046,7 @@ defmodule Spotter.Transcripts.ResourcesTest do
           project_id: project.id
         })
 
-      %{session: session}
+      %{session: session, project: project}
     end
 
     test "creates annotation with source :file", %{session: session} do
@@ -1058,6 +1058,53 @@ defmodule Spotter.Transcripts.ResourcesTest do
           comment: "review this"
         })
 
+      assert ann.source == :file
+    end
+
+    test "creates file annotation without session_id", %{project: project} do
+      ann =
+        Ash.create!(Annotation, %{
+          source: :file,
+          selected_text: "def foo(bar)",
+          comment: "needs refactoring",
+          project_id: project.id
+        })
+
+      assert ann.source == :file
+      assert ann.session_id == nil
+      assert ann.project_id == project.id
+    end
+
+    test "rejects terminal annotation without session_id" do
+      assert_raise Ash.Error.Invalid, fn ->
+        Ash.create!(Annotation, %{
+          source: :terminal,
+          selected_text: "some text",
+          comment: "missing session"
+        })
+      end
+    end
+
+    test "rejects transcript annotation without session_id" do
+      assert_raise Ash.Error.Invalid, fn ->
+        Ash.create!(Annotation, %{
+          source: :transcript,
+          selected_text: "some text",
+          comment: "missing session"
+        })
+      end
+    end
+
+    test "session-bound file annotation still works", %{session: session} do
+      ann =
+        Ash.create!(Annotation, %{
+          session_id: session.id,
+          source: :file,
+          selected_text: "bound to session",
+          comment: "has session"
+        })
+
+      assert ann.session_id == session.id
       assert ann.source == :file
     end
   end

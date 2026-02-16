@@ -143,10 +143,8 @@ defmodule SpotterWeb.FileDetailLive do
   end
 
   def handle_event("save_annotation", params, socket) do
-    with :ok <- validate_session_selected(socket),
-         :ok <- validate_text_selected(socket) do
-      do_save_annotation(params, socket)
-    else
+    case validate_text_selected(socket) do
+      :ok -> do_save_annotation(params, socket)
       {:error, msg} -> {:noreply, put_flash(socket, :error, msg)}
     end
   end
@@ -200,15 +198,6 @@ defmodule SpotterWeb.FileDetailLive do
     {:noreply, socket |> assign(explain_streams: %{}) |> refresh_annotations()}
   end
 
-  defp validate_session_selected(socket) do
-    if is_nil(socket.assigns.file_detail_selected_session_id) or
-         socket.assigns.file_detail_selected_session_id == "" do
-      {:error, "Select a linked session before saving an annotation."}
-    else
-      :ok
-    end
-  end
-
   defp validate_text_selected(socket) do
     text = socket.assigns.selected_text
 
@@ -223,17 +212,23 @@ defmodule SpotterWeb.FileDetailLive do
     comment = params["comment"] || ""
     purpose = if params["purpose"] == "explain", do: :explain, else: :review
 
-    create_params = %{
-      session_id: socket.assigns.file_detail_selected_session_id,
-      project_id: socket.assigns.file_detail_project_id,
-      source: :file,
-      selected_text: socket.assigns.selected_text,
-      comment: comment,
-      purpose: purpose,
-      relative_path: socket.assigns.file_detail_relative_path,
-      line_start: parse_line(socket.assigns.selection_line_start, 1),
-      line_end: parse_line(socket.assigns.selection_line_end, 1)
-    }
+    session_id = socket.assigns.file_detail_selected_session_id
+    session_id = if session_id == "", do: nil, else: session_id
+
+    create_params =
+      %{
+        project_id: socket.assigns.file_detail_project_id,
+        source: :file,
+        selected_text: socket.assigns.selected_text,
+        comment: comment,
+        purpose: purpose,
+        relative_path: socket.assigns.file_detail_relative_path,
+        line_start: parse_line(socket.assigns.selection_line_start, 1),
+        line_end: parse_line(socket.assigns.selection_line_end, 1)
+      }
+      |> then(fn params ->
+        if session_id, do: Map.put(params, :session_id, session_id), else: params
+      end)
 
     case Ash.create(Annotation, create_params) do
       {:ok, annotation} ->
