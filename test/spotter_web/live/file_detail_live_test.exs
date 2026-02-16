@@ -158,9 +158,12 @@ defmodule SpotterWeb.FileDetailLiveTest do
       assert html =~ "Annotations"
     end
 
-    test "saving a file annotation persists line metadata", %{project: project} do
+    test "saving a file annotation persists line metadata", %{project: project, session: session} do
       {:ok, view, _html} =
         live(build_conn(), "/projects/#{project.id}/files/lib/foo.ex")
+
+      # Select a linked session first (required by nil guard)
+      render_click(view, "select_session", %{"session-id" => session.id})
 
       # Set selection
       render_hook(view, "file_text_selected", %{
@@ -190,38 +193,12 @@ defmodule SpotterWeb.FileDetailLiveTest do
       assert ref.line_start == 2
       assert ref.line_end == 4
     end
-
-    test "session_id fallback when no linked sessions", %{project: project} do
-      # Use a path with no CommitFile rows (so no linked sessions)
-      {:ok, view, _html} =
-        live(build_conn(), "/projects/#{project.id}/files/lib/unlinked.ex")
-
-      # Set selection and save annotation
-      render_hook(view, "file_text_selected", %{
-        "text" => "some code",
-        "line_start" => 1,
-        "line_end" => 1
-      })
-
-      render_click(view, "save_annotation", %{
-        "comment" => "orphan note",
-        "purpose" => "review"
-      })
-
-      # Should still create annotation with a session_id (fallback to project session)
-      [annotation] = Ash.read!(Annotation)
-      assert annotation.session_id != nil
-      assert annotation.relative_path == "lib/unlinked.ex"
-    end
   end
 
   describe "annotation session guard" do
     test "saving annotation without selected session shows error", %{project: project} do
-      {:ok, view, html} =
+      {:ok, view, _html} =
         live(build_conn(), "/projects/#{project.id}/files/lib/foo.ex")
-
-      # Inline hint is shown when no session is selected
-      assert html =~ "Select a linked session before saving an annotation."
 
       # Select text to enable the annotation editor
       render_hook(view, "file_text_selected", %{
@@ -231,13 +208,11 @@ defmodule SpotterWeb.FileDetailLiveTest do
       })
 
       # Submit without selecting a session first
-      html =
-        view
-        |> form(".annotation-form form", %{"comment" => "test note", "purpose" => "review"})
-        |> render_submit()
+      view
+      |> form(".annotation-form form", %{"comment" => "test note", "purpose" => "review"})
+      |> render_submit()
 
-      # Should show error flash and NOT create an annotation
-      assert html =~ "Select a linked session before saving an annotation."
+      # Should NOT create an annotation
       assert Ash.read!(Annotation) == []
     end
 

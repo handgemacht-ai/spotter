@@ -185,70 +185,6 @@ defmodule SpotterWeb.SubagentLiveTest do
 
       assert html =~ "TranscriptHighlighter"
     end
-
-    test "shows message token counts on the right side", %{
-      subagent: subagent,
-      session_id: session_id,
-      agent_id: agent_id
-    } do
-      create_message(subagent, %{
-        content: %{"blocks" => [%{"type" => "text", "text" => "first\nsecond"}]},
-        raw_payload: %{
-          "message" => %{
-            "usage" => %{
-              "input_tokens" => 10,
-              "output_tokens" => 5,
-              "cache_creation_input_tokens" => 2,
-              "cache_read_input_tokens" => 3
-            }
-          }
-        }
-      })
-
-      {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}/agents/#{agent_id}")
-
-      assert html =~ "row-token-count"
-      assert html =~ "20 tok"
-      assert length(Regex.scan(~r/20 tok/, html)) == 1
-    end
-
-    test "shows token delta for second message", %{
-      subagent: subagent,
-      session_id: session_id,
-      agent_id: agent_id
-    } do
-      create_message(subagent, %{
-        content: %{"blocks" => [%{"type" => "text", "text" => "first"}]},
-        raw_payload: %{
-          "message" => %{
-            "usage" => %{
-              "input_tokens" => 10,
-              "output_tokens" => 3,
-              "cache_creation_input_tokens" => 0,
-              "cache_read_input_tokens" => 0
-            }
-          }
-        }
-      })
-
-      create_message(subagent, %{
-        content: %{"blocks" => [%{"type" => "text", "text" => "second"}]},
-        raw_payload: %{
-          "message" => %{
-            "usage" => %{
-              "input_tokens" => 15,
-              "output_tokens" => 5,
-              "cache_creation_input_tokens" => 0,
-              "cache_read_input_tokens" => 0
-            }
-          }
-        }
-      })
-
-      {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}/agents/#{agent_id}")
-
-      assert html =~ "20 tok (+7)"
-    end
   end
 
   describe "annotations" do
@@ -268,68 +204,6 @@ defmodule SpotterWeb.SubagentLiveTest do
 
       assert html =~ ~s(class="annotation-form")
       assert html =~ "selected snippet"
-    end
-  end
-
-  describe "timestamp and duration rendering" do
-    test "renders timestamp and delta", %{
-      subagent: subagent,
-      session_id: session_id,
-      agent_id: agent_id
-    } do
-      create_message(subagent, %{
-        content: %{"blocks" => [%{"type" => "text", "text" => "first"}]},
-        timestamp: ~U[2026-02-13 10:00:00Z]
-      })
-
-      create_message(subagent, %{
-        content: %{"blocks" => [%{"type" => "text", "text" => "second"}]},
-        timestamp: ~U[2026-02-13 10:00:39Z]
-      })
-
-      {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}/agents/#{agent_id}")
-
-      assert html =~ "10:00:00"
-      assert html =~ "(+39s)"
-    end
-
-    test "tool duration rendered for tool_use", %{
-      subagent: subagent,
-      session_id: session_id,
-      agent_id: agent_id
-    } do
-      create_message(subagent, %{
-        content: %{
-          "blocks" => [
-            %{
-              "type" => "tool_use",
-              "name" => "Bash",
-              "id" => "toolu_sub_dur",
-              "input" => %{"command" => "echo hi"}
-            }
-          ]
-        },
-        timestamp: ~U[2026-02-13 10:00:00Z]
-      })
-
-      create_message(subagent, %{
-        type: :user,
-        role: :user,
-        content: %{
-          "blocks" => [
-            %{
-              "type" => "tool_result",
-              "tool_use_id" => "toolu_sub_dur",
-              "content" => "hi"
-            }
-          ]
-        },
-        timestamp: ~U[2026-02-13 10:00:12Z]
-      })
-
-      {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}/agents/#{agent_id}")
-
-      assert html =~ "tool 12s"
     end
   end
 

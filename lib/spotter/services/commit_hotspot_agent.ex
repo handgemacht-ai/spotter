@@ -20,7 +20,6 @@ defmodule Spotter.Services.CommitHotspotAgent do
   @default_max_changed_lines 2000
   @default_max_patch_bytes 500_000
 
-  # TODO: revert to Opus models after this Haiku experiment.
   # Models
   @explore_model "claude-haiku-4-5-20251001"
   @main_model "claude-haiku-4-5-20251001"

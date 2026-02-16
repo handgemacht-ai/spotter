@@ -715,43 +715,7 @@ defmodule Spotter.Services.TranscriptRenderer do
     resolved_content = resolve_tool_result_content(tool_name, block["content"], msg)
     block = Map.put(block, "content", resolved_content)
 
-    case tool_name do
-      "AskUserQuestion" ->
-        render_ask_user_answer(block, msg)
-
-      "ExitPlanMode" ->
-        render_plan_decision(block, printable_line_content(resolved_content))
-
-      "Write" ->
-        if plan_write?(tool_use_id, tool_use_index) do
-          render_plan_content(block, msg, tool_use_index)
-        else
-          render_with_diff_or_generic(block, msg, session_cwd, tool_use_index)
-        end
-
-      "Edit" ->
-        render_with_diff_or_generic(block, msg, session_cwd, tool_use_index)
-
-      _ when is_binary(resolved_content) or is_list(resolved_content) ->
-        render_generic_tool_result(block, msg, session_cwd, tool_use_index)
-
-      _ ->
-        thread_key = tool_use_id || "unmatched-result"
-        group_key = tool_use_id || "group-empty"
-
-        [
-          %{
-            line: "(empty)",
-            kind: :tool_result,
-            tool_use_id: tool_use_id,
-            thread_key: thread_key,
-            tool_result_group: group_key,
-            code_language: nil,
-            render_mode: :plain,
-            source_line_number: nil
-          }
-        ]
-    end
+    dispatch_tool_result(tool_name, block, msg, session_cwd, tool_use_index)
   end
 
   defp render_user_block_enriched(
@@ -764,6 +728,53 @@ defmodule Spotter.Services.TranscriptRenderer do
   end
 
   defp render_user_block_enriched(_block, _msg, _session_cwd, _tool_use_index), do: []
+
+  # ── Tool result dispatch (extracted to reduce cyclomatic complexity) ──
+
+  defp dispatch_tool_result("AskUserQuestion", block, msg, _session_cwd, _tool_use_index),
+    do: render_ask_user_answer(block, msg)
+
+  defp dispatch_tool_result("ExitPlanMode", block, _msg, _session_cwd, _tool_use_index),
+    do: render_plan_decision(block, printable_line_content(block["content"]))
+
+  defp dispatch_tool_result("Write", block, msg, session_cwd, tool_use_index) do
+    if plan_write?(block["tool_use_id"], tool_use_index) do
+      render_plan_content(block, msg, tool_use_index)
+    else
+      render_with_diff_or_generic(block, msg, session_cwd, tool_use_index)
+    end
+  end
+
+  defp dispatch_tool_result("Edit", block, msg, session_cwd, tool_use_index),
+    do: render_with_diff_or_generic(block, msg, session_cwd, tool_use_index)
+
+  defp dispatch_tool_result(_tool_name, block, msg, session_cwd, tool_use_index) do
+    content = block["content"]
+
+    if is_binary(content) or is_list(content) do
+      render_generic_tool_result(block, msg, session_cwd, tool_use_index)
+    else
+      render_empty_tool_result(block["tool_use_id"])
+    end
+  end
+
+  defp render_empty_tool_result(tool_use_id) do
+    thread_key = tool_use_id || "unmatched-result"
+    group_key = tool_use_id || "group-empty"
+
+    [
+      %{
+        line: "(empty)",
+        kind: :tool_result,
+        tool_use_id: tool_use_id,
+        thread_key: thread_key,
+        tool_result_group: group_key,
+        code_language: nil,
+        render_mode: :plain,
+        source_line_number: nil
+      }
+    ]
+  end
 
   # ── Tool name lookup for user result dispatch ────────────────────────
 

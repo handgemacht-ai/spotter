@@ -109,6 +109,8 @@ defmodule SpotterWeb.FileDetailLive do
     else
       comment = params["comment"] || ""
       purpose = if params["purpose"] == "explain", do: :explain, else: :review
+      line_start = parse_line(socket.assigns.selection_line_start, 1)
+      line_end = parse_line(socket.assigns.selection_line_end, line_start)
 
       create_params = %{
         session_id: session_id,
@@ -116,7 +118,10 @@ defmodule SpotterWeb.FileDetailLive do
         source: :file,
         selected_text: socket.assigns.selected_text,
         comment: comment,
-        purpose: purpose
+        purpose: purpose,
+        relative_path: socket.assigns.file_detail_relative_path,
+        line_start: line_start,
+        line_end: line_end
       }
 
       case Ash.create(Annotation, create_params) do
