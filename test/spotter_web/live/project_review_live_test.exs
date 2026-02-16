@@ -195,69 +195,6 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
     end
   end
 
-  describe "close_review_session" do
-    test "closes all open annotations and shows count" do
-      {project, session} = create_project_with_session()
-
-      Ash.create!(Annotation, %{
-        session_id: session.id,
-        selected_text: "first",
-        comment: "a"
-      })
-
-      Ash.create!(Annotation, %{
-        session_id: session.id,
-        selected_text: "second",
-        comment: "b"
-      })
-
-      conn = build_conn()
-      {:ok, view, _html} = live(conn, reviews_path(project))
-
-      html = render_click(view, "close_review_session")
-
-      assert html =~ "Closed 2 annotations"
-      assert html =~ "No open annotations for the selected scope."
-    end
-
-    test "shows zero count when no open annotations exist" do
-      {project, _session} = create_project_with_session()
-
-      conn = build_conn()
-      {:ok, view, _html} = live(conn, reviews_path(project))
-
-      html = render_click(view, "close_review_session")
-
-      assert html =~ "Closed 0 annotations"
-    end
-
-    test "does not affect already-closed annotations" do
-      {project, session} = create_project_with_session()
-
-      ann =
-        Ash.create!(Annotation, %{
-          session_id: session.id,
-          selected_text: "already closed",
-          comment: "done"
-        })
-
-      Ash.update!(ann, %{}, action: :close)
-
-      Ash.create!(Annotation, %{
-        session_id: session.id,
-        selected_text: "still open",
-        comment: "wip"
-      })
-
-      conn = build_conn()
-      {:ok, view, _html} = live(conn, reviews_path(project))
-
-      html = render_click(view, "close_review_session")
-
-      assert html =~ "Closed 1 annotations"
-    end
-  end
-
   describe "explain annotations excluded" do
     test "explain annotations do not appear in project review" do
       {project, session} = create_project_with_session()
@@ -281,29 +218,6 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
       assert html =~ "review-visible"
       refute html =~ "explain-hidden"
     end
-
-    test "close_review_session does not close explain annotations" do
-      {project, session} = create_project_with_session()
-
-      Ash.create!(Annotation, %{
-        session_id: session.id,
-        selected_text: "review me",
-        comment: "review",
-        purpose: :review
-      })
-
-      Ash.create!(Annotation, %{
-        session_id: session.id,
-        selected_text: "explain me",
-        comment: "explain",
-        purpose: :explain
-      })
-
-      {:ok, view, _html} = live(build_conn(), reviews_path(project))
-      html = render_click(view, "close_review_session")
-
-      assert html =~ "Closed 1 annotations"
-    end
   end
 
   describe "mcp review instructions" do
@@ -318,7 +232,7 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
 
       {:ok, _view, html} = live(build_conn(), reviews_path(project))
 
-      assert html =~ "Run this review in Claude Code"
+      assert html =~ "Review in Claude Code"
       assert html =~ "spotter-review"
     end
   end

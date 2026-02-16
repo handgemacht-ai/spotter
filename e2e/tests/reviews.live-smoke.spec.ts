@@ -16,7 +16,7 @@ test("reviews live smoke shows MCP review instructions and captures full-page sn
 
   const instructionPanel = page.getByTestId("mcp-review-instructions");
   await expect(instructionPanel).toBeVisible();
-  await expect(instructionPanel.getByText("Run this review in Claude Code")).toBeVisible();
+  await expect(instructionPanel.getByText("Review in Claude Code")).toBeVisible();
 
   await prepareFullPageSnapshot(page);
   await expect(page).toHaveScreenshot("reviews-live-smoke.png", {

@@ -91,8 +91,8 @@ defmodule SpotterWeb.ReviewsLiveTest do
       {:ok, _view, html} = live(build_conn(), "/reviews")
 
       # Auto-selects first project, so action buttons visible
-      assert html =~ "Run this review in Claude Code"
-      assert html =~ "Close review session"
+      assert html =~ "Review in Claude Code"
+      assert html =~ "/spotter-review"
     end
 
     test "shows annotations for auto-selected project" do
@@ -127,8 +127,8 @@ defmodule SpotterWeb.ReviewsLiveTest do
 
       {:ok, _view, html} = live(build_conn(), "/reviews?project_id=#{project.id}")
 
-      assert html =~ "Run this review in Claude Code"
-      assert html =~ "Close review session"
+      assert html =~ "Review in Claude Code"
+      assert html =~ "/spotter-review"
     end
 
     test "renders empty state when project has no open annotations" do
@@ -199,7 +199,7 @@ defmodule SpotterWeb.ReviewsLiveTest do
         render_click(view, "filter_project", %{"project-id" => proj_a.id})
 
       # Should show alpha's annotation and action buttons
-      assert html =~ "Run this review in Claude Code"
+      assert html =~ "Review in Claude Code"
       assert_patched(view, "/reviews?project_id=#{proj_a.id}")
     end
 
@@ -216,7 +216,7 @@ defmodule SpotterWeb.ReviewsLiveTest do
 
       html = render_click(view, "filter_project", %{"project-id" => proj_b.id})
 
-      assert html =~ "Run this review in Claude Code"
+      assert html =~ "Review in Claude Code"
       assert_patched(view, "/reviews?project_id=#{proj_b.id}")
     end
   end
@@ -230,8 +230,8 @@ defmodule SpotterWeb.ReviewsLiveTest do
       {:ok, _view, html} = live(build_conn(), "/reviews?project_id=#{Ash.UUID.generate()}")
 
       # Invalid project falls back to first project, so action buttons visible
-      assert html =~ "Run this review in Claude Code"
-      assert html =~ "Close review session"
+      assert html =~ "Review in Claude Code"
+      assert html =~ "/spotter-review"
     end
 
     test "does not crash with non-UUID value" do
@@ -263,18 +263,6 @@ defmodule SpotterWeb.ReviewsLiveTest do
       {:ok, _view, html} = live(build_conn(), "/reviews")
 
       assert html =~ "alpha (1)"
-    end
-
-    test "close_review_session does not close explain annotations" do
-      project = create_project("alpha")
-      session = create_session(project)
-      create_annotation(session, :open, purpose: :review)
-      create_annotation(session, :open, purpose: :explain)
-
-      {:ok, view, _html} = live(build_conn(), "/reviews?project_id=#{project.id}")
-      html = render_click(view, "close_review_session")
-
-      assert html =~ "Closed 1 annotations"
     end
   end
 
@@ -328,23 +316,6 @@ defmodule SpotterWeb.ReviewsLiveTest do
       {:ok, _view, html} = live(build_conn(), "/reviews?project_id=#{proj_b.id}")
 
       refute html =~ "alpha-only-unbound"
-    end
-
-    test "close_review_session closes unbound file annotations" do
-      project = create_project("alpha")
-
-      Ash.create!(Annotation, %{
-        source: :file,
-        selected_text: "unbound-close",
-        comment: "will close",
-        project_id: project.id,
-        purpose: :review
-      })
-
-      {:ok, view, _html} = live(build_conn(), "/reviews?project_id=#{project.id}")
-      html = render_click(view, "close_review_session")
-
-      assert html =~ "Closed 1 annotations"
     end
   end
 

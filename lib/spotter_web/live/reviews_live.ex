@@ -1,10 +1,7 @@
 defmodule SpotterWeb.ReviewsLive do
   use Phoenix.LiveView
 
-  alias Spotter.Services.{
-    ReviewCounts,
-    ReviewUpdates
-  }
+  alias Spotter.Services.ReviewCounts
 
   alias Spotter.Transcripts.{Annotation, Project, Session}
   require Ash.Query
@@ -44,29 +41,6 @@ defmodule SpotterWeb.ReviewsLive do
     path = if project_id, do: "/reviews?project_id=#{project_id}", else: "/reviews"
 
     {:noreply, push_patch(socket, to: path)}
-  end
-
-  def handle_event("close_review_session", _params, socket) do
-    project_id = socket.assigns.selected_project_id
-
-    sessions = load_sessions(project_id)
-    session_ids = Enum.map(sessions, & &1.id)
-
-    open_annotations = load_review_annotations(session_ids, project_id, :open)
-
-    closed_count =
-      Enum.reduce(open_annotations, 0, fn ann, acc ->
-        Ash.update!(ann, %{}, action: :close)
-        acc + 1
-      end)
-
-    if closed_count > 0, do: ReviewUpdates.broadcast_counts()
-
-    {:noreply,
-     socket
-     |> assign(project_counts: ReviewCounts.list_project_open_counts())
-     |> put_flash(:info, "Closed #{closed_count} annotations")
-     |> load_review_data()}
   end
 
   defp parse_project_id("all"), do: nil
@@ -326,20 +300,28 @@ defmodule SpotterWeb.ReviewsLive do
           <span class="review-count">
             {length(@open_annotations)} open annotations
           </span>
-          <div class="review-actions">
-            <button class="btn btn-danger" phx-click="close_review_session">
-              Close review session
-            </button>
-          </div>
         </div>
 
         <div class="instruction-panel" data-testid="mcp-review-instructions">
-          <h3>Run this review in Claude Code</h3>
-          <ol>
-            <li>Ensure MCP server "spotter" is enabled (worktrees generate .mcp.json).</li>
-            <li>In Claude Code, run the Spotter review skill: "spotter-review".</li>
-            <li>Resolve each annotation using the skill; Spotter will update counts automatically.</li>
-          </ol>
+          <h3 class="instruction-panel-heading">Review in Claude Code</h3>
+          <div class="instruction-panel-sections">
+            <div class="instruction-panel-section">
+              <h4 class="instruction-panel-label">Setup</h4>
+              <p>The Spotter plugin provides the MCP server automatically. Verify it's active: run <code>/mcp</code> in Claude Code and check that <code>spotter</code> appears in the server list.</p>
+            </div>
+            <div class="instruction-panel-section">
+              <h4 class="instruction-panel-label">Run review</h4>
+              <p>Type <code>/spotter-review</code> in Claude Code. The skill lists sessions, fetches open annotations, and guides you through resolving each one.</p>
+            </div>
+            <div class="instruction-panel-section">
+              <h4 class="instruction-panel-label">Review modes</h4>
+              <ul class="instruction-panel-modes">
+                <li><code>/spotter-review</code> Full guided review</li>
+                <li><code>/spotter-review-one-by-one</code> Resolve one at a time</li>
+                <li><code>/spotter-review-batch</code> Batch resolve by file/topic</li>
+              </ul>
+            </div>
+          </div>
         </div>
 
         <%= if @open_annotations == [] do %>
