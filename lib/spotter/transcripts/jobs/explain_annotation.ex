@@ -3,7 +3,9 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
 
   use Oban.Worker, queue: :default, max_attempts: 3, unique: [keys: [:annotation_id], period: 300]
 
+  alias Spotter.Observability.{FlowHub, FlowKeys}
   alias Spotter.Services.AnnotationExplainPrompt
+  alias Spotter.Telemetry.TraceContext
 
   alias Spotter.Transcripts.{
     Annotation,
@@ -15,27 +17,40 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
 
   @model "haiku"
   @timeout_ms 120_000
+  @delta_throttle_ms 50
 
   @impl Oban.Worker
   def timeout(_job), do: :timer.minutes(5)
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"annotation_id" => annotation_id}}) do
+  def perform(%Oban.Job{id: job_id, args: %{"annotation_id" => annotation_id}}) do
     Tracer.with_span "spotter.annotations.explain.job",
       attributes: %{
         annotation_id: annotation_id,
         "spotter.model_requested": @model,
         "spotter.timeout_ms": @timeout_ms
       } do
-      run_explain(annotation_id)
+      run_explain(annotation_id, job_id)
     end
   end
 
-  defp run_explain(annotation_id) do
+  defp run_explain(annotation_id, job_id) do
     annotation =
       Annotation
       |> Ash.get!(annotation_id)
       |> Ash.load!([:session, :file_refs, message_refs: :message])
+
+    run_id = "explain-#{annotation.id}-job-#{job_id || "unknown"}"
+
+    flow_keys =
+      [
+        FlowKeys.agent_run(run_id),
+        FlowKeys.session(annotation.session.session_id),
+        if(job_id, do: FlowKeys.oban(to_string(job_id)))
+      ]
+      |> Enum.reject(&is_nil/1)
+
+    traceparent = TraceContext.current_traceparent()
 
     update_explain_metadata(annotation, %{
       "status" => "pending",
@@ -45,12 +60,20 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
 
     Tracer.set_attribute(:session_id, annotation.session_id)
 
-    case stream_explanation(annotation) do
+    emit_flow_event("agent.run.start", :running, flow_keys, traceparent, %{
+      "run_id" => run_id,
+      "annotation_id" => annotation.id,
+      "job_id" => job_id
+    })
+
+    case stream_explanation(annotation, flow_keys, traceparent) do
       {:ok, answer, references} ->
         finalize_success(annotation, answer, references)
+        emit_flow_event("agent.run.stop", :ok, flow_keys, traceparent, %{"run_id" => run_id})
 
       {:error, reason} ->
         finalize_error(annotation, reason)
+        emit_flow_event("agent.run.stop", :error, flow_keys, traceparent, %{"run_id" => run_id})
     end
 
     :ok
@@ -69,7 +92,7 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
       :ok
   end
 
-  defp stream_explanation(annotation) do
+  defp stream_explanation(annotation, flow_keys, _traceparent) do
     Tracer.with_span "spotter.annotations.explain.agent_stream",
       attributes: %{
         annotation_id: annotation.id,
@@ -90,11 +113,12 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
         })
 
       started_at_ms = System.monotonic_time(:millisecond)
+      last_delta_at_ms = started_at_ms - @delta_throttle_ms - 1
 
       try do
-        answer =
+        {answer, _last_delta_at_ms} =
           streaming_mod.send_message(session, prompts.user)
-          |> Enum.reduce("", fn event, acc ->
+          |> Enum.reduce({"", last_delta_at_ms}, fn event, {acc, last_delta} ->
             elapsed = System.monotonic_time(:millisecond) - started_at_ms
 
             if elapsed > @timeout_ms do
@@ -104,13 +128,26 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
             case event do
               %{type: :text_delta, text: chunk} ->
                 broadcast_delta(annotation.id, chunk)
-                acc <> chunk
+                now = System.monotonic_time(:millisecond)
+
+                last_delta =
+                  if now - last_delta >= @delta_throttle_ms do
+                    emit_flow_event("agent.output.delta", :running, flow_keys, nil, %{
+                      "text" => chunk
+                    })
+
+                    now
+                  else
+                    last_delta
+                  end
+
+                {acc <> chunk, last_delta}
 
               %{type: :message_stop, final_text: final} when is_binary(final) ->
-                final
+                {final, last_delta}
 
               _ ->
-                acc
+                {acc, last_delta}
             end
           end)
 
@@ -123,6 +160,19 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
         streaming_mod.close_session(session)
       end
     end
+  end
+
+  defp emit_flow_event(kind, status, flow_keys, traceparent, payload) do
+    FlowHub.record(%{
+      kind: kind,
+      status: status,
+      flow_keys: flow_keys,
+      summary: "ExplainAnnotation #{kind}",
+      traceparent: traceparent,
+      payload: payload
+    })
+  rescue
+    _ -> :ok
   end
 
   defp finalize_success(annotation, answer, references) do

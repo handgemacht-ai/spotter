@@ -6,6 +6,7 @@ defmodule SpotterWeb.HooksController do
   alias Spotter.Observability.FlowKeys
   alias Spotter.ProductSpec.Jobs.UpdateRollingSpec
   alias Spotter.Services.ActiveSessionRegistry
+  alias Spotter.Telemetry.TraceContext
   alias Spotter.Transcripts.Commit
   alias Spotter.Transcripts.FileSnapshot
   alias Spotter.Transcripts.Jobs.AnalyzeCommitHotspots
@@ -296,6 +297,7 @@ defmodule SpotterWeb.HooksController do
       status: :running,
       flow_keys: flow_keys,
       summary: "Hook #{hook_name} received",
+      traceparent: TraceContext.current_traceparent(),
       payload: payload
     })
   rescue
@@ -307,13 +309,15 @@ defmodule SpotterWeb.HooksController do
       kind: "hook.#{hook_name}.#{status}",
       status: status,
       flow_keys: flow_keys,
-      summary: "Hook #{hook_name} #{status}"
+      summary: "Hook #{hook_name} #{status}",
+      traceparent: TraceContext.current_traceparent()
     })
   rescue
     _ -> :ok
   end
 
   defp insert_and_emit(args, worker_module, flow_payload) do
+    args = OtelTraceHelpers.maybe_add_trace_context(args)
     changeset = worker_module.new(args)
 
     case Oban.insert(changeset) do
@@ -326,6 +330,7 @@ defmodule SpotterWeb.HooksController do
           status: :queued,
           flow_keys: flow_keys,
           summary: "Enqueued #{inspect(worker_module)}",
+          traceparent: TraceContext.current_traceparent(),
           payload:
             Map.merge(flow_payload, %{
               "job_id" => job.id,
@@ -367,9 +372,11 @@ defmodule SpotterWeb.HooksController do
 
   defp enqueue_analyze_tests(hashes, session) when hashes != [] do
     Enum.each(hashes, fn hash ->
-      %{project_id: session.project_id, commit_hash: hash}
-      |> AnalyzeCommitTests.new()
-      |> Oban.insert()
+      insert_and_emit(
+        %{project_id: session.project_id, commit_hash: hash},
+        AnalyzeCommitTests,
+        %{"project_id" => session.project_id, "commit_hash" => hash}
+      )
     end)
   end
 

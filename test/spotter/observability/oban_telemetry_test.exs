@@ -134,6 +134,30 @@ defmodule Spotter.Observability.ObanTelemetryTest do
     end
   end
 
+  describe "trace context propagation" do
+    test "copies otel_traceparent from job args into FlowEvent trace_id" do
+      Phoenix.PubSub.subscribe(Spotter.PubSub, FlowHub.global_topic())
+
+      job =
+        fake_job(%{
+          args: %{
+            "session_id" => "sess-1",
+            "otel_traceparent" => "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+            "otel_trace_id" => "0af7651916cd43dd8448eb211c80319c"
+          }
+        })
+
+      :telemetry.execute(
+        [:oban, :job, :start],
+        %{system_time: System.system_time()},
+        %{job: job, conf: %{}}
+      )
+
+      assert_receive {:flow_event, %FlowEvent{kind: "oban.job.start"} = event}, 1000
+      assert event.trace_id == "0af7651916cd43dd8448eb211c80319c"
+    end
+  end
+
   describe "setup/0" do
     test "can be called multiple times without duplicate handlers" do
       assert :ok = ObanTelemetry.setup()

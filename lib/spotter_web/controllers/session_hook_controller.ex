@@ -10,6 +10,7 @@ defmodule SpotterWeb.SessionHookController do
   alias Spotter.Services.SessionRegistry
   alias Spotter.Services.TranscriptTailSupervisor
   alias Spotter.Services.WaitingSummary
+  alias Spotter.Telemetry.TraceContext
   alias Spotter.Transcripts.Jobs.{DistillCompletedSession, IngestRecentCommits, SyncTranscripts}
   alias Spotter.Transcripts.Sessions
   alias SpotterWeb.OtelTraceHelpers
@@ -180,6 +181,7 @@ defmodule SpotterWeb.SessionHookController do
       status: :running,
       flow_keys: flow_keys,
       summary: "Hook #{hook_name} received",
+      traceparent: TraceContext.current_traceparent(),
       payload: payload
     })
   rescue
@@ -191,7 +193,8 @@ defmodule SpotterWeb.SessionHookController do
       kind: "hook.#{hook_name}.#{status}",
       status: status,
       flow_keys: flow_keys,
-      summary: "Hook #{hook_name} #{status}"
+      summary: "Hook #{hook_name} #{status}",
+      traceparent: TraceContext.current_traceparent()
     })
   rescue
     _ -> :ok
