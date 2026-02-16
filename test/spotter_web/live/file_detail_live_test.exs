@@ -193,6 +193,41 @@ defmodule SpotterWeb.FileDetailLiveTest do
       assert ref.line_start == 2
       assert ref.line_end == 4
     end
+
+    test "saving an explain file annotation persists annotation and file ref", %{
+      project: project,
+      session: session
+    } do
+      {:ok, view, _html} =
+        live(build_conn(), "/projects/#{project.id}/files/lib/foo.ex")
+
+      render_click(view, "select_session", %{"session-id" => session.id})
+
+      render_hook(view, "file_text_selected", %{
+        "text" => "createRoot(document.getElementById('root')!).render(...)",
+        "line_start" => 6,
+        "line_end" => 10
+      })
+
+      render_click(view, "save_annotation", %{
+        "comment" => "What does create root do?",
+        "purpose" => "explain"
+      })
+
+      [annotation] = Ash.read!(Annotation)
+      assert annotation.source == :file
+      assert annotation.purpose == :explain
+      assert annotation.relative_path == "lib/foo.ex"
+      assert annotation.line_start == 6
+      assert annotation.line_end == 10
+      assert annotation.selected_text =~ "createRoot"
+
+      [ref] = Ash.read!(AnnotationFileRef)
+      assert ref.annotation_id == annotation.id
+      assert ref.relative_path == "lib/foo.ex"
+      assert ref.line_start == 6
+      assert ref.line_end == 10
+    end
   end
 
   describe "annotation session guard" do
