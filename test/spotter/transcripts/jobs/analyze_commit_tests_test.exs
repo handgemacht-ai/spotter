@@ -84,7 +84,7 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTestsTest do
   end
 
   describe "perform/1 - missing repo path" do
-    test "marks commit as error", %{project: project} do
+    test "marks commit as error with structured failure metadata", %{project: project} do
       commit = Ash.create!(Commit, %{commit_hash: String.duplicate("d", 40)})
 
       # No sessions exist, so resolve_repo_path returns :no_cwd
@@ -93,6 +93,11 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTestsTest do
       updated = Ash.get!(Commit, commit.id)
       assert updated.tests_status == :error
       assert updated.tests_error =~ "no accessible repo path"
+
+      failure = updated.tests_metadata["failure"]
+      assert failure["reason_code"] == "no_repo_path"
+      assert failure["stage"] == "resolve_repo"
+      assert failure["retryable"] == false
     end
   end
 

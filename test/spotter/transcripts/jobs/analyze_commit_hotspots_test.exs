@@ -15,7 +15,7 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspotsTest do
   end
 
   describe "perform/1 with missing repo path" do
-    test "marks commit as error when no session cwd exists" do
+    test "marks commit as error with structured failure metadata" do
       project = Ash.create!(Project, %{name: "test-analyze", pattern: "^test"})
 
       commit =
@@ -33,6 +33,11 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspotsTest do
       updated = Ash.read_one!(Commit |> Ash.Query.filter(id == ^commit.id))
       assert updated.hotspots_status == :error
       assert updated.hotspots_error =~ "no accessible repo path"
+
+      failure = updated.hotspots_metadata["failure"]
+      assert failure["reason_code"] == "no_repo_path"
+      assert failure["stage"] == "resolve_repo"
+      assert failure["retryable"] == false
     end
   end
 
@@ -78,6 +83,11 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspotsTest do
       updated = Ash.read_one!(Commit |> Ash.Query.filter(id == ^commit.id))
       assert updated.hotspots_status == :error
       assert updated.hotspots_error =~ "missing_api_key"
+
+      failure = updated.hotspots_metadata["failure"]
+      assert failure["reason_code"] == "missing_api_key"
+      assert failure["stage"] == "credentials"
+      assert failure["retryable"] == false
     end
   end
 

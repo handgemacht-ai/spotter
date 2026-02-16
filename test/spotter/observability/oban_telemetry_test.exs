@@ -217,6 +217,90 @@ defmodule Spotter.Observability.ObanTelemetryTest do
     end
   end
 
+  describe "commit-analysis enrichment" do
+    test "includes project_id and commit_hash for commit-analysis workers" do
+      Phoenix.PubSub.subscribe(Spotter.PubSub, FlowHub.global_topic())
+
+      job =
+        fake_job(%{
+          worker: "Spotter.Transcripts.Jobs.AnalyzeCommitHotspots",
+          args: %{
+            "project_id" => "proj-1",
+            "commit_hash" => "abc123"
+          }
+        })
+
+      :telemetry.execute(
+        [:oban, :job, :start],
+        %{system_time: System.system_time()},
+        %{job: job, conf: %{}}
+      )
+
+      assert_receive {:flow_event, %FlowEvent{kind: "oban.job.start"} = event}, 1000
+      assert event.payload["project_id"] == "proj-1"
+      assert event.payload["commit_hash"] == "abc123"
+    end
+
+    test "does not include commit-analysis fields for non-analysis workers" do
+      Phoenix.PubSub.subscribe(Spotter.PubSub, FlowHub.global_topic())
+
+      job =
+        fake_job(%{
+          worker: "Spotter.Workers.EnrichCommit",
+          args: %{"project_id" => "proj-2", "commit_hash" => "def456"}
+        })
+
+      :telemetry.execute(
+        [:oban, :job, :start],
+        %{system_time: System.system_time()},
+        %{job: job, conf: %{}}
+      )
+
+      assert_receive {:flow_event, %FlowEvent{kind: "oban.job.start"} = event}, 1000
+      refute Map.has_key?(event.payload, "project_id")
+      refute Map.has_key?(event.payload, "commit_hash")
+    end
+
+    test "exception payload includes failure fields from job meta for analysis workers" do
+      Phoenix.PubSub.subscribe(Spotter.PubSub, FlowHub.global_topic())
+
+      job =
+        fake_job(%{
+          worker: "Spotter.Transcripts.Jobs.AnalyzeCommitTests",
+          args: %{"project_id" => "proj-3", "commit_hash" => "ghi789"},
+          meta: %{
+            "reason_code" => "test_spec_repo_unavailable",
+            "stage" => "preflight",
+            "retryable" => true
+          }
+        })
+
+      :telemetry.execute(
+        [:oban, :job, :exception],
+        %{duration: 1_000_000, memory: 512, queue_time: 50, reductions: 200},
+        %{
+          job: job,
+          conf: %{},
+          state: :failure,
+          kind: :error,
+          reason: %RuntimeError{message: "dolt unavailable"},
+          result: nil,
+          stacktrace: []
+        }
+      )
+
+      assert_receive {:flow_event,
+                      %FlowEvent{kind: "oban.job.exception", status: :error} = event},
+                     1000
+
+      assert event.payload["project_id"] == "proj-3"
+      assert event.payload["commit_hash"] == "ghi789"
+      assert event.payload["reason_code"] == "test_spec_repo_unavailable"
+      assert event.payload["stage"] == "preflight"
+      assert event.payload["retryable"] == true
+    end
+  end
+
   describe "setup/0" do
     test "can be called multiple times without duplicate handlers" do
       assert :ok = ObanTelemetry.setup()

@@ -42,7 +42,11 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTests do
           :ok
 
         {_, :no_cwd} ->
-          mark_commit_error(commit_hash, "no accessible repo path")
+          failure =
+            build_failure("no_repo_path", "resolve_repo", message: "no accessible repo path")
+
+          set_failure_trace_attributes(failure)
+          mark_commit_error(commit_hash, "no accessible repo path", failure)
           :ok
       end
     end
@@ -120,9 +124,18 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTests do
       e ->
         reason = Exception.message(e)
         Logger.warning("AnalyzeCommitTests: failed: #{reason}")
+
+        failure =
+          build_failure("analysis_unexpected_error", "run_analysis",
+            retryable: false,
+            error_class: inspect(e.__struct__),
+            message: reason
+          )
+
+        set_failure_trace_attributes(failure)
         Tracer.set_status(:error, reason)
         Ash.update!(test_run, %{error: String.slice(reason, 0, 500)}, action: :fail)
-        mark_commit_error(commit, reason)
+        mark_commit_error(commit, reason, failure)
         :ok
     end
   end
@@ -320,7 +333,7 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTests do
     :ok
   end
 
-  defp mark_commit_error(commit_or_hash, error_msg) do
+  defp mark_commit_error(commit_or_hash, error_msg, failure) do
     commit =
       case commit_or_hash do
         %Commit{} = c ->
@@ -336,7 +349,8 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTests do
     if commit do
       Ash.update(commit, %{
         tests_status: :error,
-        tests_error: String.slice(error_msg, 0, 500)
+        tests_error: String.slice(error_msg, 0, 500),
+        tests_metadata: %{"failure" => failure}
       })
     end
   end
@@ -344,4 +358,31 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitTests do
   defp agent_module do
     Application.get_env(:spotter, :commit_test_agent_module, Spotter.Services.CommitTestAgent)
   end
+
+  # -- Failure contract helpers --
+
+  defp build_failure(reason_code, stage, opts) do
+    %{
+      "reason_code" => reason_code,
+      "stage" => stage,
+      "retryable" => Keyword.get(opts, :retryable, false),
+      "error_class" => Keyword.get(opts, :error_class),
+      "message" => opts |> Keyword.get(:message) |> truncate_message(),
+      "details" => Keyword.get(opts, :details, %{})
+    }
+  end
+
+  defp set_failure_trace_attributes(failure) do
+    Tracer.set_attribute("spotter.failure.reason_code", failure["reason_code"])
+    Tracer.set_attribute("spotter.failure.stage", failure["stage"])
+    Tracer.set_attribute("spotter.failure.retryable", failure["retryable"])
+
+    if failure["error_class"] do
+      Tracer.set_attribute("spotter.failure.error_class", failure["error_class"])
+    end
+  end
+
+  defp truncate_message(nil), do: nil
+  defp truncate_message(msg) when is_binary(msg), do: String.slice(msg, 0, 500)
+  defp truncate_message(msg), do: msg |> inspect() |> String.slice(0, 500)
 end

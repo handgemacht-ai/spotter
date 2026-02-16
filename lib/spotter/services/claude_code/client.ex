@@ -79,6 +79,7 @@ defmodule Spotter.Services.ClaudeCode.Client do
         e ->
           reason = Exception.message(e)
           Tracer.set_status(:error, reason)
+          set_provider_error_attributes(e)
           {:error, reason}
       end
     end
@@ -103,6 +104,37 @@ defmodule Spotter.Services.ClaudeCode.Client do
     }
 
     if model, do: %{opts | model: model}, else: opts
+  end
+
+  defp set_provider_error_attributes(exception) do
+    if http_status = extract_field(exception, [:status, :status_code]) do
+      Tracer.set_attribute("spotter.provider_http_status", http_status)
+    end
+
+    if error_code = extract_field(exception, [:code, :error_code]) do
+      Tracer.set_attribute("spotter.provider_error_code", to_string(error_code))
+    end
+
+    if body = extract_field(exception, [:body, :response_body, :message]) do
+      Tracer.set_attribute(
+        "spotter.provider_error_body_preview",
+        body |> to_string() |> String.slice(0, 500)
+      )
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp extract_field(struct, keys) when is_list(keys) do
+    Enum.find_value(keys, fn key ->
+      case Map.get(struct, key) do
+        nil -> nil
+        "" -> nil
+        val -> val
+      end
+    end)
+  rescue
+    _ -> nil
   end
 
   defp build_output_format(:text, _schema), do: :text

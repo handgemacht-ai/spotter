@@ -126,6 +126,11 @@ defmodule Spotter.Observability.ObanTelemetry do
     worker |> String.split(".") |> List.last()
   end
 
+  @commit_analysis_workers [
+    "Spotter.Transcripts.Jobs.AnalyzeCommitHotspots",
+    "Spotter.Transcripts.Jobs.AnalyzeCommitTests"
+  ]
+
   defp start_payload(job) do
     %{
       "job_id" => get_job_id(job),
@@ -133,6 +138,7 @@ defmodule Spotter.Observability.ObanTelemetry do
       "queue" => to_string(Map.get(job, :queue, "default")),
       "attempt" => Map.get(job, :attempt, 1)
     }
+    |> maybe_put_commit_analysis_fields(job)
   end
 
   defp stop_payload(job, state, measurements) do
@@ -152,7 +158,44 @@ defmodule Spotter.Observability.ObanTelemetry do
     |> Map.put("error_kind", to_string(kind))
     |> Map.put("error_reason", format_error_reason(kind, reason))
     |> Map.put("error_stack", format_stacktrace(stacktrace))
+    |> maybe_put_failure_fields(job)
   end
+
+  defp maybe_put_commit_analysis_fields(payload, job) do
+    worker = Map.get(job, :worker)
+
+    if worker in @commit_analysis_workers do
+      args = get_args(job)
+
+      payload
+      |> put_if_present("project_id", args["project_id"])
+      |> put_if_present("commit_hash", args["commit_hash"])
+    else
+      payload
+    end
+  end
+
+  defp maybe_put_failure_fields(payload, job) do
+    worker = Map.get(job, :worker)
+
+    if worker in @commit_analysis_workers do
+      meta = get_job_meta(job)
+
+      payload
+      |> put_if_present("reason_code", meta["reason_code"])
+      |> put_if_present("stage", meta["stage"])
+      |> put_if_present("retryable", meta["retryable"])
+    else
+      payload
+    end
+  end
+
+  defp get_job_meta(%{meta: meta}) when is_map(meta), do: meta
+  defp get_job_meta(%Oban.Job{meta: meta}) when is_map(meta), do: meta
+  defp get_job_meta(_), do: %{}
+
+  defp put_if_present(map, _key, nil), do: map
+  defp put_if_present(map, key, value), do: Map.put(map, key, value)
 
   @max_stack_frames 8
   @max_stack_chars 1000

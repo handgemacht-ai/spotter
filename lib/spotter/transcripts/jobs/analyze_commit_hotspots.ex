@@ -39,7 +39,11 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
           :ok
 
         {_, :no_cwd} ->
-          mark_error(commit_hash, "no accessible repo path")
+          failure =
+            build_failure("no_repo_path", "resolve_repo", message: "no accessible repo path")
+
+          set_failure_trace_attributes(failure)
+          mark_error(commit_hash, "no accessible repo path", failure)
           :ok
       end
     end
@@ -70,19 +74,32 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
     e ->
       reason = Exception.message(e)
       Logger.warning("AnalyzeCommitHotspots: unexpected error: #{reason}")
-      Tracer.set_attribute("spotter.error.kind", "exception")
-      Tracer.set_attribute("spotter.error.reason", String.slice(reason, 0, 500))
+
+      failure =
+        build_failure("agent_error", "run_analysis",
+          retryable: false,
+          error_class: inspect(e.__struct__),
+          message: reason
+        )
+
+      set_failure_trace_attributes(failure)
       Tracer.set_status(:error, reason)
-      mark_error(commit.commit_hash, reason)
+      mark_error(commit.commit_hash, reason, failure)
       :ok
   catch
     :exit, exit_reason ->
       msg = inspect(exit_reason)
       Logger.warning("AnalyzeCommitHotspots: process exited: #{msg}")
-      Tracer.set_attribute("spotter.error.kind", "exit")
-      Tracer.set_attribute("spotter.error.reason", String.slice(msg, 0, 500))
+
+      failure =
+        build_failure("agent_exit", "run_analysis",
+          retryable: true,
+          message: msg
+        )
+
+      set_failure_trace_attributes(failure)
       Tracer.set_status(:error, msg)
-      mark_error(commit.commit_hash, msg)
+      mark_error(commit.commit_hash, msg, failure)
       :ok
   end
 
@@ -112,12 +129,81 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
     else
       {:error, :missing_api_key} ->
         Logger.warning("AnalyzeCommitHotspots: missing API key, skipping")
-        mark_error(commit.commit_hash, "missing_api_key")
+
+        failure =
+          build_failure("missing_api_key", "credentials",
+            retryable: false,
+            message: "missing_api_key"
+          )
+
+        set_failure_trace_attributes(failure)
+        mark_error(commit.commit_hash, "missing_api_key", failure)
+        :ok
+
+      {:error, :no_structured_output} ->
+        Logger.warning("AnalyzeCommitHotspots: no structured output from agent")
+
+        failure =
+          build_failure("no_structured_output", "agent_result",
+            retryable: true,
+            message: "agent did not return structured output"
+          )
+
+        set_failure_trace_attributes(failure)
+        mark_error(commit.commit_hash, "no_structured_output", failure)
+        :ok
+
+      {:error, :invalid_main_response} ->
+        Logger.warning("AnalyzeCommitHotspots: invalid structured output shape")
+
+        failure =
+          build_failure("invalid_structured_output", "agent_result",
+            retryable: true,
+            message: "structured output did not match expected schema"
+          )
+
+        set_failure_trace_attributes(failure)
+        mark_error(commit.commit_hash, "invalid_structured_output", failure)
+        :ok
+
+      {:error, {:agent_error, reason}} ->
+        Logger.warning("AnalyzeCommitHotspots: agent error: #{inspect(reason)}")
+
+        failure =
+          build_failure("agent_error", "agent_run",
+            retryable: true,
+            message: inspect(reason)
+          )
+
+        set_failure_trace_attributes(failure)
+        mark_error(commit.commit_hash, inspect(reason), failure)
+        :ok
+
+      {:error, {:agent_exit, _} = reason} ->
+        Logger.warning("AnalyzeCommitHotspots: agent exit: #{inspect(reason)}")
+
+        failure =
+          build_failure("agent_exit", "agent_run",
+            retryable: true,
+            message: inspect(reason)
+          )
+
+        set_failure_trace_attributes(failure)
+        mark_error(commit.commit_hash, inspect(reason), failure)
         :ok
 
       {:error, reason} ->
         Logger.warning("AnalyzeCommitHotspots: failed: #{inspect(reason)}")
-        mark_error(commit.commit_hash, inspect(reason))
+        reason_code = classify_error_reason(reason)
+
+        failure =
+          build_failure(reason_code, "run_analysis",
+            retryable: reason_code != "diff_extract_failed",
+            message: inspect(reason)
+          )
+
+        set_failure_trace_attributes(failure)
+        mark_error(commit.commit_hash, inspect(reason), failure)
         :ok
     end
   end
@@ -240,7 +326,7 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
     :ok
   end
 
-  defp mark_error(commit_hash_or_commit, error_msg) do
+  defp mark_error(commit_hash_or_commit, error_msg, failure) do
     commit =
       case commit_hash_or_commit do
         %Commit{} = c ->
@@ -254,10 +340,48 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
       end
 
     if commit do
+      metadata = if failure == %{}, do: %{}, else: %{"failure" => failure}
+
       Ash.update(commit, %{
         hotspots_status: :error,
-        hotspots_error: String.slice(error_msg, 0, 500)
+        hotspots_error: String.slice(error_msg, 0, 500),
+        hotspots_metadata: metadata
       })
     end
   end
+
+  # -- Failure contract helpers --
+
+  defp build_failure(reason_code, stage, opts) do
+    %{
+      "reason_code" => reason_code,
+      "stage" => stage,
+      "retryable" => Keyword.get(opts, :retryable, false),
+      "error_class" => Keyword.get(opts, :error_class),
+      "message" => opts |> Keyword.get(:message) |> truncate_message(),
+      "details" => Keyword.get(opts, :details, %{})
+    }
+  end
+
+  defp set_failure_trace_attributes(failure) do
+    Tracer.set_attribute("spotter.failure.reason_code", failure["reason_code"])
+    Tracer.set_attribute("spotter.failure.stage", failure["stage"])
+    Tracer.set_attribute("spotter.failure.retryable", failure["retryable"])
+
+    if failure["error_class"] do
+      Tracer.set_attribute("spotter.failure.error_class", failure["error_class"])
+    end
+  end
+
+  defp classify_error_reason(reason) do
+    case reason do
+      :diff_extract_failed -> "diff_extract_failed"
+      {:agent_timeout, _} -> "agent_timeout"
+      _ -> "agent_error"
+    end
+  end
+
+  defp truncate_message(nil), do: nil
+  defp truncate_message(msg) when is_binary(msg), do: String.slice(msg, 0, 500)
+  defp truncate_message(msg), do: msg |> inspect() |> String.slice(0, 500)
 end
