@@ -235,6 +235,12 @@ If logs show repeated `database not found: spotter_tests` errors:
 2. Check env overrides: `SPOTTER_TEST_SPEC_DOLT_DATABASE` defaults to `spotter_tests`
 3. Restart the app — `ensure_database!/0` will auto-create the missing database
 
+If logs show tzdata permission errors like:
+`could not write to file "/app/_build/dev/lib/tzdata/priv/latest_remote_poll.txt": permission denied`
+1. Restart Spotter after pulling the latest installer bundle/config (defaults to writable `/tmp/tzdata`)
+2. Optionally set a custom path: `SPOTTER_TZDATA_DIR=/path/you/control`
+3. If you don’t run tracing collectors, you can ignore this OTEL export warning and keep tracing disabled in local troubleshooting mode
+
 ### Rollout checklist
 
 1. Start Dolt: `docker compose -f docker-compose.dolt.yml up -d`

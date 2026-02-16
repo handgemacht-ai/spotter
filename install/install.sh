@@ -28,3 +28,6 @@ echo '  export PATH="$HOME/.local/bin:$PATH"'
 echo "  2. export SPOTTER_ANTHROPIC_API_KEY=sk-ant-..."
 echo "  3. cd /path/to/target-repo"
 echo "  4. spotter"
+echo "  5. spotter attach    # connect to the tmux session where Claude is running"
+echo "     (or: spotter attach --repo /path/to/target-repo)"
+echo "  6. Inside tmux, launch/continue Claude Code work as usual (e.g. run `claude`)"

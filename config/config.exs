@@ -82,6 +82,9 @@ config :claude_agent_sdk,
 
 config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
 
+# Keep tzdata cache on a writable path in container/dev flows.
+config :tzdata, data_dir: System.get_env("SPOTTER_TZDATA_DIR", "/tmp/tzdata")
+
 config :spotter, env: config_env()
 
 import_config "#{config_env()}.exs"
