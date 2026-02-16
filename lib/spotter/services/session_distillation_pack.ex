@@ -39,7 +39,8 @@ defmodule Spotter.Services.SessionDistillationPack do
         started_at: session.started_at,
         hook_ended_at: session.hook_ended_at,
         ended_at: session.ended_at,
-        message_count: session.message_count
+        message_count: session.message_count,
+        project_id: session.project_id
       },
       commits:
         Enum.map(commits, fn c ->

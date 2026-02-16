@@ -10,10 +10,11 @@ import Config
 # Session distillation configuration
 # SPOTTER_SESSION_DISTILL_MODEL - LLM model for session distillation (default: claude-3-5-haiku-latest)
 # SPOTTER_SESSION_DISTILL_INPUT_CHAR_BUDGET - char budget for transcript slice (default: 30000)
-# SPOTTER_DISTILL_TIMEOUT_MS - LLM call timeout in ms (default: 15000)
+# SPOTTER_DISTILL_TIMEOUT_MS - Session distillation timeout in ms (default: 45000)
 #
 # Project rollup configuration
 # SPOTTER_PROJECT_ROLLUP_MODEL - LLM model for project rollups (default: claude-3-5-haiku-latest)
+# SPOTTER_PROJECT_ROLLUP_DISTILL_TIMEOUT_MS - Project rollup distillation timeout in ms (default: 45000)
 # SPOTTER_ROLLUP_BUCKET_KIND - bucket granularity: day, week, or month (default: week)
 # SPOTTER_ROLLUP_LOOKBACK_DAYS - rolling summary lookback window in days (default: 30)
 

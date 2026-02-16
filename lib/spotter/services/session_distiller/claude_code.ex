@@ -1,91 +1,175 @@
 defmodule Spotter.Services.SessionDistiller.ClaudeCode do
-  @moduledoc "Claude Code adapter for session distillation via `claude_agent_sdk`."
+  @moduledoc "Claude Code adapter for session distillation via in-process MCP tool-loop."
   @behaviour Spotter.Services.SessionDistiller
 
+  require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
+  alias Spotter.Agents.DistillationToolServer
+  alias Spotter.Config.Runtime
+  alias Spotter.Observability.AgentRunScope
+  alias Spotter.Observability.ClaudeAgentFlow
   alias Spotter.Observability.ErrorReport
-  alias Spotter.Services.ClaudeCode.Client
+  alias Spotter.Observability.FlowKeys
   alias Spotter.Services.ClaudeCode.ResultExtractor
 
   @default_model "claude-3-5-haiku-latest"
-  @default_timeout 15_000
+  @default_timeout 45_000
+  @max_turns 6
 
-  @system_prompt """
-  You are summarizing a completed Claude Code session for a developer activity log.
-  Given session metadata, tool calls, file snapshots, errors, commits, and a transcript slice, produce a JSON summary.
-
-  Keep each field concise. Omit empty arrays.
-  Focus on session activity (tool calls, file snapshots, errors, transcript slice).
-  Use commit information only as supporting context.
-  """
-
-  @json_schema %{
-    "type" => "object",
-    "required" => ["session_summary"],
-    "properties" => %{
-      "session_summary" => %{"type" => "string"},
-      "what_changed" => %{"type" => "array", "items" => %{"type" => "string"}},
-      "commands_run" => %{"type" => "array", "items" => %{"type" => "string"}},
-      "open_threads" => %{"type" => "array", "items" => %{"type" => "string"}},
-      "risks" => %{"type" => "array", "items" => %{"type" => "string"}},
-      "key_files" => %{
-        "type" => "array",
-        "items" => %{
-          "type" => "object",
-          "required" => ["path"],
-          "properties" => %{
-            "path" => %{"type" => "string"},
-            "reason" => %{"type" => "string"}
-          }
-        }
-      }
-    }
-  }
+  @tool_name "mcp__spotter-distill__record_session_distillation"
 
   @impl true
   def distill(pack, opts \\ []) do
     model = Keyword.get(opts, :model, configured_model())
     timeout = Keyword.get(opts, :timeout, configured_timeout())
+    {system_prompt, _source} = Runtime.session_distiller_system_prompt()
 
     Tracer.with_span "spotter.session_distiller.distill" do
       Tracer.set_attribute("spotter.model_requested", model)
+      Tracer.set_attribute("spotter.timeout_ms", timeout)
 
-      case Client.query_json_schema(@system_prompt, format_pack(pack), @json_schema,
-             model: model,
-             timeout_ms: timeout
-           ) do
-        {:ok, %{output: json, model_used: model_used, messages: messages}} ->
-          actual_model = model_used || ResultExtractor.extract_model_used(messages) || model
-          Tracer.set_attribute("spotter.model_used", actual_model)
+      server = DistillationToolServer.create_server()
 
-          if Map.has_key?(json, "session_summary") do
-            raw_text = Jason.encode!(json)
+      AgentRunScope.put(server.registry_pid, %{
+        agent_kind: "session_distiller"
+      })
 
-            {:ok,
-             %{
-               summary_json: json,
-               summary_text: format_summary_text(json),
-               model_used: actual_model,
-               raw_response_text: raw_text
-             }}
-          else
-            {:error, {:invalid_json, :missing_required_keys, Jason.encode!(json)}}
-          end
-
-        {:error, reason} ->
-          ErrorReport.set_trace_error(
-            "distill_error",
-            inspect(reason),
-            "services.session_distiller"
-          )
-
-          {:error, reason}
+      try do
+        run_agent(pack, server, system_prompt, model, timeout)
+      rescue
+        e ->
+          reason = Exception.message(e)
+          Logger.warning("SessionDistiller: agent failed: #{reason}")
+          ErrorReport.set_trace_error("distill_error", reason, "services.session_distiller")
+          {:error, {:agent_error, reason}}
+      catch
+        :exit, exit_reason ->
+          msg = "SessionDistiller: SDK process exited: #{inspect(exit_reason)}"
+          Logger.warning(msg)
+          ErrorReport.set_trace_error("distill_exit", msg, "services.session_distiller")
+          {:error, {:agent_exit, exit_reason}}
+      after
+        AgentRunScope.delete(server.registry_pid)
       end
     end
   end
 
-  defp format_summary_text(json) do
+  defp run_agent(pack, server, system_prompt, model, timeout) do
+    sdk_opts =
+      %ClaudeAgentSDK.Options{
+        model: model,
+        system_prompt: system_prompt,
+        max_turns: @max_turns,
+        timeout_ms: timeout,
+        tools: [],
+        allowed_tools: DistillationToolServer.allowed_session_tools(),
+        permission_mode: :dont_ask,
+        mcp_servers: %{"spotter-distill" => server}
+      }
+      |> ClaudeAgentFlow.build_opts()
+
+    project_id = get_in(pack, [:session, :project_id])
+    flow_keys = if project_id, do: [FlowKeys.project(project_id)], else: []
+
+    messages =
+      format_pack(pack)
+      |> ClaudeAgentSDK.query(sdk_opts)
+      |> ClaudeAgentFlow.wrap_stream(flow_keys: flow_keys)
+      |> Enum.to_list()
+
+    actual_model = ResultExtractor.extract_model_used(messages) || model
+    Tracer.set_attribute("spotter.model_used", actual_model)
+    Tracer.set_attribute("spotter.tool_calls_total", count_tool_calls(messages))
+
+    extract_distillation(messages, actual_model)
+  end
+
+  @doc false
+  def extract_distillation(messages, model_used) do
+    case extract_last_tool_result(messages, @tool_name) do
+      nil ->
+        {:error, :no_distillation_tool_output}
+
+      raw_json ->
+        case Jason.decode(raw_json) do
+          {:ok, %{"ok" => true, "kind" => "session", "payload" => payload}} ->
+            snippet_count = length(Map.get(payload, "important_snippets", []))
+            Tracer.set_attribute("spotter.snippets_count", snippet_count)
+
+            summary_json = payload
+            summary_text = format_summary_text(payload)
+            raw_text = Jason.encode!(summary_json)
+
+            {:ok,
+             %{
+               summary_json: summary_json,
+               summary_text: summary_text,
+               model_used: model_used,
+               raw_response_text: raw_text
+             }}
+
+          {:ok, %{"ok" => false} = err} ->
+            {:error, {:invalid_distillation_payload, "validation_failed", Jason.encode!(err)}}
+
+          {:ok, other} ->
+            {:error, {:invalid_distillation_payload, "unexpected_shape", Jason.encode!(other)}}
+
+          {:error, decode_err} ->
+            {:error, {:invalid_distillation_payload, "json_decode_error", inspect(decode_err)}}
+        end
+    end
+  end
+
+  @doc false
+  def extract_last_tool_result(messages, tool_name) do
+    messages
+    |> Enum.flat_map(&extract_tool_results/1)
+    |> Enum.filter(fn {name, _content} -> name == tool_name end)
+    |> List.last()
+    |> case do
+      {_name, content} -> content
+      nil -> nil
+    end
+  end
+
+  defp extract_tool_results(%ClaudeAgentSDK.Message{type: :tool_result, data: data}) do
+    extract_tool_result_pairs(data)
+  end
+
+  defp extract_tool_results(%{type: :tool_result, data: data}) do
+    extract_tool_result_pairs(data)
+  end
+
+  defp extract_tool_results(_), do: []
+
+  defp extract_tool_result_pairs(data) when is_map(data) do
+    tool_name = data[:tool_name] || data["tool_name"]
+    content = data[:content] || data["content"]
+
+    if tool_name && content do
+      [{tool_name, extract_text_content(content)}]
+    else
+      []
+    end
+  end
+
+  defp extract_tool_result_pairs(_), do: []
+
+  defp extract_text_content(content) when is_binary(content), do: content
+
+  defp extract_text_content(content) when is_list(content) do
+    Enum.find_value(content, "", fn
+      %{"type" => "text", "text" => text} -> text
+      %{type: "text", text: text} -> text
+      _ -> nil
+    end)
+  end
+
+  defp extract_text_content(_), do: ""
+
+  @doc false
+  def format_summary_text(json) do
     sections = [
       json["session_summary"],
       format_list("What changed", json["what_changed"]),
@@ -139,6 +223,30 @@ defmodule Spotter.Services.SessionDistiller.ClaudeCode do
 
     Enum.join(sections, "\n\n")
   end
+
+  defp count_tool_calls(messages) do
+    messages
+    |> Enum.flat_map(&extract_assistant_tool_uses/1)
+    |> length()
+  end
+
+  defp extract_assistant_tool_uses(%ClaudeAgentSDK.Message{
+         type: :assistant,
+         data: %{message: %{"content" => content}}
+       })
+       when is_list(content) do
+    for %{"type" => "tool_use"} <- content, do: :call
+  end
+
+  defp extract_assistant_tool_uses(%ClaudeAgentSDK.Message{
+         type: :assistant,
+         data: %{message: %{content: content}}
+       })
+       when is_list(content) do
+    for %{"type" => "tool_use"} <- content, do: :call
+  end
+
+  defp extract_assistant_tool_uses(_), do: []
 
   defp configured_model do
     System.get_env("SPOTTER_SESSION_DISTILL_MODEL") || @default_model

@@ -156,6 +156,20 @@ The SDK authenticates via `SPOTTER_ANTHROPIC_API_KEY` (environment variable) or 
 
 In test mode, the SDK uses a mock server (`ClaudeAgentSDK.Mock`) so the CLI binary is not required for `mix test`.
 
+## Session & Project Distillation
+
+Completed sessions are distilled into structured summaries via Claude Agent SDK tool-loop agents. Both session and project rollup distillers use in-process MCP tools (`record_session_distillation`, `record_project_rollup_distillation`) with validation and normalization.
+
+### Configuration
+
+| Variable | Default | Description |
+|---|---|---|
+| `SPOTTER_SESSION_DISTILL_MODEL` | `claude-3-5-haiku-latest` | LLM model for session distillation |
+| `SPOTTER_DISTILL_TIMEOUT_MS` | `45000` | Session distillation timeout in ms |
+| `SPOTTER_SESSION_DISTILL_INPUT_CHAR_BUDGET` | `30000` | Char budget for transcript slice |
+| `SPOTTER_PROJECT_ROLLUP_MODEL` | `claude-3-5-haiku-latest` | LLM model for project rollups |
+| `SPOTTER_PROJECT_ROLLUP_DISTILL_TIMEOUT_MS` | `45000` | Project rollup distillation timeout in ms |
+
 ## MCP Server
 
 The Spotter MCP server is provided by the plugin via `spotter-plugin/.mcp.json`. The server name is `spotter`, so tools are exposed as `mcp__spotter__*`.

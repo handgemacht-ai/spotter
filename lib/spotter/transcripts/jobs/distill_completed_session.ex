@@ -121,13 +121,22 @@ defmodule Spotter.Transcripts.Jobs.DistillCompletedSession do
     Ash.create!(SessionDistillation, %{
       session_id: session.id,
       status: :error,
-      error_reason: inspect(reason),
+      error_reason: format_error_reason(reason),
       raw_response_text: raw_response_text
     })
 
     Ash.update!(session, %{distilled_status: :error})
     :ok
   end
+
+  defp format_error_reason(reason) when is_atom(reason), do: Atom.to_string(reason)
+
+  defp format_error_reason({:invalid_distillation_payload, sub_reason, _raw}),
+    do: "invalid_distillation_payload:#{inspect(sub_reason)}"
+
+  defp format_error_reason(reason) when is_tuple(reason), do: inspect(reason)
+  defp format_error_reason(reason) when is_binary(reason), do: reason
+  defp format_error_reason(reason), do: inspect(reason)
 
   defp enqueue_rollups(session) do
     session = Ash.load!(session, :project)

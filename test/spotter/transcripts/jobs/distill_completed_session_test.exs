@@ -240,6 +240,77 @@ defmodule Spotter.Transcripts.Jobs.DistillCompletedSessionTest do
     end
   end
 
+  describe "error persistence" do
+    setup %{session: session} do
+      commit =
+        Ash.create!(Commit, %{
+          commit_hash: "err123def456",
+          git_branch: "main",
+          subject: "feat: error test"
+        })
+
+      Ash.create!(SessionCommitLink, %{
+        session_id: session.id,
+        commit_id: commit.id,
+        link_type: :observed_in_session,
+        confidence: 1.0
+      })
+
+      previous = Application.get_env(:spotter, :session_distiller_adapter)
+
+      Application.put_env(
+        :spotter,
+        :session_distiller_adapter,
+        Spotter.Services.SessionDistiller.ErrorStub
+      )
+
+      on_exit(fn -> Application.put_env(:spotter, :session_distiller_adapter, previous) end)
+
+      :ok
+    end
+
+    test "atom error reason stored without leading colon", %{session: session} do
+      Process.put(:distiller_error_stub_reason, :no_distillation_tool_output)
+
+      assert :ok =
+               DistillCompletedSession.perform(%Oban.Job{
+                 args: %{"session_id" => to_string(session.session_id)}
+               })
+
+      updated = Ash.get!(Session, session.id)
+      assert updated.distilled_status == :error
+
+      distillation =
+        SessionDistillation
+        |> Ash.Query.filter(session_id == ^session.id and status == :error)
+        |> Ash.read_one!()
+
+      assert distillation.error_reason == "no_distillation_tool_output"
+    end
+
+    test "tuple error with raw payload persists raw_response_text", %{session: session} do
+      raw_payload = ~s({"bad":"data"})
+
+      Process.put(
+        :distiller_error_stub_reason,
+        {:invalid_distillation_payload, "missing_required_keys", raw_payload}
+      )
+
+      assert :ok =
+               DistillCompletedSession.perform(%Oban.Job{
+                 args: %{"session_id" => to_string(session.session_id)}
+               })
+
+      distillation =
+        SessionDistillation
+        |> Ash.Query.filter(session_id == ^session.id and status == :error)
+        |> Ash.read_one!()
+
+      assert distillation.error_reason == ~s(invalid_distillation_payload:"missing_required_keys")
+      assert distillation.raw_response_text == raw_payload
+    end
+  end
+
   describe "unique states allow re-enqueue after completion" do
     test "can insert a new job after previous one completed", %{session: session} do
       import Ecto.Query
