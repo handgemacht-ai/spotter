@@ -6,7 +6,7 @@ defmodule Spotter.TestSpec.SpecDiff do
   a structured diff with added, removed, and changed entries.
   """
 
-  @semantic_fields ~w(framework relative_path describe_path test_name line_start line_end given when then confidence metadata source_commit_hash)a
+  @semantic_fields ~w(framework relative_path describe_path test_name line_start line_end given when then confidence metadata)a
 
   @doc """
   Computes a semantic diff between two test lists.

@@ -77,6 +77,17 @@ defmodule Spotter.TestSpec.SpecDiffTest do
       assert result.changed == []
     end
 
+    test "ignores source_commit_hash changes" do
+      from = [test_entry()]
+      to = [test_entry(%{source_commit_hash: "different_hash"})]
+
+      result = SpecDiff.diff(from, to)
+
+      assert result.added == []
+      assert result.removed == []
+      assert result.changed == []
+    end
+
     test "handles mixed add/remove/change" do
       kept = test_entry(%{test_key: "keep"})
       removed_entry = test_entry(%{test_key: "old"})
