@@ -46,6 +46,10 @@ defmodule SpotterWeb.PaneListLive do
       initial []
     end
 
+    input :study_initial_due_count do
+      initial nil
+    end
+
     input :browser_timezone do
       initial "Etc/UTC"
     end
@@ -296,6 +300,9 @@ defmodule SpotterWeb.PaneListLive do
     today = browser_today(socket)
     importance_atom = String.to_existing_atom(importance)
 
+    # Snapshot initial due count on first rating for progress bar
+    socket = snapshot_initial_due_count(socket)
+
     # Mark seen first — increments seen_count
     item = Ash.update!(item, %{}, action: :mark_seen)
 
@@ -411,6 +418,32 @@ defmodule SpotterWeb.PaneListLive do
   defp interval_multiplier(:high), do: 2.0
   defp interval_multiplier(:medium), do: 2.5
   defp interval_multiplier(:low), do: 3.0
+
+  defp snapshot_initial_due_count(socket) do
+    if is_nil(socket.assigns.study_queue_study_initial_due_count) do
+      total = socket.assigns.study_queue_due_counts.total
+      update_computer_inputs(socket, :study_queue, %{study_initial_due_count: total})
+    else
+      socket
+    end
+  end
+
+  defp study_progress_pct(initial, remaining) when is_integer(initial) and initial > 0 do
+    reviewed = initial - remaining
+    min(100, round(reviewed / initial * 100))
+  end
+
+  defp study_progress_pct(_initial, _remaining), do: 0
+
+  defp next_interval_label(importance, seen_count) do
+    days = next_interval(importance, seen_count)
+
+    cond do
+      days == 1 -> "1d"
+      days < 30 -> "#{days}d"
+      true -> "#{div(days, 30)}mo"
+    end
+  end
 
   defp maybe_track_seen_upcoming(socket, entry)
        when is_map(entry) and is_map_key(entry, :upcoming) do
@@ -921,18 +954,6 @@ defmodule SpotterWeb.PaneListLive do
           </div>
         </div>
 
-        <div class="importance-summary text-sm text-muted mb-2">
-          <span :if={@study_queue_due_counts.high > 0} class="text-error">
-            {@study_queue_due_counts.high} high
-          </span>
-          <span :if={@study_queue_due_counts.medium > 0}>
-            {@study_queue_due_counts.medium} medium
-          </span>
-          <span :if={@study_queue_due_counts.low > 0}>
-            {@study_queue_due_counts.low} low
-          </span>
-        </div>
-
         <%= if @study_queue_due_items == [] do %>
           <div class="empty-state" data-testid="study-queue-empty">
             <%= case @study_queue_empty_context do %>
@@ -968,8 +989,18 @@ defmodule SpotterWeb.PaneListLive do
           </div>
         <% else %>
           <% current_entry = List.first(@study_queue_due_items) %>
-          <div class="study-progress text-sm text-muted mb-2">
-            {@study_queue_due_counts.total} remaining
+          <% initial = @study_queue_study_initial_due_count || @study_queue_due_counts.total %>
+          <% remaining = @study_queue_due_counts.total %>
+          <% pct = study_progress_pct(initial, remaining) %>
+
+          <div class="study-progress-container" id="study-progress" phx-hook="StudyProgress">
+            <div class="study-progress-bar">
+              <div class={"study-progress-fill#{if pct == 100, do: " is-complete"}"} style={"width: #{pct}%"}></div>
+            </div>
+            <span class="study-progress-label">
+              <strong class="study-progress-number">{remaining}</strong>
+              <span class="study-progress-text">/ {initial}</span>
+            </span>
           </div>
 
           <div
@@ -980,6 +1011,12 @@ defmodule SpotterWeb.PaneListLive do
           >
             <div class="study-card" data-testid="study-card" data-card-id={current_entry.item.id}>
               <div class="study-card-header">
+                <span :if={current_entry.project} class="badge badge-project">
+                  {current_entry.project.name}
+                </span>
+                <span :if={is_nil(current_entry.project)} class="badge badge-project-unavailable">
+                  Unknown
+                </span>
                 <span class={"badge study-kind-#{current_entry.item.target_kind}"}>
                   <%= case current_entry.item.target_kind do %>
                     <% :commit_message -> %>Commit
@@ -988,33 +1025,15 @@ defmodule SpotterWeb.PaneListLive do
                     <% _ -> %>Review
                   <% end %>
                 </span>
-                <span class={"badge study-importance-#{current_entry.item.importance}"}>
-                  {current_entry.item.importance}
+                <span :if={current_entry.upcoming} class="badge badge-upcoming">
+                  {Calendar.strftime(current_entry.item.next_due_on, "%b %d")}
                 </span>
-                <span :if={current_entry.upcoming} class="badge text-muted text-xs">
-                  Due: {Calendar.strftime(current_entry.item.next_due_on, "%b %d")}
-                </span>
-                <span :if={current_entry.item.seen_count > 0} class="text-muted text-xs">
-                  seen {current_entry.item.seen_count}x
+                <span :if={current_entry.item.seen_count > 0} class="badge badge-seen">
+                  {current_entry.item.seen_count}&times; reviewed
                 </span>
               </div>
 
               <div class="study-card-body">
-                <div
-                  :if={current_entry.project}
-                  class="study-commit-project"
-                  title={"Project: #{current_entry.project.name}"}
-                >
-                  Project: {current_entry.project.name}
-                </div>
-                <div
-                  :if={is_nil(current_entry.project)}
-                  class="study-commit-project"
-                  title="Project unavailable"
-                >
-                  Project unavailable
-                </div>
-
                 <%= if current_entry.item.target_kind == :commit_message and current_entry.commit do %>
                   <div class="study-commit-hash text-muted text-xs">
                     {String.slice(current_entry.commit.commit_hash, 0, 8)}
@@ -1054,29 +1073,38 @@ defmodule SpotterWeb.PaneListLive do
 
               <div class="study-card-actions">
                 <button
-                  class="btn study-rate-btn study-rate-low"
+                  class="btn study-rate-btn study-rate-easy"
                   phx-click="rate_card"
                   phx-value-id={current_entry.item.id}
                   phx-value-importance="low"
                 >
-                  Low <kbd class="study-kbd">1</kbd>
+                  <span class="study-rate-label">Easy</span>
+                  <span class="study-rate-interval">{next_interval_label(:low, current_entry.item.seen_count)}</span>
+                  <kbd class="study-kbd">1</kbd>
                 </button>
                 <button
-                  class="btn study-rate-btn study-rate-medium"
+                  class="btn study-rate-btn study-rate-again"
                   phx-click="rate_card"
                   phx-value-id={current_entry.item.id}
                   phx-value-importance="medium"
                 >
-                  Medium <kbd class="study-kbd">2</kbd>
+                  <span class="study-rate-label">Again</span>
+                  <span class="study-rate-interval">{next_interval_label(:medium, current_entry.item.seen_count)}</span>
+                  <kbd class="study-kbd">2</kbd>
                 </button>
                 <button
-                  class="btn study-rate-btn study-rate-high"
+                  class="btn study-rate-btn study-rate-hard"
                   phx-click="rate_card"
                   phx-value-id={current_entry.item.id}
                   phx-value-importance="high"
                 >
-                  High <kbd class="study-kbd">3</kbd>
+                  <span class="study-rate-label">Hard</span>
+                  <span class="study-rate-interval">{next_interval_label(:high, current_entry.item.seen_count)}</span>
+                  <kbd class="study-kbd">3</kbd>
                 </button>
+              </div>
+              <div class="study-keyboard-hint">
+                Press <kbd>1</kbd>, <kbd>2</kbd>, or <kbd>3</kbd> to rate
               </div>
             </div>
           </div>

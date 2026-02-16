@@ -433,7 +433,8 @@ defmodule SpotterWeb.PaneListLiveTest do
     test "shows project name on commit card", %{project: project} do
       {:ok, _view, html} = live(build_conn(), "/")
 
-      assert html =~ "Project: #{project.name}"
+      assert html =~ ~s(class="badge badge-project")
+      assert html =~ project.name
     end
 
     test "shows normalized commit subject without extra whitespace", %{} do

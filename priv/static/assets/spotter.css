@@ -2317,13 +2317,55 @@ input::placeholder, textarea::placeholder {
   background: var(--surface-1);
 }
 
-.importance-summary {
+/* Progress bar */
+.study-progress-container {
   display: flex;
+  align-items: center;
   gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 
-.study-progress {
+.study-progress-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--surface-3);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.study-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan));
+  border-radius: var(--radius-sm);
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 8px rgba(91, 156, 245, 0.25);
+}
+
+.study-progress-fill.is-complete {
+  background: var(--accent-green);
+  box-shadow: 0 0 12px rgba(74, 200, 154, 0.4);
+  animation: progress-complete 0.6s ease-out;
+}
+
+@keyframes progress-complete {
+  0% { box-shadow: 0 0 8px rgba(74, 200, 154, 0.25); }
+  50% { box-shadow: 0 0 20px rgba(74, 200, 154, 0.6); }
+  100% { box-shadow: 0 0 12px rgba(74, 200, 154, 0.4); }
+}
+
+.study-progress-label {
+  font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.study-progress-number {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.study-progress-text {
+  color: var(--text-tertiary);
 }
 
 /* Card container */
@@ -2343,33 +2385,101 @@ input::placeholder, textarea::placeholder {
 /* Card entrance animation */
 .study-card-enter {
   opacity: 0;
-  transform: translateY(12px);
+  transform: translateY(10px) scale(0.98);
 }
 
 .study-card-enter-active {
   opacity: 1;
-  transform: translateY(0);
-  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+  transform: translateY(0) scale(1);
+  transition: opacity 0.25s ease-out, transform 0.25s ease-out;
 }
 
+/* Card exit animation */
+@keyframes study-card-exit {
+  0% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-20px) scale(0.96);
+  }
+}
+
+.study-card.is-exiting {
+  animation: study-card-exit 0.2s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+/* Card header */
 .study-card-header {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
 }
 
 .study-card-body {
   margin-bottom: var(--space-3);
 }
 
-.study-commit-project {
-  font-size: 0.8em;
+/* Project badge — prominent, first in header */
+.badge-project {
+  background: color-mix(in srgb, var(--accent-purple) 18%, var(--surface-2));
+  color: var(--accent-purple);
+  border: 1px solid color-mix(in srgb, var(--accent-purple) 30%, var(--border-subtle));
   font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: var(--space-1);
+  font-size: 0.95em;
+  padding: 3px var(--space-3);
+  border-radius: var(--radius-md);
 }
 
+.badge-project-unavailable {
+  background: var(--surface-3);
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+/* Upcoming and seen badges */
+.badge-upcoming {
+  background: color-mix(in srgb, var(--accent-amber) 12%, var(--surface-2));
+  color: var(--accent-amber);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  border: 1px solid color-mix(in srgb, var(--accent-amber) 25%, var(--border-subtle));
+}
+
+.badge-seen {
+  margin-left: auto;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--border-subtle);
+}
+
+/* Kind badges — softer tints instead of solid fills */
+.badge.study-kind-commit_message {
+  background: color-mix(in srgb, var(--accent-blue) 18%, var(--surface-2));
+  color: var(--accent-blue);
+  border: 1px solid color-mix(in srgb, var(--accent-blue) 28%, var(--border-subtle));
+}
+
+.badge.study-kind-commit_hotspot {
+  background: color-mix(in srgb, var(--accent-amber) 18%, var(--surface-2));
+  color: var(--accent-amber);
+  border: 1px solid color-mix(in srgb, var(--accent-amber) 28%, var(--border-subtle));
+}
+
+.badge.study-kind-flashcard {
+  background: color-mix(in srgb, var(--accent-cyan) 18%, var(--surface-2));
+  color: var(--accent-cyan);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 28%, var(--border-subtle));
+}
+
+/* Card body content */
 .study-commit-subject {
   font-weight: 500;
   color: var(--text-primary);
@@ -2399,6 +2509,16 @@ input::placeholder, textarea::placeholder {
   font-size: 0.85em;
 }
 
+.study-flashcard-snippet {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  background: var(--surface-1);
+  border-left: 3px solid var(--accent-cyan);
+  padding: var(--space-2) var(--space-3);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  white-space: pre-wrap;
+}
+
 /* Rating buttons */
 .study-card-actions {
   display: flex;
@@ -2407,56 +2527,84 @@ input::placeholder, textarea::placeholder {
 }
 
 .study-rate-btn {
-  flex: 1;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
+  gap: 2px;
   padding: var(--space-3) var(--space-4);
   border: 1px solid;
   border-radius: var(--radius-md);
-  font-weight: 600;
   font-size: var(--text-base);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  position: relative;
+  overflow: hidden;
+  transition:
+    background 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.1s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.study-rate-label {
+  font-weight: 600;
+}
+
+.study-rate-interval {
+  font-size: var(--text-xs);
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
+}
+
+.study-rate-btn:hover {
+  transform: translateY(-1px);
 }
 
 .study-rate-btn:active {
-  transform: scale(0.96);
+  transform: scale(0.97) translateY(0);
+  transition: transform 0.05s cubic-bezier(0.4, 0, 1, 1);
 }
 
-.study-rate-low {
-  background: var(--surface-3);
-  border-color: var(--border-default);
-  color: var(--text-secondary);
+/* Easy — green, slightly wider */
+.study-rate-easy {
+  flex: 1.1;
+  background: color-mix(in srgb, var(--accent-green) 12%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--accent-green) 35%, var(--border-default));
+  color: var(--accent-green);
 }
 
-.study-rate-low:hover {
-  background: var(--surface-4);
-  border-color: var(--border-strong);
-  color: var(--text-primary);
+.study-rate-easy:hover {
+  background: color-mix(in srgb, var(--accent-green) 22%, var(--surface-2));
+  border-color: var(--accent-green);
+  box-shadow: 0 4px 12px rgba(74, 200, 154, 0.18);
 }
 
-.study-rate-medium {
-  background: color-mix(in srgb, var(--accent-amber) 15%, var(--surface-2));
-  border-color: color-mix(in srgb, var(--accent-amber) 40%, var(--border-default));
+/* Again — amber */
+.study-rate-again {
+  flex: 1;
+  background: color-mix(in srgb, var(--accent-amber) 12%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--accent-amber) 35%, var(--border-default));
   color: var(--accent-amber);
 }
 
-.study-rate-medium:hover {
-  background: color-mix(in srgb, var(--accent-amber) 25%, var(--surface-2));
+.study-rate-again:hover {
+  background: color-mix(in srgb, var(--accent-amber) 22%, var(--surface-2));
   border-color: var(--accent-amber);
+  box-shadow: 0 4px 12px rgba(229, 168, 75, 0.15);
 }
 
-.study-rate-high {
-  background: color-mix(in srgb, var(--accent-red) 15%, var(--surface-2));
-  border-color: color-mix(in srgb, var(--accent-red) 40%, var(--border-default));
+/* Hard — red, slightly narrower */
+.study-rate-hard {
+  flex: 0.9;
+  background: color-mix(in srgb, var(--accent-red) 12%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--accent-red) 35%, var(--border-default));
   color: var(--accent-red);
 }
 
-.study-rate-high:hover {
-  background: color-mix(in srgb, var(--accent-red) 25%, var(--surface-2));
+.study-rate-hard:hover {
+  background: color-mix(in srgb, var(--accent-red) 22%, var(--surface-2));
   border-color: var(--accent-red);
+  box-shadow: 0 4px 12px rgba(232, 84, 84, 0.15);
 }
 
 /* Keyboard shortcut badges */
@@ -2472,32 +2620,46 @@ input::placeholder, textarea::placeholder {
   font-size: var(--text-xs);
   font-weight: 500;
   color: inherit;
-  opacity: 0.6;
+  opacity: 0.5;
+  transition: background 0.1s ease, transform 0.1s ease;
 }
 
-.badge.study-kind-commit_message {
-  background: var(--accent-blue);
-  color: var(--surface-0);
+/* Keyboard hint below buttons */
+.study-keyboard-hint {
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-top: var(--space-3);
 }
 
-.badge.study-kind-commit_hotspot {
-  background: var(--accent-amber);
-  color: var(--surface-0);
+.study-keyboard-hint kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
 }
 
-.badge.study-importance-high {
-  background: var(--accent-red);
-  color: var(--surface-0);
-}
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .study-card-enter,
+  .study-card-enter-active,
+  .study-card.is-exiting,
+  .study-progress-fill,
+  .study-rate-btn {
+    animation: none !important;
+    transition: none !important;
+  }
 
-.badge.study-importance-medium {
-  background: var(--accent-amber);
-  color: var(--surface-0);
-}
+  .study-rate-btn:hover {
+    transform: none;
+  }
 
-.badge.study-importance-low {
-  background: var(--surface-3);
-  color: var(--text-secondary);
+  .study-rate-btn:active {
+    transform: scale(0.98);
+  }
 }
 
 /* Prompt patterns */

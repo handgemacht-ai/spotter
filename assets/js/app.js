@@ -114,15 +114,7 @@ Hooks.BrowserTimezone = {
 Hooks.StudyCard = {
   mounted() {
     this._currentCardId = this._getCardId()
-    const card = this.el.querySelector('.study-card')
-    if (card) {
-      card.classList.add('study-card-enter')
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          card.classList.add('study-card-enter-active')
-        })
-      })
-    }
+    this._animateEntrance()
   },
 
   beforeUpdate() {
@@ -146,7 +138,7 @@ Hooks.StudyCard = {
     const card = this.el.querySelector('.study-card')
     if (!card) return
 
-    card.classList.remove('study-card-enter-active')
+    card.classList.remove('study-card-enter-active', 'is-exiting')
     card.classList.add('study-card-enter')
 
     requestAnimationFrame(() => {
@@ -158,6 +150,50 @@ Hooks.StudyCard = {
     card.addEventListener('transitionend', () => {
       card.classList.remove('study-card-enter', 'study-card-enter-active')
     }, { once: true })
+  },
+}
+
+Hooks.StudyProgress = {
+  mounted() {
+    this._previousCount = this._getCurrentCount()
+  },
+
+  updated() {
+    const currentCount = this._getCurrentCount()
+    if (currentCount !== this._previousCount && this._previousCount !== null) {
+      this._animateCount(this._previousCount, currentCount)
+    }
+    this._previousCount = currentCount
+  },
+
+  _getCurrentCount() {
+    const el = this.el.querySelector('.study-progress-number')
+    return el ? parseInt(el.textContent, 10) : null
+  },
+
+  _animateCount(from, to) {
+    const el = this.el.querySelector('.study-progress-number')
+    if (!el || from === to) return
+
+    const duration = 400
+    const startTime = performance.now()
+
+    const animate = (currentTime) => {
+      const elapsed = currentTime - startTime
+      const progress = Math.min(elapsed / duration, 1)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      const current = Math.round(from + (to - from) * eased)
+
+      el.textContent = current
+
+      if (progress < 1) {
+        requestAnimationFrame(animate)
+      } else {
+        el.textContent = to
+      }
+    }
+
+    requestAnimationFrame(animate)
   },
 }
 
