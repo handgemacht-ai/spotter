@@ -42,7 +42,11 @@ defmodule Spotter.Services.TranscriptTailSupervisor do
   def stop_worker(session_id) do
     case Registry.lookup(Spotter.Services.TranscriptTailRegistry, session_id) do
       [{pid, _}] ->
-        DynamicSupervisor.terminate_child(__MODULE__, pid)
+        try do
+          GenServer.call(pid, :stop_with_flush, 5_000)
+        catch
+          :exit, _ -> :ok
+        end
 
       [] ->
         :ok

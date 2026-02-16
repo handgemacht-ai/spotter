@@ -175,6 +175,33 @@ defmodule Spotter.Services.SessionDistiller.ClaudeCodeTest do
     end
   end
 
+  describe "enforce_tool_contract/1" do
+    test "appends mandatory tool call contract with correct tool name" do
+      prompt = "Custom user prompt about sessions."
+      result = ClaudeCode.enforce_tool_contract(prompt)
+
+      assert result =~ "Custom user prompt about sessions."
+      assert result =~ @tool_name
+      assert result =~ "MANDATORY OUTPUT CONTRACT"
+    end
+
+    test "prohibits free-form JSON and markdown" do
+      result = ClaudeCode.enforce_tool_contract("Any prompt.")
+
+      assert result =~ "Do NOT return markdown"
+      assert result =~ "Do NOT return free-form JSON outside of a tool call"
+    end
+
+    test "contract cannot be removed by DB/env override" do
+      override_prompt = "Completely custom prompt without any tool mention."
+      result = ClaudeCode.enforce_tool_contract(override_prompt)
+
+      assert result =~ "Completely custom prompt"
+      assert result =~ @tool_name
+      assert result =~ "MANDATORY OUTPUT CONTRACT"
+    end
+  end
+
   describe "extract_last_tool_result/2" do
     test "extracts text from string content" do
       messages = [

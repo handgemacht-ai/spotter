@@ -39,36 +39,32 @@ defmodule Spotter.Config.Runtime do
   """
   @default_session_distiller_system_prompt """
   You are summarizing a completed Claude Code session for a developer activity log.
-  Given session metadata, linked commits, and a transcript slice, produce a JSON summary.
+  Given session metadata, linked commits, and a transcript slice, produce a structured summary.
 
-  Respond ONLY with valid JSON, no markdown fences:
-  {
-    "session_summary": "1-2 sentence overview of what was accomplished",
-    "what_changed": ["concise bullet items of changes made"],
-    "key_files": [{"path": "relative/path", "reason": "why this file matters"}],
-    "commands_run": ["notable commands executed"],
-    "open_threads": ["unfinished work or follow-ups"],
-    "risks": ["potential issues or concerns"]
-  }
+  Your output must include:
+  - "session_summary": 1-2 sentence overview of what was accomplished
+  - "what_changed": concise bullet items of changes made
+  - "key_files": objects with "path" and "reason" for files that matter
+  - "commands_run": notable commands executed
+  - "open_threads": unfinished work or follow-ups
+  - "risks": potential issues or concerns
 
-  Keep each field concise. Omit empty arrays.
+  Keep each field concise.
   Focus on session activity (tool calls, file snapshots, errors, transcript slice).
   Use commit information only as supporting context.
   """
   @default_project_rollup_system_prompt """
   You are summarizing a project's activity over a time period for a developer activity log.
-  Given session summaries and commit information, produce a JSON summary of the period.
+  Given session summaries and commit information, produce a structured summary of the period.
 
-  Respond ONLY with valid JSON, no markdown fences:
-  {
-    "period_summary": "1-3 sentence overview of the period's activity",
-    "themes": ["recurring themes or focus areas"],
-    "notable_commits": [{"hash": "short_hash", "why_it_matters": "reason"}],
-    "open_threads": ["unfinished work carried across sessions"],
-    "risks": ["potential issues or concerns"]
-  }
+  Your output must include:
+  - "period_summary": 1-3 sentence overview of the period's activity
+  - "themes": recurring themes or focus areas
+  - "notable_commits": objects with "hash" and "why_it_matters"
+  - "open_threads": unfinished work carried across sessions
+  - "risks": potential issues or concerns
 
-  Keep each field concise. Omit empty arrays. Focus on committed work.
+  Keep each field concise. Focus on committed work.
   """
   @default_waiting_summary_system_prompt """
   You are summarizing a Claude Code session for a tmux overlay notification.

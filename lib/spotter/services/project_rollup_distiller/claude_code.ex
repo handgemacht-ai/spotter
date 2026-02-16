@@ -19,11 +19,21 @@ defmodule Spotter.Services.ProjectRollupDistiller.ClaudeCode do
 
   @tool_name "mcp__spotter-distill__record_project_rollup_distillation"
 
+  @tool_contract_suffix """
+
+  ## MANDATORY OUTPUT CONTRACT
+
+  You MUST deliver your final output by calling the MCP tool `#{@tool_name}`.
+  Do NOT return markdown. Do NOT return free-form JSON outside of a tool call.
+  Your response must contain exactly one call to `#{@tool_name}` with the complete distillation payload.
+  """
+
   @impl true
   def distill(pack, opts \\ []) do
     model = Keyword.get(opts, :model, configured_model())
     timeout = Keyword.get(opts, :timeout, configured_timeout())
     {system_prompt, _source} = Runtime.project_rollup_system_prompt()
+    system_prompt = enforce_tool_contract(system_prompt)
 
     Tracer.with_span "spotter.project_rollup_distiller.distill" do
       Tracer.set_attribute("spotter.model_requested", model)
@@ -256,6 +266,11 @@ defmodule Spotter.Services.ProjectRollupDistiller.ClaudeCode do
     Tracer.set_attribute("spotter.distill.tool_result_count", length(tool_results))
     Tracer.set_attribute("spotter.distill.observed_tools", Enum.join(observed_names, ","))
     Tracer.set_status(:error, "no_distillation_tool_output")
+  end
+
+  @doc false
+  def enforce_tool_contract(prompt) do
+    String.trim_trailing(prompt) <> @tool_contract_suffix
   end
 
   defp configured_model do

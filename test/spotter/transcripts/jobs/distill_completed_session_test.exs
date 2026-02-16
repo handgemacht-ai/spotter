@@ -144,6 +144,40 @@ defmodule Spotter.Transcripts.Jobs.DistillCompletedSessionTest do
       assert length(jobs) == 1
     end
 
+    test "enqueues distillation job when distillation record is missing and session ended", %{
+      session: session
+    } do
+      # No distillation has run at all — record is nil
+      commit =
+        Ash.create!(Commit, %{
+          commit_hash: "missing_distill_123",
+          git_branch: "main",
+          subject: "feat: late link no distillation"
+        })
+
+      Ash.create!(SessionCommitLink, %{
+        session_id: session.id,
+        commit_id: commit.id,
+        link_type: :observed_in_session,
+        confidence: 1.0
+      })
+
+      import Ecto.Query
+
+      jobs =
+        Repo.all(
+          from(j in Oban.Job,
+            where: j.worker == "Spotter.Transcripts.Jobs.DistillCompletedSession",
+            where: j.state == "available",
+            where:
+              fragment("json_extract(?, '$.session_id')", j.args) ==
+                ^to_string(session.session_id)
+          )
+        )
+
+      assert length(jobs) == 1
+    end
+
     test "does not enqueue when session is not ended", %{project: project} do
       # Session without hook_ended_at
       session_not_ended =
@@ -188,6 +222,8 @@ defmodule Spotter.Transcripts.Jobs.DistillCompletedSessionTest do
     test "does not enqueue when session was not skipped with no_commit_links", %{
       session: session
     } do
+      import Ecto.Query
+
       # Create a commit link FIRST, then distill (will complete, not skip)
       commit =
         Ash.create!(Commit, %{
@@ -211,6 +247,14 @@ defmodule Spotter.Transcripts.Jobs.DistillCompletedSessionTest do
       updated = Ash.get!(Session, session.id)
       assert updated.distilled_status == :completed
 
+      # Clear any jobs enqueued by the first link creation (nil distillation retrigger)
+      Repo.delete_all(
+        from(j in Oban.Job,
+          where: j.worker == "Spotter.Transcripts.Jobs.DistillCompletedSession",
+          where: j.state == "available"
+        )
+      )
+
       # Creating another commit link should NOT enqueue a new job
       commit2 =
         Ash.create!(Commit, %{
@@ -225,8 +269,6 @@ defmodule Spotter.Transcripts.Jobs.DistillCompletedSessionTest do
         link_type: :observed_in_session,
         confidence: 1.0
       })
-
-      import Ecto.Query
 
       jobs =
         Repo.all(

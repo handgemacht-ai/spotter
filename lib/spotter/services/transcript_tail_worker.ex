@@ -74,12 +74,20 @@ defmodule Spotter.Services.TranscriptTailWorker do
   end
 
   @impl true
-  def terminate(_reason, %{adapter_mod: mod, adapter_state: adapter_state})
-      when not is_nil(adapter_state) do
-    mod.stop(adapter_state)
+  def handle_call(:stop_with_flush, _from, state) do
+    state = cancel_debounce(state)
+    best_effort_flush(state)
+    {:stop, :normal, :ok, state}
   end
 
-  def terminate(_reason, _state), do: :ok
+  @impl true
+  def terminate(_reason, state) do
+    best_effort_flush(state)
+
+    if state.adapter_state do
+      state.adapter_mod.stop(state.adapter_state)
+    end
+  end
 
   defp schedule_debounce(%{debounce_ref: nil} = state) do
     ref = Process.send_after(self(), :flush, @debounce_ms)
@@ -87,6 +95,24 @@ defmodule Spotter.Services.TranscriptTailWorker do
   end
 
   defp schedule_debounce(state), do: state
+
+  defp cancel_debounce(%{debounce_ref: nil} = state), do: state
+
+  defp cancel_debounce(%{debounce_ref: ref} = state) do
+    Process.cancel_timer(ref)
+    %{state | debounce_ref: nil}
+  end
+
+  defp best_effort_flush(state) do
+    if state.lines_buffered > 0 do
+      flush_and_broadcast(state)
+    end
+  rescue
+    e ->
+      Logger.warning(
+        "TailWorker: flush on stop failed for #{state.session_id}: #{Exception.message(e)}"
+      )
+  end
 
   defp flush_and_broadcast(state) do
     result = SyncTranscripts.sync_session_file(state.transcript_path)

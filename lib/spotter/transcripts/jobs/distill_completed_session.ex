@@ -50,16 +50,39 @@ defmodule Spotter.Transcripts.Jobs.DistillCompletedSession do
     end
   end
 
+  @commit_link_retry_attempts 3
+  @commit_link_retry_delay_ms 750
+
   defp distill_session(session) do
     cond do
       is_nil(session.hook_ended_at) ->
         skip_session(session, "not_ended")
 
-      not has_commit_links?(session) ->
+      not await_commit_links(session) ->
         skip_session(session, "no_commit_links")
 
       true ->
         run_distillation(session)
+    end
+  end
+
+  defp await_commit_links(session) do
+    await_commit_links(session, 1)
+  end
+
+  defp await_commit_links(session, attempt) do
+    if has_commit_links?(session) do
+      Tracer.set_attribute("spotter.commit_link_found_at_attempt", attempt)
+      true
+    else
+      if attempt < @commit_link_retry_attempts do
+        Process.sleep(@commit_link_retry_delay_ms)
+        await_commit_links(session, attempt + 1)
+      else
+        Tracer.set_attribute("spotter.commit_link_found_at_attempt", 0)
+        Tracer.set_attribute("spotter.commit_link_retry_attempts", @commit_link_retry_attempts)
+        false
+      end
     end
   end
 

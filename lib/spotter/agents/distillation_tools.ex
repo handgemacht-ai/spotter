@@ -281,8 +281,12 @@ defmodule Spotter.Agents.DistillationTools do
 
   # ── Session Validation ──
 
+  @session_list_fields ~w(what_changed commands_run open_threads risks key_files important_snippets)
+
   @doc false
   def validate_session(input) do
+    input = input |> normalize_nil_lists(@session_list_fields) |> normalize_metadata_notes()
+
     with {:ok, summary} <-
            validate_string(input["session_summary"], "session_summary", @max_summary_len),
          {:ok, what_changed} <-
@@ -327,8 +331,12 @@ defmodule Spotter.Agents.DistillationTools do
 
   # ── Project Rollup Validation ──
 
+  @rollup_list_fields ~w(themes notable_commits open_threads risks important_snippets)
+
   @doc false
   def validate_project_rollup(input) do
+    input = input |> normalize_nil_lists(@rollup_list_fields) |> normalize_metadata_notes()
+
     with {:ok, summary} <-
            validate_string(input["period_summary"], "period_summary", @max_summary_len),
          {:ok, themes} <-
@@ -357,6 +365,23 @@ defmodule Spotter.Agents.DistillationTools do
        }}
     end
   end
+
+  # ── Normalization ──
+
+  defp normalize_nil_lists(input, fields) do
+    Enum.reduce(fields, input, fn field, acc ->
+      case Map.get(acc, field) do
+        nil -> Map.put(acc, field, [])
+        _ -> acc
+      end
+    end)
+  end
+
+  defp normalize_metadata_notes(%{"distillation_metadata" => %{"notes" => nil} = meta} = input) do
+    Map.put(input, "distillation_metadata", Map.put(meta, "notes", []))
+  end
+
+  defp normalize_metadata_notes(input), do: input
 
   # ── Validators ──
 

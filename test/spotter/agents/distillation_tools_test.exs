@@ -97,6 +97,97 @@ defmodule Spotter.Agents.DistillationToolsTest do
     end
   end
 
+  # ── Nil array normalization ──
+
+  describe "session nil array normalization" do
+    test "omitted list fields are normalized to empty arrays" do
+      input =
+        valid_session_input()
+        |> Map.delete("what_changed")
+        |> Map.delete("commands_run")
+        |> Map.delete("open_threads")
+        |> Map.delete("risks")
+        |> Map.delete("key_files")
+        |> Map.delete("important_snippets")
+
+      assert {:ok, payload} = DistillationTools.validate_session(input)
+      assert payload.what_changed == []
+      assert payload.commands_run == []
+      assert payload.open_threads == []
+      assert payload.risks == []
+      assert payload.key_files == []
+      assert payload.important_snippets == []
+    end
+
+    test "nil list fields are normalized to empty arrays" do
+      input =
+        valid_session_input()
+        |> Map.put("what_changed", nil)
+        |> Map.put("risks", nil)
+        |> Map.put("key_files", nil)
+
+      assert {:ok, payload} = DistillationTools.validate_session(input)
+      assert payload.what_changed == []
+      assert payload.risks == []
+      assert payload.key_files == []
+    end
+  end
+
+  describe "rollup nil array normalization" do
+    test "omitted list fields are normalized to empty arrays" do
+      input =
+        valid_project_input()
+        |> Map.delete("themes")
+        |> Map.delete("notable_commits")
+        |> Map.delete("open_threads")
+        |> Map.delete("risks")
+        |> Map.delete("important_snippets")
+
+      assert {:ok, payload} = DistillationTools.validate_project_rollup(input)
+      assert payload.themes == []
+      assert payload.notable_commits == []
+      assert payload.open_threads == []
+      assert payload.risks == []
+      assert payload.important_snippets == []
+    end
+  end
+
+  describe "metadata notes normalization" do
+    test "nil notes normalized to empty array in session" do
+      input = put_in(valid_session_input(), ["distillation_metadata", "notes"], nil)
+      assert {:ok, payload} = DistillationTools.validate_session(input)
+      assert payload.distillation_metadata.notes == []
+    end
+
+    test "missing notes remains absent (optional)" do
+      input = valid_session_input()
+      refute Map.has_key?(input["distillation_metadata"], "notes")
+      assert {:ok, payload} = DistillationTools.validate_session(input)
+      refute Map.has_key?(payload.distillation_metadata, :notes)
+    end
+
+    test "provided notes are preserved" do
+      input = put_in(valid_session_input(), ["distillation_metadata", "notes"], ["a note"])
+      assert {:ok, payload} = DistillationTools.validate_session(input)
+      assert payload.distillation_metadata.notes == ["a note"]
+    end
+
+    test "missing confidence still rejected" do
+      input =
+        put_in(valid_session_input(), ["distillation_metadata"], %{"source_sections" => ["x"]})
+
+      assert {:error, ["distillation_metadata.confidence is required"]} =
+               DistillationTools.validate_session(input)
+    end
+
+    test "missing source_sections still rejected" do
+      input = put_in(valid_session_input(), ["distillation_metadata"], %{"confidence" => 0.5})
+
+      assert {:error, ["distillation_metadata.source_sections is required"]} =
+               DistillationTools.validate_session(input)
+    end
+  end
+
   # ── Path traversal ──
 
   describe "path validation" do

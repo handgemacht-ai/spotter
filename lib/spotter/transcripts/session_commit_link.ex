@@ -100,8 +100,14 @@ defmodule Spotter.Transcripts.SessionCommitLink do
           |> Ash.Query.filter(session_id == ^session.id)
           |> Ash.read_one!()
 
-        if distillation && distillation.status == :skipped &&
-             distillation.error_reason == "no_commit_links" do
+        should_retrigger =
+          is_nil(distillation) ||
+            (distillation.status == :skipped &&
+               distillation.error_reason == "no_commit_links")
+
+        Tracer.set_attribute("spotter.retrigger_decision", to_string(should_retrigger))
+
+        if should_retrigger do
           trace_ctx = Spotter.Telemetry.TraceContext
 
           %{

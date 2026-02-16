@@ -95,6 +95,38 @@ defmodule Spotter.Services.TranscriptTailWorkerTest do
     test "is a no-op for unknown sessions" do
       assert :ok = TranscriptTailSupervisor.stop_worker("nonexistent")
     end
+
+    @tag :slow
+    @tag timeout: 5_000
+    test "flushes pending lines before worker exits", %{tmp_dir: tmp_dir} do
+      session_id = Ash.UUID.generate()
+      path = write_jsonl(tmp_dir, session_id)
+
+      Phoenix.PubSub.subscribe(Spotter.PubSub, "session_transcripts:#{session_id}")
+
+      TranscriptTailSupervisor.ensure_worker(session_id, path)
+      Process.sleep(200)
+
+      # Append a line but stop before debounce fires
+      new_line =
+        Jason.encode!(%{
+          "uuid" => "#{session_id}-flush",
+          "type" => "human",
+          "role" => "user",
+          "content" => [%{"type" => "text", "text" => "flush me"}],
+          "timestamp" => "2026-02-01T12:00:03Z"
+        })
+
+      File.write!(path, new_line <> "\n", [:append])
+
+      # Give tail -F time to detect the change but stop before debounce (500ms)
+      Process.sleep(100)
+
+      assert :ok = TranscriptTailSupervisor.stop_worker(session_id)
+
+      # The flush on stop should have triggered the broadcast
+      assert_receive {:transcript_updated, ^session_id, _count}, 2000
+    end
   end
 
   describe "worker publishes on file change" do
