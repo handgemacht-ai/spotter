@@ -19,7 +19,7 @@ defmodule Spotter.Services.CommitTestAgent do
   alias Spotter.Services.CommitTestPermissions
   alias Spotter.Telemetry.TraceContext
 
-  @default_model "sonnet"
+  @default_model "claude-opus-4-6-20250918"
   @default_max_turns 8
   @default_timeout_ms 180_000
 
@@ -49,7 +49,7 @@ defmodule Spotter.Services.CommitTestAgent do
   - `relative_path` - File path relative to project root
   - `file_content` - Current file content at this commit
   - `file_diff` - Unified diff for this file
-  - `opts` - Optional: `model` (default "sonnet"), `max_turns` (default 8)
+  - `opts` - Optional: `model` (default "claude-opus-4-6-20250918"), `max_turns` (default 8)
 
   ## Returns
 

@@ -22,6 +22,7 @@ defmodule Spotter.ProductSpec.Agent.Runner do
   alias Spotter.Services.ClaudeCode.ResultExtractor
   alias Spotter.Telemetry.TraceContext
 
+  @model "claude-opus-4-6-20250918"
   @max_turns 15
   @timeout_ms 300_000
 
@@ -79,6 +80,7 @@ defmodule Spotter.ProductSpec.Agent.Runner do
 
   defp do_run(input) do
     Tracer.with_span "spotter.product_spec.invoke_agent" do
+      Tracer.set_attribute("spotter.model_requested", @model)
       ToolHelpers.set_project_id(to_string(input.project_id))
       ToolHelpers.set_commit_hash(input.commit_hash)
       ToolHelpers.set_git_cwd(Map.get(input, :git_cwd))
@@ -103,6 +105,7 @@ defmodule Spotter.ProductSpec.Agent.Runner do
       system_prompt = Prompt.build_system_prompt(input, system_prompt_template)
 
       base_opts = %ClaudeAgentSDK.Options{
+        model: @model,
         mcp_servers: %{"spec-tools" => server},
         allowed_tools: allowed_tools,
         max_turns: @max_turns,

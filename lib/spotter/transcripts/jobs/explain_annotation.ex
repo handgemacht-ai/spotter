@@ -15,7 +15,7 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
 
   require OpenTelemetry.Tracer, as: Tracer
 
-  @model "haiku"
+  @model "claude-opus-4-6-20250918"
   @timeout_ms 120_000
   @delta_throttle_ms 50
 
@@ -56,7 +56,7 @@ defmodule Spotter.Transcripts.Jobs.ExplainAnnotation do
     update_explain_metadata(annotation, %{
       "status" => "pending",
       "started_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
-      "model" => "haiku"
+      "model" => "claude-opus-4-6-20250918"
     })
 
     Tracer.set_attribute(:session_id, annotation.session_id)
