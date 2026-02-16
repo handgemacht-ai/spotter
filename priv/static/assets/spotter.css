@@ -2983,3 +2983,201 @@ input::placeholder, textarea::placeholder {
   max-height: 120px;
   overflow-y: auto;
 }
+
+/* ============================================================
+   Global Search Palette (Cmd-K)
+   ============================================================ */
+
+/* --- Topbar search trigger --- */
+.topbar {
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-1);
+}
+
+.search-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  min-width: 220px;
+}
+
+.search-trigger:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.search-trigger kbd {
+  margin-left: auto;
+  font-size: 0.7rem;
+  padding: 1px 5px;
+  border: 1px solid var(--border-default);
+  border-radius: 3px;
+  color: var(--text-tertiary);
+  background: var(--surface-3);
+}
+
+/* --- Palette overlay --- */
+.search-palette-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.55);
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+}
+
+.search-palette-overlay.is-open {
+  display: flex;
+}
+
+.search-palette-dialog {
+  width: min(560px, 90vw);
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.search-palette-input {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 1rem;
+  outline: none;
+  font-family: inherit;
+}
+
+.search-palette-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* --- Results --- */
+.search-palette-results {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.search-result-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  border-left: 2px solid transparent;
+}
+
+.search-result-row:hover,
+.search-result-row.is-selected {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border-left-color: var(--accent-blue);
+}
+
+.search-result-badge {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 3px;
+  background: var(--surface-3);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.search-result-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.search-result-subtitle {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Empty / loading states --- */
+.search-palette-empty,
+.search-palette-loading {
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 0.85rem;
+}
+
+/* --- Footer hints --- */
+.search-palette-hint {
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+}
+
+/* --- File line highlighting --- */
+.blame-line.is-file-line-highlight {
+  background: rgba(91, 156, 245, 0.12);
+  border-left: 3px solid var(--accent-blue);
+}
+
+.file-highlight-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.file-highlight-clear {
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  border: 1px solid var(--border-default);
+  border-radius: 3px;
+  background: var(--surface-3);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.file-highlight-clear:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.search-palette-hint kbd {
+  padding: 1px 4px;
+  border: 1px solid var(--border-default);
+  border-radius: 3px;
+  background: var(--surface-3);
+  font-size: 0.7rem;
+}

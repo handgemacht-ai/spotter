@@ -14,6 +14,7 @@ import plaintext from "highlight.js/lib/languages/plaintext"
 import { marked } from "marked"
 import DOMPurify from "dompurify"
 import { createFlowGraphHook } from "./flow_graph"
+import { initGlobalSearchPalette } from "./global_search_palette"
 
 hljs.registerLanguage("elixir", elixir)
 hljs.registerLanguage("javascript", javascript)
@@ -97,6 +98,7 @@ function initReviewsBadge() {
 }
 
 initReviewsBadge()
+initGlobalSearchPalette()
 
 const Hooks = {}
 

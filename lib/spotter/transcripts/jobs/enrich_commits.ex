@@ -7,6 +7,7 @@ defmodule Spotter.Transcripts.Jobs.EnrichCommits do
   require Ash.Query
   require OpenTelemetry.Tracer, as: Tracer
 
+  alias Spotter.Search.Jobs.ReindexProject
   alias Spotter.Services.SessionCommitLinker
   alias Spotter.Transcripts.{Commit, CommitFile, Session}
 
@@ -30,6 +31,7 @@ defmodule Spotter.Transcripts.Jobs.EnrichCommits do
     case find_session(session_id) do
       {:ok, session} ->
         SessionCommitLinker.link_inferred(session, commits)
+        enqueue_reindex(session.project_id)
 
       _ ->
         Tracer.add_event("session_not_found", [{"spotter.session_id", session_id}])
@@ -38,6 +40,12 @@ defmodule Spotter.Transcripts.Jobs.EnrichCommits do
 
     :ok
   end
+
+  defp enqueue_reindex(project_id) when is_binary(project_id) do
+    %{project_id: project_id} |> ReindexProject.new() |> Oban.insert()
+  end
+
+  defp enqueue_reindex(_), do: :ok
 
   defp set_span_attributes(hashes, session_id, args) do
     Tracer.set_attribute("spotter.commit_hash_count", length(hashes))

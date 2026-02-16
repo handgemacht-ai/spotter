@@ -8,6 +8,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
+  alias Spotter.Search.Jobs.ReindexProject
   alias Spotter.Transcripts.Config
   alias Spotter.Transcripts.Jobs.ComputeCoChange
   alias Spotter.Transcripts.Jobs.ComputeHeatmap
@@ -255,6 +256,10 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
 
     %{project_id: project.id}
     |> ComputeCoChange.new()
+    |> Oban.insert()
+
+    %{project_id: project.id}
+    |> ReindexProject.new()
     |> Oban.insert()
   end
 

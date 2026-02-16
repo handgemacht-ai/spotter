@@ -21,7 +21,11 @@ defmodule SpotterWeb.FileDetailLive do
         selection_line_start: nil,
         selection_line_end: nil,
         explain_streams: %{},
-        active_sidebar_tab: :annotations
+        active_sidebar_tab: :annotations,
+        highlight_line_start: nil,
+        highlight_line_end: nil,
+        highlight_hotspot_id: nil,
+        highlight_annotation_id: nil
       )
       |> mount_computers(%{
         file_detail: %{project_id: project_id, relative_path: relative_path}
@@ -31,16 +35,30 @@ defmodule SpotterWeb.FileDetailLive do
   end
 
   @impl true
-  def handle_params(%{"project_id" => project_id, "relative_path" => path_parts}, _uri, socket)
+  def handle_params(
+        %{"project_id" => project_id, "relative_path" => path_parts} = params,
+        _uri,
+        socket
+      )
       when is_list(path_parts) do
     relative_path = Enum.join(path_parts, "/")
+    {line_start, line_end} = parse_line_range(params)
 
     socket =
       socket
       |> mount_computers(%{
         file_detail: %{project_id: project_id, relative_path: relative_path}
       })
-      |> assign(selected_text: nil, selection_line_start: nil, selection_line_end: nil)
+      |> assign(
+        selected_text: nil,
+        selection_line_start: nil,
+        selection_line_end: nil,
+        highlight_line_start: line_start,
+        highlight_line_end: line_end,
+        highlight_hotspot_id: params["hotspot_id"],
+        highlight_annotation_id: params["annotation_id"]
+      )
+      |> maybe_push_highlight(line_start, line_end)
 
     {:noreply, socket}
   end
@@ -52,7 +70,15 @@ defmodule SpotterWeb.FileDetailLive do
       |> mount_computers(%{
         file_detail: %{project_id: project_id, relative_path: nil}
       })
-      |> assign(selected_text: nil, selection_line_start: nil, selection_line_end: nil)
+      |> assign(
+        selected_text: nil,
+        selection_line_start: nil,
+        selection_line_end: nil,
+        highlight_line_start: nil,
+        highlight_line_end: nil,
+        highlight_hotspot_id: nil,
+        highlight_annotation_id: nil
+      )
 
     {:noreply, socket}
   end
@@ -69,6 +95,22 @@ defmodule SpotterWeb.FileDetailLive do
 
   def handle_event("switch_sidebar_tab", %{"tab" => tab}, socket) do
     {:noreply, assign(socket, active_sidebar_tab: String.to_existing_atom(tab))}
+  end
+
+  def handle_event("clear_highlight", _params, socket) do
+    project_id = socket.assigns.file_detail_project_id
+    relative_path = socket.assigns.file_detail_relative_path
+    url = "/projects/#{project_id}/files/#{relative_path}"
+
+    {:noreply,
+     socket
+     |> assign(
+       highlight_line_start: nil,
+       highlight_line_end: nil,
+       highlight_hotspot_id: nil,
+       highlight_annotation_id: nil
+     )
+     |> push_patch(to: url)}
   end
 
   def handle_event("file_text_selected", params, socket) do
@@ -292,6 +334,36 @@ defmodule SpotterWeb.FileDetailLive do
 
   defp short_session_id(session_id), do: session_id
 
+  defp parse_line_range(params) do
+    line_start = parse_pos_int(params["line_start"])
+    line_end = parse_pos_int(params["line_end"])
+
+    cond do
+      line_start && line_end && line_end >= line_start -> {line_start, line_end}
+      line_start -> {line_start, line_start}
+      true -> {nil, nil}
+    end
+  end
+
+  defp parse_pos_int(nil), do: nil
+
+  defp parse_pos_int(val) when is_binary(val) do
+    case Integer.parse(val) do
+      {n, _} when n >= 1 -> n
+      _ -> nil
+    end
+  end
+
+  defp parse_pos_int(_), do: nil
+
+  defp maybe_push_highlight(socket, nil, _), do: socket
+
+  defp maybe_push_highlight(socket, line_start, line_end) do
+    socket
+    |> update_computer_inputs(:file_detail, %{view_mode: :blame})
+    |> push_event("highlight_file_lines", %{line_start: line_start, line_end: line_end})
+  end
+
   defp path_label(nil), do: "/"
   defp path_label(""), do: "Root"
   defp path_label(path), do: path
@@ -456,6 +528,13 @@ defmodule SpotterWeb.FileDetailLive do
                 </div>
               <% end %>
             </div>
+
+            <%= if @highlight_line_start do %>
+              <div class="file-highlight-banner">
+                <span>Highlighted lines {@highlight_line_start}-{@highlight_line_end}</span>
+                <button phx-click="clear_highlight" class="file-highlight-clear">Clear</button>
+              </div>
+            <% end %>
 
             <%= if @file_detail_is_directory do %>
               <div class="file-detail-folder-view">

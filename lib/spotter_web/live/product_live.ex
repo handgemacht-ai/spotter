@@ -48,13 +48,22 @@ defmodule SpotterWeb.ProductLive do
     project_id = project_id || socket.assigns.projects |> List.first() |> then(&(&1 && &1.id))
 
     commit_id = params["commit_id"]
-    spec_view = parse_spec_view(params["spec_view"])
+    search_q = params["q"]
+
+    spec_view =
+      if search_q && search_q != "" && !params["spec_view"],
+        do: :snapshot,
+        else: parse_spec_view(params["spec_view"])
 
     project_changed = project_id != socket.assigns.selected_project_id
 
     socket =
       socket
-      |> assign(selected_project_id: project_id, spec_view: spec_view)
+      |> assign(
+        selected_project_id: project_id,
+        spec_view: spec_view,
+        search_query: search_q || ""
+      )
       |> then(fn s ->
         if project_changed, do: load_timeline(s), else: s
       end)

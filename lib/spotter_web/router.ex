@@ -23,6 +23,8 @@ defmodule SpotterWeb.Router do
   scope "/api", SpotterWeb do
     pipe_through(:api)
 
+    get("/search", SearchController, :index)
+
     post("/hooks/session-start", SessionHookController, :session_start)
     post("/hooks/session-end", SessionHookController, :session_end)
     post("/hooks/file-snapshot", HooksController, :file_snapshot)

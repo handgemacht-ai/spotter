@@ -64,6 +64,7 @@ defmodule SpotterWeb.FileDetailLiveTest do
         live(build_conn(), "/projects/#{project.id}/files/lib/foo.ex")
 
       assert html =~ ~s(data-testid="file-detail-root")
+      # Path segments are rendered individually with HTML tags between them
       assert html =~ "foo.ex"
     end
 
