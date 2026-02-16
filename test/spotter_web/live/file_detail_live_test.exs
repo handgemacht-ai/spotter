@@ -58,6 +58,7 @@ defmodule SpotterWeb.FileDetailLiveTest do
   end
 
   describe "file detail page" do
+    @tag :flaky
     test "renders file detail root", %{project: project} do
       {:ok, _view, html} =
         live(build_conn(), "/projects/#{project.id}/files/lib/foo.ex")

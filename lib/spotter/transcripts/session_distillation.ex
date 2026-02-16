@@ -23,7 +23,6 @@ defmodule Spotter.Transcripts.SessionDistillation do
         :summary_text,
         :raw_response_text,
         :error_reason,
-        :commit_hashes,
         :input_stats,
         :session_id
       ]
@@ -38,7 +37,6 @@ defmodule Spotter.Transcripts.SessionDistillation do
         :summary_text,
         :raw_response_text,
         :error_reason,
-        :commit_hashes,
         :input_stats
       ]
     end
@@ -57,11 +55,6 @@ defmodule Spotter.Transcripts.SessionDistillation do
     attribute :summary_text, :string
     attribute :raw_response_text, :string
     attribute :error_reason, :string
-
-    attribute :commit_hashes, {:array, :string} do
-      allow_nil? false
-      default []
-    end
 
     attribute :input_stats, :map
 

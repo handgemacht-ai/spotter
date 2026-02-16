@@ -6,7 +6,10 @@ defmodule Spotter.Transcripts.Jobs.DistillCompletedSession do
   Sessions without commit links are marked as skipped.
   """
 
-  use Oban.Worker, queue: :default, max_attempts: 3, unique: [keys: [:session_id], period: 86_400]
+  use Oban.Worker,
+    queue: :default,
+    max_attempts: 3,
+    unique: [keys: [:session_id], period: 86_400, states: Oban.Job.unique_states(:incomplete)]
 
   alias Spotter.Services.{ProjectRollupBucket, SessionDistillationPack, SessionDistiller}
 
@@ -58,11 +61,10 @@ defmodule Spotter.Transcripts.Jobs.DistillCompletedSession do
 
   defp run_distillation(session) do
     pack = SessionDistillationPack.build(session)
-    commit_hashes = Enum.map(pack.commits, & &1.commit_hash)
 
     case SessionDistiller.distill(pack) do
       {:ok, result} ->
-        save_completed(session, result, commit_hashes, pack)
+        save_completed(session, result, pack)
 
       {:error, reason} ->
         raw = if is_tuple(reason) and tuple_size(reason) >= 3, do: elem(reason, 2), else: nil
@@ -70,7 +72,7 @@ defmodule Spotter.Transcripts.Jobs.DistillCompletedSession do
     end
   end
 
-  defp save_completed(session, result, commit_hashes, pack) do
+  defp save_completed(session, result, pack) do
     Ash.create!(SessionDistillation, %{
       session_id: session.id,
       status: :completed,
@@ -78,7 +80,6 @@ defmodule Spotter.Transcripts.Jobs.DistillCompletedSession do
       summary_json: result.summary_json,
       summary_text: result.summary_text,
       raw_response_text: result.raw_response_text,
-      commit_hashes: commit_hashes,
       input_stats: pack.stats
     })
 
@@ -97,8 +98,7 @@ defmodule Spotter.Transcripts.Jobs.DistillCompletedSession do
     Ash.create!(SessionDistillation, %{
       session_id: session.id,
       status: :skipped,
-      error_reason: reason,
-      commit_hashes: []
+      error_reason: reason
     })
 
     Ash.update!(session, %{distilled_status: :skipped})
@@ -113,8 +113,7 @@ defmodule Spotter.Transcripts.Jobs.DistillCompletedSession do
       session_id: session.id,
       status: :error,
       error_reason: inspect(reason),
-      raw_response_text: raw_response_text,
-      commit_hashes: []
+      raw_response_text: raw_response_text
     })
 
     Ash.update!(session, %{distilled_status: :error})
