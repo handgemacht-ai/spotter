@@ -134,7 +134,7 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
            CommitHotspotAgent.run(%{
              project_id: project_id,
              commit_hash: commit.commit_hash,
-             commit_subject: commit.subject || "",
+             commit_subject: commit.subject,
              diff_stats: diff_context.diff_stats,
              patch_files: diff_context.patch_files,
              git_cwd: repo_path,

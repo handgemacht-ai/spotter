@@ -140,15 +140,15 @@ defmodule Spotter.Services.CommitHotspotAgent do
 
   - `:project_id` — UUID string
   - `:commit_hash` — 40-hex commit hash
-  - `:commit_subject` — commit subject line (may be empty)
+  - `:commit_subject` — commit subject line (optional, defaults to `""`)
   - `:diff_stats` — map from `CommitDiffExtractor.diff_stats/2`
   - `:patch_files` — list of eligible patch hunks
   - `:git_cwd` — repo path string
   """
   @spec run(map(), keyword()) ::
           {:ok, %{hotspots: [hotspot()], metadata: map()}} | {:error, term()}
-  @hotspot_required_keys ~w(project_id commit_hash commit_subject diff_stats patch_files git_cwd)a
-  @hotspot_optional_keys ~w(run_id)a
+  @hotspot_required_keys ~w(project_id commit_hash diff_stats patch_files git_cwd)a
+  @hotspot_optional_keys [{:commit_subject, ""}, :run_id]
 
   def run(input, _opts \\ []) do
     case AgentRunInput.normalize(input, @hotspot_required_keys, @hotspot_optional_keys) do
@@ -164,12 +164,13 @@ defmodule Spotter.Services.CommitHotspotAgent do
          %{
            project_id: project_id,
            commit_hash: commit_hash,
-           commit_subject: commit_subject,
            diff_stats: diff_stats,
            patch_files: patch_files,
            git_cwd: git_cwd
          } = input
        ) do
+    commit_subject = Map.get(input, :commit_subject, "")
+
     Tracer.with_span "spotter.commit_hotspots.agent.run" do
       Tracer.set_attribute("spotter.project_id", project_id)
       Tracer.set_attribute("spotter.commit_hash", commit_hash)
