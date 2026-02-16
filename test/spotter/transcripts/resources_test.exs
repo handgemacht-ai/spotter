@@ -19,6 +19,7 @@ defmodule Spotter.Transcripts.ResourcesTest do
     Session,
     SessionCommitLink,
     SessionRework,
+    SpecTestLink,
     Subagent
   }
 
@@ -930,6 +931,107 @@ defmodule Spotter.Transcripts.ResourcesTest do
       loaded = Ash.load!(ann, :file_refs)
       assert length(loaded.file_refs) == 1
       assert hd(loaded.file_refs).relative_path == "lib/foo.ex"
+    end
+  end
+
+  describe "SpecTestLink" do
+    setup do
+      project = Ash.create!(Project, %{name: "test-stl", pattern: "^test"})
+      %{project: project}
+    end
+
+    test "creates a spec-test link", %{project: project} do
+      link =
+        Ash.create!(SpecTestLink, %{
+          project_id: project.id,
+          commit_hash: String.duplicate("a", 40),
+          requirement_spec_key: "REQ-001",
+          test_key: "test/foo_test.exs::describes Foo::handles edge case"
+        })
+
+      assert link.requirement_spec_key == "REQ-001"
+      assert link.test_key == "test/foo_test.exs::describes Foo::handles edge case"
+      assert link.confidence == 1.0
+      assert link.source == :agent
+      assert link.metadata == %{}
+    end
+
+    test "upserts by project + commit_hash + requirement_spec_key + test_key", %{
+      project: project
+    } do
+      attrs = %{
+        project_id: project.id,
+        commit_hash: String.duplicate("b", 40),
+        requirement_spec_key: "REQ-002",
+        test_key: "test/bar_test.exs::test bar"
+      }
+
+      first = Ash.create!(SpecTestLink, attrs)
+      second = Ash.create!(SpecTestLink, Map.merge(attrs, %{confidence: 0.8, source: :inferred}))
+
+      assert first.id == second.id
+      assert second.confidence == 0.8
+      assert second.source == :inferred
+    end
+
+    test "allows different test_keys for the same requirement", %{project: project} do
+      base = %{
+        project_id: project.id,
+        commit_hash: String.duplicate("c", 40),
+        requirement_spec_key: "REQ-003"
+      }
+
+      l1 = Ash.create!(SpecTestLink, Map.put(base, :test_key, "test/a_test.exs::test a"))
+      l2 = Ash.create!(SpecTestLink, Map.put(base, :test_key, "test/b_test.exs::test b"))
+
+      assert l1.id != l2.id
+    end
+
+    test "rejects confidence outside 0.0-1.0 range", %{project: project} do
+      assert_raise Ash.Error.Invalid, fn ->
+        Ash.create!(SpecTestLink, %{
+          project_id: project.id,
+          commit_hash: String.duplicate("d", 40),
+          requirement_spec_key: "REQ-004",
+          test_key: "test/d_test.exs::test d",
+          confidence: 1.5
+        })
+      end
+
+      assert_raise Ash.Error.Invalid, fn ->
+        Ash.create!(SpecTestLink, %{
+          project_id: project.id,
+          commit_hash: String.duplicate("d", 40),
+          requirement_spec_key: "REQ-004",
+          test_key: "test/d_test.exs::test d",
+          confidence: -0.1
+        })
+      end
+    end
+
+    test "rejects invalid source", %{project: project} do
+      assert_raise Ash.Error.Invalid, fn ->
+        Ash.create!(SpecTestLink, %{
+          project_id: project.id,
+          commit_hash: String.duplicate("e", 40),
+          requirement_spec_key: "REQ-005",
+          test_key: "test/e_test.exs::test e",
+          source: :unknown
+        })
+      end
+    end
+
+    test "stores custom metadata", %{project: project} do
+      link =
+        Ash.create!(SpecTestLink, %{
+          project_id: project.id,
+          commit_hash: String.duplicate("f", 40),
+          requirement_spec_key: "REQ-006",
+          test_key: "test/f_test.exs::test f",
+          metadata: %{"reason" => "exact match on spec text"}
+        })
+
+      assert link.metadata == %{"reason" => "exact match on spec text"}
     end
   end
 

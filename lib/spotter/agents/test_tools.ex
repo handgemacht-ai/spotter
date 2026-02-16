@@ -319,6 +319,164 @@ defmodule Spotter.Agents.TestTools do
     end
   end
 
+  # ── List Spec Requirements (read-only, silent fallback) ──
+
+  deftool :list_spec_requirements,
+          "List product spec requirements available for the given project and commit. Returns empty list when spec data is unavailable.",
+          %{
+            type: "object",
+            properties: %{
+              project_id: %{type: "string", description: "Project UUID"},
+              commit_hash: %{type: "string", description: "Git commit hash (40 hex chars)"}
+            },
+            required: ["project_id", "commit_hash"]
+          },
+          annotations: %{readOnlyHint: true} do
+    require OpenTelemetry.Tracer, as: Tracer
+    alias Spotter.Agents.TestTools, as: TTools
+    alias Spotter.TestSpec.Agent.ToolHelpers, as: H
+
+    def execute(%{"project_id" => _project_id, "commit_hash" => commit_hash}) do
+      Tracer.with_span "spotter.commit_tests.tool.list_spec_requirements" do
+        pid = H.project_id!()
+        Tracer.set_attribute("spotter.project_id", pid)
+        Tracer.set_attribute("spotter.commit_hash", commit_hash)
+
+        requirements = TTools.fetch_spec_requirements(pid, commit_hash)
+        Tracer.set_attribute("spotter.requirement_count", length(requirements))
+
+        H.text_result(%{requirements: requirements})
+      end
+    end
+  end
+
+  # ── Upsert Spec-Test Links ──
+
+  deftool :upsert_spec_test_links,
+          "Create or update associations between product requirements and test cases for a commit.",
+          %{
+            type: "object",
+            properties: %{
+              project_id: %{type: "string", description: "Project UUID"},
+              commit_hash: %{type: "string", description: "Git commit hash (40 hex chars)"},
+              links: %{
+                type: "array",
+                items: %{
+                  type: "object",
+                  properties: %{
+                    requirement_spec_key: %{
+                      type: "string",
+                      description: "Spec key of the product requirement"
+                    },
+                    test_key: %{
+                      type: "string",
+                      description: "Test key (framework::path::describe_path::name)"
+                    },
+                    confidence: %{
+                      type: "number",
+                      description: "Link confidence 0.0-1.0 (default 1.0)"
+                    }
+                  },
+                  required: ["requirement_spec_key", "test_key"]
+                },
+                description: "Array of requirement-test associations to upsert"
+              }
+            },
+            required: ["project_id", "commit_hash", "links"]
+          } do
+    require OpenTelemetry.Tracer, as: Tracer
+    alias Spotter.Agents.TestTools, as: TTools
+    alias Spotter.TestSpec.Agent.ToolHelpers, as: H
+
+    def execute(%{
+          "project_id" => _project_id,
+          "commit_hash" => commit_hash,
+          "links" => links
+        }) do
+      Tracer.with_span "spotter.commit_tests.tool.upsert_spec_test_links" do
+        pid = H.project_id!()
+        Tracer.set_attribute("spotter.project_id", pid)
+        Tracer.set_attribute("spotter.commit_hash", commit_hash)
+        Tracer.set_attribute("spotter.link_count", length(links))
+
+        results = TTools.upsert_links(pid, commit_hash, links)
+        H.text_result(%{upserted: results.ok, skipped: results.skipped})
+      end
+    end
+  end
+
+  @doc false
+  def fetch_spec_requirements(project_id, commit_hash) do
+    case Spotter.ProductSpec.tree_for_commit(project_id, commit_hash) do
+      {:ok, %{tree: tree}} ->
+        flatten_requirements(tree)
+
+      _ ->
+        []
+    end
+  rescue
+    _ -> []
+  end
+
+  defp flatten_requirements(tree) do
+    Enum.flat_map(tree, &flatten_domain/1)
+  end
+
+  defp flatten_domain(domain) do
+    domain
+    |> Map.get(:features, [])
+    |> Enum.flat_map(&flatten_feature(&1, domain.name))
+  end
+
+  defp flatten_feature(feature, domain_name) do
+    feature
+    |> Map.get(:requirements, [])
+    |> Enum.map(fn req ->
+      %{
+        spec_key: req.spec_key,
+        statement: req.statement,
+        feature_name: feature.name,
+        domain_name: domain_name
+      }
+    end)
+  end
+
+  @doc false
+  def upsert_links(project_id, commit_hash, links) do
+    Enum.reduce(links, %{ok: 0, skipped: 0}, fn link, acc ->
+      upsert_single_link(project_id, commit_hash, link, acc)
+    end)
+  end
+
+  defp upsert_single_link(project_id, commit_hash, link, acc) do
+    req_key = link["requirement_spec_key"]
+    test_key = link["test_key"]
+
+    if valid_link_keys?(req_key, test_key) do
+      do_upsert_link(project_id, commit_hash, req_key, test_key, link["confidence"], acc)
+    else
+      %{acc | skipped: acc.skipped + 1}
+    end
+  end
+
+  defp valid_link_keys?(req_key, test_key) do
+    is_binary(req_key) and req_key != "" and is_binary(test_key) and test_key != ""
+  end
+
+  defp do_upsert_link(project_id, commit_hash, req_key, test_key, confidence, acc) do
+    case Ash.create(Spotter.Transcripts.SpecTestLink, %{
+           project_id: project_id,
+           commit_hash: commit_hash,
+           requirement_spec_key: req_key,
+           test_key: test_key,
+           confidence: confidence || 1.0,
+           source: :agent
+         }) do
+      {:ok, _} -> %{acc | ok: acc.ok + 1}
+      _ -> %{acc | skipped: acc.skipped + 1}
+    end
+  end
+
   @doc "Returns all tool modules for MCP server registration."
   def all_tool_modules do
     __MODULE__

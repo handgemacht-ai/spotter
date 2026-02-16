@@ -46,7 +46,16 @@ defmodule Spotter.Services.CommitTestAgentTest do
       assert prompt =~
                "6. IMPORTANT: Every create_test and update_test call MUST include source_commit_hash"
 
-      assert prompt =~ "7. End by printing a short JSON summary"
+      assert prompt =~ "7. Call `mcp__spotter-tests__list_spec_requirements`"
+      assert prompt =~ "8. End by printing a short JSON summary"
+    end
+
+    test "includes spec linking instructions" do
+      prompt = CommitTestAgent.build_prompt(@sample_input)
+      assert prompt =~ "list_spec_requirements"
+      assert prompt =~ "upsert_spec_test_links"
+      assert prompt =~ "If the requirements list is empty, skip linking"
+      assert prompt =~ "spec_links"
     end
 
     test "embeds diff in fenced code block" do

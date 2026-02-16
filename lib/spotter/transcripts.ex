@@ -151,6 +151,7 @@ defmodule Spotter.Transcripts do
     resource Spotter.Transcripts.ProjectRollingSummary
     resource Spotter.Transcripts.TestCase
     resource Spotter.Transcripts.CommitTestRun
+    resource Spotter.Transcripts.SpecTestLink
     resource Spotter.ProductSpec.RollingSpecRun
   end
 end

@@ -168,8 +168,12 @@ defmodule Spotter.Services.CommitTestAgent do
     4. Ensure the database mirrors the actual tests in the file by calling create_test, update_test, and delete_test tools as needed.
     5. For each test, set given, when, and then lists (empty lists are allowed if not inferable from context).
     6. IMPORTANT: Every create_test and update_test call MUST include source_commit_hash="#{commit_hash}".
-    7. End by printing a short JSON summary (no markdown fences):
-       { "recognized_tests": N, "created": n, "updated": n, "deleted": n }
+    7. Call `mcp__spotter-tests__list_spec_requirements` with project_id="#{project_id}" and commit_hash="#{commit_hash}".
+       - If the requirements list is empty, skip linking entirely.
+       - If requirements are available, map each test's key to matching requirement spec_keys based on semantic relevance (test name/assertions vs requirement statement).
+       - Call `mcp__spotter-tests__upsert_spec_test_links` with the matched links. Set confidence based on match quality (1.0 for exact, 0.7-0.9 for inferred).
+    8. End by printing a short JSON summary (no markdown fences):
+       { "recognized_tests": N, "created": n, "updated": n, "deleted": n, "spec_links": n }
 
     ## Diff
 

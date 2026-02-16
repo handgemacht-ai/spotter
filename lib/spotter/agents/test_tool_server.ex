@@ -11,7 +11,9 @@ defmodule Spotter.Agents.TestToolServer do
     "mcp__spotter-tests__list_tests",
     "mcp__spotter-tests__create_test",
     "mcp__spotter-tests__update_test",
-    "mcp__spotter-tests__delete_test"
+    "mcp__spotter-tests__delete_test",
+    "mcp__spotter-tests__list_spec_requirements",
+    "mcp__spotter-tests__upsert_spec_test_links"
   ]
 
   @doc "Creates an SDK MCP server with all test tools registered."

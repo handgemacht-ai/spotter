@@ -1,0 +1,145 @@
+{
+  "attributes": [
+    {
+      "default": "nil",
+      "size": null,
+      "type": "uuid",
+      "source": "id",
+      "references": null,
+      "allow_nil?": false,
+      "generated?": false,
+      "primary_key?": true
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "text",
+      "source": "commit_hash",
+      "references": null,
+      "allow_nil?": false,
+      "generated?": false,
+      "primary_key?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "text",
+      "source": "requirement_spec_key",
+      "references": null,
+      "allow_nil?": false,
+      "generated?": false,
+      "primary_key?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "text",
+      "source": "test_key",
+      "references": null,
+      "allow_nil?": false,
+      "generated?": false,
+      "primary_key?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "float",
+      "source": "confidence",
+      "references": null,
+      "allow_nil?": false,
+      "generated?": false,
+      "primary_key?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "text",
+      "source": "source",
+      "references": null,
+      "allow_nil?": false,
+      "generated?": false,
+      "primary_key?": false
+    },
+    {
+      "default": "%{}",
+      "size": null,
+      "type": "map",
+      "source": "metadata",
+      "references": null,
+      "allow_nil?": false,
+      "generated?": false,
+      "primary_key?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "utc_datetime_usec",
+      "source": "inserted_at",
+      "references": null,
+      "allow_nil?": false,
+      "generated?": false,
+      "primary_key?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "utc_datetime_usec",
+      "source": "updated_at",
+      "references": null,
+      "allow_nil?": false,
+      "generated?": false,
+      "primary_key?": false
+    },
+    {
+      "default": "nil",
+      "size": null,
+      "type": "uuid",
+      "source": "project_id",
+      "references": {
+        "name": "spec_test_links_project_id_fkey",
+        "table": "projects",
+        "multitenancy": {
+          "global": null,
+          "strategy": null,
+          "attribute": null
+        },
+        "destination_attribute": "id",
+        "primary_key?": true,
+        "on_delete": null,
+        "on_update": null,
+        "deferrable": false,
+        "destination_attribute_default": null,
+        "destination_attribute_generated": null
+      },
+      "allow_nil?": false,
+      "generated?": false,
+      "primary_key?": false
+    }
+  ],
+  "table": "spec_test_links",
+  "hash": "34E2DD7984E83EBE42B12EEAB39C62D134E33CA536535477BE1D9933418B6D07",
+  "repo": "Elixir.Spotter.Repo",
+  "multitenancy": {
+    "global": null,
+    "strategy": null,
+    "attribute": null
+  },
+  "identities": [
+    {
+      "name": "unique_spec_test_link",
+      "keys": [
+        "project_id",
+        "commit_hash",
+        "requirement_spec_key",
+        "test_key"
+      ],
+      "base_filter": null,
+      "index_name": "spec_test_links_unique_spec_test_link_index"
+    }
+  ],
+  "strict?": false,
+  "custom_indexes": [],
+  "base_filter": null,
+  "custom_statements": [],
+  "has_create_action": true
+}

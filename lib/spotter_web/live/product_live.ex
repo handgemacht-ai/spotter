@@ -3,6 +3,7 @@ defmodule SpotterWeb.ProductLive do
 
   alias Spotter.ProductSpec
   alias Spotter.Services.ProductCommitTimeline
+  alias Spotter.Services.SpecTestLinks
   alias Spotter.Transcripts.{Commit, Project}
 
   require Ash.Query
@@ -38,7 +39,10 @@ defmodule SpotterWeb.ProductLive do
        search_query: "",
        # Shared
        dolt_available: dolt_available?(),
-       commit_id_cache: %{}
+       commit_id_cache: %{},
+       # Spec-test links
+       spec_test_link_counts: %{},
+       focus_test_key: nil
      )}
   end
 
@@ -56,12 +60,15 @@ defmodule SpotterWeb.ProductLive do
 
     project_changed = project_id != socket.assigns.selected_project_id
 
+    focus_test_key = params["focus_test_key"]
+
     socket =
       socket
       |> assign(
         selected_project_id: project_id,
         spec_view: spec_view,
-        search_query: search_q || ""
+        search_query: search_q || "",
+        focus_test_key: focus_test_key
       )
       |> then(fn s ->
         if project_changed, do: load_timeline(s), else: s
@@ -246,6 +253,10 @@ defmodule SpotterWeb.ProductLive do
                 expanded={@expanded}
                 search_query={@search_query}
                 commit_id_cache={@commit_id_cache}
+                spec_test_link_counts={@spec_test_link_counts}
+                selected_project_id={@selected_project_id}
+                selected_commit_id={@selected_commit_id}
+                focus_test_key={@focus_test_key}
               />
             </div>
           </div>
@@ -418,11 +429,20 @@ defmodule SpotterWeb.ProductLive do
             </button>
 
             <div :if={MapSet.member?(@expanded, feature.id)} class="product-children">
-              <div :for={req <- feature.requirements} class="product-requirement">
+              <div
+                :for={req <- feature.requirements}
+                class={"product-requirement#{if @focus_test_key && Map.get(@spec_test_link_counts, req.spec_key, 0) > 0, do: " is-highlight", else: ""}"}
+              >
                 <div class="product-row product-row--req">
                   <code class="product-key">{req.spec_key}</code>
                   <span class="product-statement">{req.statement}</span>
                   <.commit_hash hash={req.updated_by_git_commit} cache={@commit_id_cache} />
+                  <.linked_test_count
+                    count={Map.get(@spec_test_link_counts, req.spec_key, 0)}
+                    project_id={@selected_project_id}
+                    commit_id={@selected_commit_id}
+                    spec_key={req.spec_key}
+                  />
                 </div>
                 <p :if={req.rationale} class="product-rationale">{req.rationale}</p>
               </div>
@@ -431,6 +451,23 @@ defmodule SpotterWeb.ProductLive do
         </div>
       </div>
     </div>
+    """
+  end
+
+  defp linked_test_count(%{count: 0} = assigns) do
+    ~H"""
+    <span class="product-link-count is-zero">0 linked tests</span>
+    """
+  end
+
+  defp linked_test_count(assigns) do
+    ~H"""
+    <a
+      href={"/tests?project_id=#{@project_id}&commit_id=#{@commit_id}&focus_spec_key=#{URI.encode_www_form(@spec_key)}"}
+      class="product-link-count"
+    >
+      {@count} linked {if @count == 1, do: "test", else: "tests"}
+    </a>
     """
   end
 
@@ -530,21 +567,36 @@ defmodule SpotterWeb.ProductLive do
         load_detail_for_view(socket, view, project_id, commit)
       end
     else
-      assign(socket, detail_content: nil, detail_error: nil, tree: [], commit_id_cache: %{})
+      assign(socket,
+        detail_content: nil,
+        detail_error: nil,
+        tree: [],
+        commit_id_cache: %{},
+        spec_test_link_counts: %{}
+      )
     end
   end
 
   defp load_detail_for_view(socket, :diff, project_id, commit) do
+    link_counts = SpecTestLinks.linked_test_counts(project_id, commit.commit_hash)
+
     case ProductSpec.diff_for_commit(project_id, commit.commit_hash) do
       {:ok, diff} ->
-        assign(socket, detail_content: diff, detail_error: nil, tree: [], commit_id_cache: %{})
+        assign(socket,
+          detail_content: diff,
+          detail_error: nil,
+          tree: [],
+          commit_id_cache: %{},
+          spec_test_link_counts: link_counts
+        )
 
       {:error, reason} ->
         assign(socket,
           detail_content: nil,
           detail_error: reason,
           tree: [],
-          commit_id_cache: %{}
+          commit_id_cache: %{},
+          spec_test_link_counts: link_counts
         )
     end
   rescue
@@ -555,7 +607,8 @@ defmodule SpotterWeb.ProductLive do
         detail_content: nil,
         detail_error: {:error, Exception.message(e)},
         tree: [],
-        commit_id_cache: %{}
+        commit_id_cache: %{},
+        spec_test_link_counts: %{}
       )
   end
 
@@ -563,13 +616,15 @@ defmodule SpotterWeb.ProductLive do
     case ProductSpec.tree_for_commit(project_id, commit.commit_hash) do
       {:ok, %{tree: tree} = result} ->
         cache = build_commit_cache(collect_commit_hashes(tree))
+        link_counts = SpecTestLinks.linked_test_counts(project_id, commit.commit_hash)
 
         assign(socket,
           detail_content: result,
           detail_error: nil,
           tree: tree,
           expanded: MapSet.new(),
-          commit_id_cache: cache
+          commit_id_cache: cache,
+          spec_test_link_counts: link_counts
         )
 
       {:error, reason} ->
@@ -577,7 +632,8 @@ defmodule SpotterWeb.ProductLive do
           detail_content: nil,
           detail_error: reason,
           tree: [],
-          commit_id_cache: %{}
+          commit_id_cache: %{},
+          spec_test_link_counts: %{}
         )
     end
   rescue
@@ -588,7 +644,8 @@ defmodule SpotterWeb.ProductLive do
         detail_content: nil,
         detail_error: {:error, Exception.message(e)},
         tree: [],
-        commit_id_cache: %{}
+        commit_id_cache: %{},
+        spec_test_link_counts: %{}
       )
   end
 

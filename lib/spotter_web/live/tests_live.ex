@@ -1,6 +1,7 @@
 defmodule SpotterWeb.TestsLive do
   use Phoenix.LiveView
 
+  alias Spotter.Services.SpecTestLinks
   alias Spotter.Services.TestCommitTimeline
   alias Spotter.TestSpec
   alias Spotter.Transcripts.{Commit, Project}
@@ -38,7 +39,10 @@ defmodule SpotterWeb.TestsLive do
        search_query: "",
        # Shared
        dolt_available: TestSpec.dolt_available?(),
-       commit_id_cache: %{}
+       commit_id_cache: %{},
+       # Spec-test links
+       spec_test_link_counts: %{},
+       focus_spec_key: nil
      )}
   end
 
@@ -56,12 +60,15 @@ defmodule SpotterWeb.TestsLive do
 
     project_changed = project_id != socket.assigns.selected_project_id
 
+    focus_spec_key = params["focus_spec_key"]
+
     socket =
       socket
       |> assign(
         selected_project_id: project_id,
         spec_view: spec_view,
-        search_query: search_q || ""
+        search_query: search_q || "",
+        focus_spec_key: focus_spec_key
       )
       |> then(fn s ->
         if project_changed, do: load_timeline(s), else: s
@@ -242,6 +249,10 @@ defmodule SpotterWeb.TestsLive do
                 expanded={@expanded}
                 search_query={@search_query}
                 commit_id_cache={@commit_id_cache}
+                spec_test_link_counts={@spec_test_link_counts}
+                selected_project_id={@selected_project_id}
+                selected_commit_id={@selected_commit_id}
+                focus_spec_key={@focus_spec_key}
               />
             </div>
           </div>
@@ -400,7 +411,10 @@ defmodule SpotterWeb.TestsLive do
         </button>
 
         <div :if={MapSet.member?(@expanded, file.relative_path)} class="product-children">
-          <div :for={test <- file.tests} class="product-requirement">
+          <div
+            :for={test <- file.tests}
+            class={"product-requirement#{if @focus_spec_key && Map.get(@spec_test_link_counts, test[:test_key], 0) > 0, do: " is-highlight", else: ""}"}
+          >
             <div class="product-row product-row--req">
               <span :if={test[:framework]} class="product-spec-badge is-ok" style="font-size: 9px;">{test.framework}</span>
               <span :if={test[:describe_path] && test.describe_path != []} class="product-name">
@@ -408,6 +422,12 @@ defmodule SpotterWeb.TestsLive do
               </span>
               <span class="product-statement">{test.test_name}</span>
               <.commit_hash hash={test[:source_commit_hash]} cache={@commit_id_cache} />
+              <.linked_req_count
+                count={Map.get(@spec_test_link_counts, test[:test_key], 0)}
+                project_id={@selected_project_id}
+                commit_id={@selected_commit_id}
+                test_key={test[:test_key] || ""}
+              />
             </div>
             <div :if={test[:given] && test.given != []} class="product-rationale">
               <strong>Given:</strong> {Enum.join(test.given, ", ")}
@@ -422,6 +442,23 @@ defmodule SpotterWeb.TestsLive do
         </div>
       </div>
     </div>
+    """
+  end
+
+  defp linked_req_count(%{count: 0} = assigns) do
+    ~H"""
+    <span class="product-link-count is-zero">0 linked reqs</span>
+    """
+  end
+
+  defp linked_req_count(assigns) do
+    ~H"""
+    <a
+      href={"/product?project_id=#{@project_id}&commit_id=#{@commit_id}&focus_test_key=#{URI.encode_www_form(@test_key)}&spec_view=snapshot"}
+      class="product-link-count"
+    >
+      {@count} linked {if @count == 1, do: "req", else: "reqs"}
+    </a>
     """
   end
 
@@ -521,21 +558,36 @@ defmodule SpotterWeb.TestsLive do
         load_detail_for_view(socket, view, project_id, commit)
       end
     else
-      assign(socket, detail_content: nil, detail_error: nil, tree: [], commit_id_cache: %{})
+      assign(socket,
+        detail_content: nil,
+        detail_error: nil,
+        tree: [],
+        commit_id_cache: %{},
+        spec_test_link_counts: %{}
+      )
     end
   end
 
   defp load_detail_for_view(socket, :diff, project_id, commit) do
+    link_counts = SpecTestLinks.linked_requirement_counts(project_id, commit.commit_hash)
+
     case TestSpec.diff_for_commit(project_id, commit.commit_hash) do
       {:ok, diff} ->
-        assign(socket, detail_content: diff, detail_error: nil, tree: [], commit_id_cache: %{})
+        assign(socket,
+          detail_content: diff,
+          detail_error: nil,
+          tree: [],
+          commit_id_cache: %{},
+          spec_test_link_counts: link_counts
+        )
 
       {:error, reason} ->
         assign(socket,
           detail_content: nil,
           detail_error: reason,
           tree: [],
-          commit_id_cache: %{}
+          commit_id_cache: %{},
+          spec_test_link_counts: link_counts
         )
     end
   rescue
@@ -546,7 +598,8 @@ defmodule SpotterWeb.TestsLive do
         detail_content: nil,
         detail_error: {:error, Exception.message(e)},
         tree: [],
-        commit_id_cache: %{}
+        commit_id_cache: %{},
+        spec_test_link_counts: %{}
       )
   end
 
@@ -554,13 +607,15 @@ defmodule SpotterWeb.TestsLive do
     case TestSpec.tree_for_commit(project_id, commit.commit_hash) do
       {:ok, %{tree: tree} = result} ->
         cache = build_commit_cache(collect_commit_hashes(tree))
+        link_counts = SpecTestLinks.linked_requirement_counts(project_id, commit.commit_hash)
 
         assign(socket,
           detail_content: result,
           detail_error: nil,
           tree: tree,
           expanded: MapSet.new(),
-          commit_id_cache: cache
+          commit_id_cache: cache,
+          spec_test_link_counts: link_counts
         )
 
       {:error, reason} ->
@@ -568,7 +623,8 @@ defmodule SpotterWeb.TestsLive do
           detail_content: nil,
           detail_error: reason,
           tree: [],
-          commit_id_cache: %{}
+          commit_id_cache: %{},
+          spec_test_link_counts: %{}
         )
     end
   rescue
@@ -579,7 +635,8 @@ defmodule SpotterWeb.TestsLive do
         detail_content: nil,
         detail_error: {:error, Exception.message(e)},
         tree: [],
-        commit_id_cache: %{}
+        commit_id_cache: %{},
+        spec_test_link_counts: %{}
       )
   end
 
