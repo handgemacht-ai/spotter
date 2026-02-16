@@ -2,6 +2,8 @@ defmodule SpotterWeb.SubagentLive do
   use Phoenix.LiveView
   use AshComputer.LiveView
 
+  require Logger
+
   import SpotterWeb.TranscriptComponents
   import SpotterWeb.AnnotationComponents
 
@@ -210,6 +212,13 @@ defmodule SpotterWeb.SubagentLive do
       {:ok, %{files: files}} -> {project_id, files}
       {:error, _} -> {project_id, nil}
     end
+  rescue
+    exception ->
+      Logger.warning(
+        "SubagentLive.resolve_file_link_context/1 rescued #{inspect(exception.__struct__)}"
+      )
+
+      {to_string(session_record.project_id), nil}
   end
 
   defp load_subagent_data(session_id, agent_id) do

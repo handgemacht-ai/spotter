@@ -45,4 +45,33 @@ defmodule Spotter.Services.TranscriptFileLinksTest do
       end
     end
   end
+
+  describe "ensure_available/0" do
+    test "returns :ok when service is running" do
+      assert :ok = TranscriptFileLinks.ensure_available()
+    end
+  end
+
+  describe "resilience to missing ETS table" do
+    test "safe_lookup returns miss when ETS table is absent" do
+      # Delete the table, call for_session, verify no ArgumentError
+      # The service should recover via ensure_available -> restart_child
+      original_pid = Process.whereis(TranscriptFileLinks)
+      assert original_pid != nil
+
+      # Stop the GenServer (which owns the ETS table)
+      GenServer.stop(original_pid)
+
+      # Table and process are now gone — for_session must not raise
+      result = TranscriptFileLinks.for_session("/nonexistent/path/xyz")
+
+      # Should return a normal error tuple, never raise
+      assert {:error, _reason} = result
+
+      # Service should have been recovered by ensure_available
+      new_pid = Process.whereis(TranscriptFileLinks)
+      assert new_pid != nil
+      assert new_pid != original_pid
+    end
+  end
 end

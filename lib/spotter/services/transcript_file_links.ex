@@ -27,6 +27,19 @@ defmodule Spotter.Services.TranscriptFileLinks do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
+  @doc false
+  @spec ensure_available() :: :ok | {:error, term()}
+  def ensure_available do
+    process_alive? = Process.whereis(__MODULE__) != nil
+    table_exists? = :ets.whereis(@table) != :undefined
+
+    if process_alive? and table_exists? do
+      :ok
+    else
+      attempt_recovery(process_alive?, table_exists?)
+    end
+  end
+
   @doc """
   Resolves the set of files on the default branch for the given session working directory.
 
@@ -41,6 +54,8 @@ defmodule Spotter.Services.TranscriptFileLinks do
 
   def for_session(session_cwd) do
     Tracer.with_span "spotter.file_detail.resolve_file_links" do
+      ensure_available()
+
       with {:ok, repo_root} <- resolve_repo_root(session_cwd),
            {:ok, ref} <- resolve_default_ref(repo_root),
            {:ok, ref_hash} <- resolve_ref_hash(repo_root, ref) do
@@ -56,7 +71,7 @@ defmodule Spotter.Services.TranscriptFileLinks do
   defp resolve_with_cache(cache_key, ref) do
     {repo_root, ref_hash} = cache_key
 
-    case lookup_cache(cache_key) do
+    case safe_lookup(cache_key) do
       {:ok, cached} ->
         Tracer.set_attribute("spotter.file_links.cache_hit", true)
         Tracer.set_attribute("spotter.file_links.file_count", MapSet.size(cached.files))
@@ -72,7 +87,7 @@ defmodule Spotter.Services.TranscriptFileLinks do
     case load_file_list(repo_root, ref_hash) do
       {:ok, files} ->
         result = %{repo_root: repo_root, ref: ref, ref_hash: ref_hash, files: files}
-        insert_cache(cache_key, result)
+        safe_insert(cache_key, result)
         Tracer.set_attribute("spotter.file_links.file_count", MapSet.size(files))
         {:ok, result}
 
@@ -92,22 +107,14 @@ defmodule Spotter.Services.TranscriptFileLinks do
 
   @impl true
   def handle_info(:sweep, state) do
-    now = System.monotonic_time(:millisecond)
-
-    :ets.tab2list(@table)
-    |> Enum.each(fn {key, inserted_at_ms, _result} ->
-      if now - inserted_at_ms > @ttl_ms do
-        :ets.delete(@table, key)
-      end
-    end)
-
+    safe_sweep()
     Process.send_after(self(), :sweep, @sweep_interval)
     {:noreply, state}
   end
 
-  # Cache helpers
+  # Safe ETS wrappers — rescue ArgumentError from missing table
 
-  defp lookup_cache(cache_key) do
+  defp safe_lookup(cache_key) do
     now = System.monotonic_time(:millisecond)
 
     case :ets.lookup(@table, cache_key) do
@@ -115,29 +122,95 @@ defmodule Spotter.Services.TranscriptFileLinks do
         {:ok, result}
 
       [{^cache_key, _inserted_at_ms, _result}] ->
-        :ets.delete(@table, cache_key)
+        safe_delete(cache_key)
         :miss
 
       [] ->
         :miss
     end
+  rescue
+    ArgumentError -> :miss
   end
 
-  defp insert_cache(cache_key, result) do
+  defp safe_insert(cache_key, result) do
     now = System.monotonic_time(:millisecond)
     :ets.insert(@table, {cache_key, now, result})
-    enforce_max_entries()
+    safe_enforce_max_entries()
+  rescue
+    ArgumentError -> :ok
   end
 
-  defp enforce_max_entries do
+  defp safe_delete(key) do
+    :ets.delete(@table, key)
+  rescue
+    ArgumentError -> :ok
+  end
+
+  defp safe_enforce_max_entries do
     entries = :ets.tab2list(@table)
 
     if length(entries) > @max_entries do
       entries
       |> Enum.sort_by(fn {_key, inserted_at_ms, _result} -> inserted_at_ms end)
       |> Enum.take(length(entries) - @max_entries)
-      |> Enum.each(fn {key, _ts, _result} -> :ets.delete(@table, key) end)
+      |> Enum.each(fn {key, _ts, _result} -> safe_delete(key) end)
     end
+  rescue
+    ArgumentError -> :ok
+  end
+
+  defp safe_sweep do
+    now = System.monotonic_time(:millisecond)
+
+    :ets.tab2list(@table)
+    |> Enum.each(fn {key, inserted_at_ms, _result} ->
+      if now - inserted_at_ms > @ttl_ms do
+        safe_delete(key)
+      end
+    end)
+  rescue
+    ArgumentError -> :ok
+  end
+
+  # Recovery
+
+  defp attempt_recovery(process_alive?, table_exists?) do
+    Tracer.set_attribute("spotter.file_links.recovery_attempted", true)
+
+    process_alive?
+    |> do_recover(table_exists?)
+    |> tap_recovery_result()
+  end
+
+  defp do_recover(false = _process_alive?, _table_exists?) do
+    if Process.whereis(Spotter.Supervisor) != nil do
+      restart_child()
+    else
+      {:error, :supervisor_not_running}
+    end
+  end
+
+  defp do_recover(true = _process_alive?, false = _table_exists?) do
+    {:error, :table_missing_process_alive}
+  end
+
+  defp restart_child do
+    case Supervisor.start_child(Spotter.Supervisor, {__MODULE__, []}) do
+      {:ok, _pid} -> :ok
+      {:error, {:already_started, _pid}} -> :ok
+      {:error, reason} -> {:error, {:recovery_failed, reason}}
+    end
+  end
+
+  defp tap_recovery_result(:ok) do
+    Tracer.set_attribute("spotter.file_links.recovery_succeeded", true)
+    :ok
+  end
+
+  defp tap_recovery_result({:error, reason} = error) do
+    Tracer.set_attribute("spotter.file_links.recovery_succeeded", false)
+    Logger.warning("TranscriptFileLinks recovery failed: #{inspect(reason)}")
+    error
   end
 
   # Git resolution helpers
