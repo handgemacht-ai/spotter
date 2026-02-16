@@ -138,12 +138,19 @@ defmodule Spotter.Agents.HotspotTools do
   defmodule Helpers do
     @moduledoc false
 
+    alias Spotter.Observability.AgentRunScope
+
     def set_git_cwd(cwd) do
       Process.put(:hotspot_agent_git_cwd, cwd)
       :ok
     end
 
-    def git_cwd, do: Process.get(:hotspot_agent_git_cwd)
+    def git_cwd do
+      case AgentRunScope.resolve_for_current_process() do
+        {:ok, %{git_cwd: cwd}} when is_binary(cwd) -> cwd
+        _ -> Process.get(:hotspot_agent_git_cwd)
+      end
+    end
 
     def text_result(data) do
       {:ok, %{"content" => [%{"type" => "text", "text" => Jason.encode!(data)}]}}

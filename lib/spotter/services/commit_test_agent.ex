@@ -6,9 +6,11 @@ defmodule Spotter.Services.CommitTestAgent do
   tools to create/update/delete test case records in the database.
   """
 
+  require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
   alias Spotter.Agents.TestToolServer
+  alias Spotter.Observability.AgentRunScope
   alias Spotter.Observability.ClaudeAgentFlow
   alias Spotter.Observability.FlowKeys
   alias Spotter.Services.ClaudeCode.ResultExtractor
@@ -84,6 +86,14 @@ defmodule Spotter.Services.CommitTestAgent do
 
       server = TestToolServer.create_server()
 
+      AgentRunScope.put(server.registry_pid, %{
+        project_id: project_id,
+        commit_hash: commit_hash,
+        git_cwd: Map.get(input, :git_cwd),
+        run_id: Map.get(input, :run_id),
+        agent_kind: "commit_test"
+      })
+
       sdk_opts =
         %ClaudeAgentSDK.Options{
           model: model,
@@ -115,8 +125,21 @@ defmodule Spotter.Services.CommitTestAgent do
       rescue
         e ->
           reason = Exception.message(e)
+          Logger.warning("CommitTestAgent: failed: #{reason}")
+          Tracer.set_attribute("spotter.error.kind", "exception")
+          Tracer.set_attribute("spotter.error.reason", String.slice(reason, 0, 500))
           Tracer.set_status(:error, reason)
           {:error, reason}
+      catch
+        :exit, exit_reason ->
+          msg = "CommitTestAgent: SDK process exited: #{inspect(exit_reason)}"
+          Logger.warning(msg)
+          Tracer.set_attribute("spotter.error.kind", "exit")
+          Tracer.set_attribute("spotter.error.reason", String.slice(msg, 0, 500))
+          Tracer.set_status(:error, msg)
+          {:error, {:agent_exit, exit_reason}}
+      after
+        AgentRunScope.delete(server.registry_pid)
       end
     end
   end

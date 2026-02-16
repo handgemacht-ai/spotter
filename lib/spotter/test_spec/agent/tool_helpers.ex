@@ -2,11 +2,12 @@ defmodule Spotter.TestSpec.Agent.ToolHelpers do
   @moduledoc false
 
   alias Ecto.Adapters.SQL
+  alias Spotter.Observability.AgentRunScope
   alias Spotter.TestSpec.Repo
 
   @uuid_re ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-  # -- Process-dictionary scope binding --
+  # -- Process-dictionary scope binding (transitional fallback) --
 
   @spec set_project_id(String.t() | nil) :: :ok
   def set_project_id(nil) do
@@ -21,9 +22,15 @@ defmodule Spotter.TestSpec.Agent.ToolHelpers do
 
   @spec project_id!() :: String.t()
   def project_id! do
-    case Process.get(:test_agent_project_id) do
+    id =
+      case AgentRunScope.resolve_for_current_process() do
+        {:ok, %{project_id: id}} when is_binary(id) -> id
+        _ -> Process.get(:test_agent_project_id)
+      end
+
+    case id do
       nil ->
-        raise "test_agent_project_id not bound — call ToolHelpers.set_project_id/1 first"
+        raise "test_agent_project_id not bound — scope not available via AgentRunScope or process dictionary"
 
       id when is_binary(id) ->
         unless Regex.match?(@uuid_re, id) do
@@ -40,7 +47,12 @@ defmodule Spotter.TestSpec.Agent.ToolHelpers do
     :ok
   end
 
-  def commit_hash, do: Process.get(:test_agent_commit_hash, "")
+  def commit_hash do
+    case AgentRunScope.resolve_for_current_process() do
+      {:ok, %{commit_hash: hash}} when is_binary(hash) -> hash
+      _ -> Process.get(:test_agent_commit_hash, "")
+    end
+  end
 
   # -- Deterministic key --
 

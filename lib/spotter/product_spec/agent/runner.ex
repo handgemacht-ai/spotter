@@ -11,6 +11,7 @@ defmodule Spotter.ProductSpec.Agent.Runner do
   require OpenTelemetry.Tracer, as: Tracer
 
   alias Spotter.Config.Runtime
+  alias Spotter.Observability.AgentRunScope
   alias Spotter.Observability.ClaudeAgentFlow
   alias Spotter.Observability.FlowKeys
   alias Spotter.ProductSpec.Agent.Prompt
@@ -50,6 +51,14 @@ defmodule Spotter.ProductSpec.Agent.Runner do
           version: "1.0.0",
           tools: Tools.all_tool_modules()
         )
+
+      AgentRunScope.put(server.registry_pid, %{
+        project_id: to_string(input.project_id),
+        commit_hash: input.commit_hash,
+        git_cwd: Map.get(input, :git_cwd),
+        run_id: Map.get(input, :run_id),
+        agent_kind: "product_spec"
+      })
 
       allowed_tools = Enum.map(@tool_names, &"mcp__spec-tools__#{&1}")
       {system_prompt_template, _source} = Runtime.product_spec_system_prompt()
@@ -98,9 +107,20 @@ defmodule Spotter.ProductSpec.Agent.Runner do
         e ->
           reason = Exception.message(e)
           Logger.warning("SpecAgent: failed: #{reason}")
+          Tracer.set_attribute("spotter.error.kind", "exception")
+          Tracer.set_attribute("spotter.error.reason", String.slice(reason, 0, 500))
           Tracer.set_status(:error, reason)
           {:error, reason}
+      catch
+        :exit, exit_reason ->
+          msg = "SpecAgent: SDK process exited: #{inspect(exit_reason)}"
+          Logger.warning(msg)
+          Tracer.set_attribute("spotter.error.kind", "exit")
+          Tracer.set_attribute("spotter.error.reason", String.slice(msg, 0, 500))
+          Tracer.set_status(:error, msg)
+          {:error, {:agent_exit, exit_reason}}
       after
+        AgentRunScope.delete(server.registry_pid)
         ToolHelpers.set_project_id(nil)
         ToolHelpers.set_commit_hash("")
         ToolHelpers.set_git_cwd(nil)

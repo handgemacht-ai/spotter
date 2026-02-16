@@ -12,6 +12,7 @@ defmodule Spotter.Services.CommitHotspotAgent do
 
   alias Spotter.Agents.HotspotTools
   alias Spotter.Agents.HotspotToolServer
+  alias Spotter.Observability.AgentRunScope
   alias Spotter.Observability.ClaudeAgentFlow
   alias Spotter.Observability.FlowKeys
   alias Spotter.Services.ClaudeCode.ResultExtractor
@@ -152,6 +153,14 @@ defmodule Spotter.Services.CommitHotspotAgent do
       HotspotTools.Helpers.set_git_cwd(git_cwd)
       server = HotspotToolServer.create_server()
 
+      AgentRunScope.put(server.registry_pid, %{
+        project_id: project_id,
+        commit_hash: commit_hash,
+        git_cwd: git_cwd,
+        run_id: Map.get(input, :run_id),
+        agent_kind: "hotspot"
+      })
+
       user_prompt = build_user_prompt(commit_hash, commit_subject, diff_stats, patch_files)
 
       sdk_opts =
@@ -182,15 +191,20 @@ defmodule Spotter.Services.CommitHotspotAgent do
         e ->
           reason = Exception.message(e)
           Logger.warning("CommitHotspotAgent: failed: #{reason}")
+          Tracer.set_attribute("spotter.error.kind", "exception")
+          Tracer.set_attribute("spotter.error.reason", String.slice(reason, 0, 500))
           Tracer.set_status(:error, reason)
           {:error, {:agent_error, reason}}
       catch
-        :exit, reason ->
-          msg = "CommitHotspotAgent: SDK process exited: #{inspect(reason)}"
+        :exit, exit_reason ->
+          msg = "CommitHotspotAgent: SDK process exited: #{inspect(exit_reason)}"
           Logger.warning(msg)
+          Tracer.set_attribute("spotter.error.kind", "exit")
+          Tracer.set_attribute("spotter.error.reason", String.slice(msg, 0, 500))
           Tracer.set_status(:error, msg)
-          {:error, {:agent_exit, reason}}
+          {:error, {:agent_exit, exit_reason}}
       after
+        AgentRunScope.delete(server.registry_pid)
         HotspotTools.Helpers.set_git_cwd(nil)
       end
     end

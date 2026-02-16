@@ -142,10 +142,41 @@ defmodule Spotter.Observability.ObanTelemetry do
   end
 
   defp exception_payload(job, state, measurements, metadata) do
+    kind = Map.get(metadata, :kind, :error)
+    reason = Map.get(metadata, :reason)
+    stacktrace = Map.get(metadata, :stacktrace, [])
+
     stop_payload(job, state, measurements)
-    |> Map.put("kind", to_string(Map.get(metadata, :kind, :error)))
-    |> Map.put("reason", truncate_reason(Map.get(metadata, :reason)))
+    |> Map.put("kind", to_string(kind))
+    |> Map.put("reason", truncate_reason(reason))
+    |> Map.put("error_kind", to_string(kind))
+    |> Map.put("error_reason", format_error_reason(kind, reason))
+    |> Map.put("error_stack", format_stacktrace(stacktrace))
   end
+
+  @max_stack_frames 8
+  @max_stack_chars 1000
+
+  defp format_error_reason(:error, reason) when is_exception(reason) do
+    reason |> Exception.message() |> String.slice(0, 500)
+  end
+
+  defp format_error_reason(_kind, reason) do
+    reason |> inspect(limit: 5, printable_limit: 500) |> String.slice(0, 500)
+  end
+
+  defp format_stacktrace([]), do: nil
+
+  defp format_stacktrace(stacktrace) when is_list(stacktrace) do
+    stacktrace
+    |> Enum.take(@max_stack_frames)
+    |> Enum.map_join("\n", &Exception.format_stacktrace_entry/1)
+    |> String.slice(0, @max_stack_chars)
+  rescue
+    _ -> nil
+  end
+
+  defp format_stacktrace(_), do: nil
 
   defp duration_ms(%{duration: d}) when is_integer(d),
     do: System.convert_time_unit(d, :native, :millisecond)

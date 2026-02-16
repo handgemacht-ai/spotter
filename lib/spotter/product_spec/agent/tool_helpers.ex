@@ -2,12 +2,13 @@ defmodule Spotter.ProductSpec.Agent.ToolHelpers do
   @moduledoc false
 
   alias Ecto.Adapters.SQL
+  alias Spotter.Observability.AgentRunScope
   alias Spotter.ProductSpec.Repo
 
   @spec_key_re ~r/^[a-z0-9][a-z0-9-]{2,159}$/
   @uuid_re ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-  @doc "Sets the project_id for the current spec agent run."
+  @doc "Sets the project_id for the current spec agent run (transitional fallback)."
   @spec set_project_id(String.t() | nil) :: :ok
   def set_project_id(nil) do
     Process.delete(:spec_agent_project_id)
@@ -21,14 +22,21 @@ defmodule Spotter.ProductSpec.Agent.ToolHelpers do
 
   @doc "Returns the bound project_id, or nil if not set."
   @spec project_id() :: String.t() | nil
-  def project_id, do: Process.get(:spec_agent_project_id)
+  def project_id do
+    case AgentRunScope.resolve_for_current_process() do
+      {:ok, %{project_id: id}} when is_binary(id) -> id
+      _ -> Process.get(:spec_agent_project_id)
+    end
+  end
 
   @doc "Returns the bound project_id or raises if not set or invalid."
   @spec project_id!() :: String.t()
   def project_id! do
-    case Process.get(:spec_agent_project_id) do
+    id = project_id()
+
+    case id do
       nil ->
-        raise "spec_agent_project_id not bound — call ToolHelpers.set_project_id/1 before executing tools"
+        raise "spec_agent_project_id not bound — scope not available via AgentRunScope or process dictionary"
 
       id when is_binary(id) ->
         unless Regex.match?(@uuid_re, id) do
@@ -39,23 +47,33 @@ defmodule Spotter.ProductSpec.Agent.ToolHelpers do
     end
   end
 
-  @doc "Sets the git commit hash used by write tools for `updated_by_git_commit`."
+  @doc "Sets the git commit hash used by write tools for `updated_by_git_commit` (transitional fallback)."
   @spec set_commit_hash(String.t()) :: :ok
   def set_commit_hash(hash) do
     Process.put(:spec_agent_commit_hash, hash)
     :ok
   end
 
-  def commit_hash, do: Process.get(:spec_agent_commit_hash, "")
+  def commit_hash do
+    case AgentRunScope.resolve_for_current_process() do
+      {:ok, %{commit_hash: hash}} when is_binary(hash) -> hash
+      _ -> Process.get(:spec_agent_commit_hash, "")
+    end
+  end
 
-  @doc "Sets the git working directory for repo inspection tools."
+  @doc "Sets the git working directory for repo inspection tools (transitional fallback)."
   @spec set_git_cwd(String.t() | nil) :: :ok
   def set_git_cwd(cwd) do
     Process.put(:spec_agent_git_cwd, cwd)
     :ok
   end
 
-  def git_cwd, do: Process.get(:spec_agent_git_cwd)
+  def git_cwd do
+    case AgentRunScope.resolve_for_current_process() do
+      {:ok, %{git_cwd: cwd}} when is_binary(cwd) -> cwd
+      _ -> Process.get(:spec_agent_git_cwd)
+    end
+  end
 
   def text_result(data) do
     {:ok, %{"content" => [%{"type" => "text", "text" => Jason.encode!(data)}]}}

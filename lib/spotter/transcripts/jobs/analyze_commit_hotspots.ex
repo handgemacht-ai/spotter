@@ -32,7 +32,7 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
 
       case {load_commit(commit_hash), resolve_repo_path(project_id)} do
         {{:ok, commit}, {:ok, repo_path}} ->
-          run_analysis(project_id, commit, repo_path)
+          safe_run_analysis(project_id, commit, repo_path)
 
         {{:error, reason}, _} ->
           Logger.warning("AnalyzeCommitHotspots: commit not found: #{inspect(reason)}")
@@ -62,6 +62,28 @@ defmodule Spotter.Transcripts.Jobs.AnalyzeCommitHotspots do
       [session] -> if File.dir?(session.cwd), do: {:ok, session.cwd}, else: :no_cwd
       [] -> :no_cwd
     end
+  end
+
+  defp safe_run_analysis(project_id, commit, repo_path) do
+    run_analysis(project_id, commit, repo_path)
+  rescue
+    e ->
+      reason = Exception.message(e)
+      Logger.warning("AnalyzeCommitHotspots: unexpected error: #{reason}")
+      Tracer.set_attribute("spotter.error.kind", "exception")
+      Tracer.set_attribute("spotter.error.reason", String.slice(reason, 0, 500))
+      Tracer.set_status(:error, reason)
+      mark_error(commit.commit_hash, reason)
+      :ok
+  catch
+    :exit, exit_reason ->
+      msg = inspect(exit_reason)
+      Logger.warning("AnalyzeCommitHotspots: process exited: #{msg}")
+      Tracer.set_attribute("spotter.error.kind", "exit")
+      Tracer.set_attribute("spotter.error.reason", String.slice(msg, 0, 500))
+      Tracer.set_status(:error, msg)
+      mark_error(commit.commit_hash, msg)
+      :ok
   end
 
   defp run_analysis(project_id, commit, repo_path) do

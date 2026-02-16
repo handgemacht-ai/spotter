@@ -113,6 +113,65 @@ defmodule Spotter.Observability.ObanTelemetryTest do
 
       assert event.payload["kind"] == "error"
       assert event.payload["reason"] =~ "something went wrong"
+      assert event.payload["error_kind"] == "error"
+      assert event.payload["error_reason"] =~ "something went wrong"
+      assert event.payload["error_stack"] == nil
+    end
+
+    test "includes bounded stack trace when stacktrace is present" do
+      Phoenix.PubSub.subscribe(Spotter.PubSub, FlowHub.global_topic())
+
+      stacktrace = [
+        {MyModule, :my_fun, 2, [file: ~c"lib/my_module.ex", line: 42]},
+        {OtherModule, :call, 1, [file: ~c"lib/other.ex", line: 10]}
+      ]
+
+      :telemetry.execute(
+        [:oban, :job, :exception],
+        %{duration: 1_000_000, memory: 1024, queue_time: 100, reductions: 500},
+        %{
+          job: fake_job(),
+          conf: %{},
+          state: :failure,
+          kind: :error,
+          reason: %RuntimeError{message: "boom"},
+          result: nil,
+          stacktrace: stacktrace
+        }
+      )
+
+      assert_receive {:flow_event,
+                      %FlowEvent{kind: "oban.job.exception", status: :error} = event},
+                     1000
+
+      assert event.payload["error_stack"] != nil
+      assert event.payload["error_stack"] =~ "my_module.ex"
+      assert event.payload["error_stack"] =~ "other.ex"
+    end
+
+    test "handles exit kind with non-exception reason" do
+      Phoenix.PubSub.subscribe(Spotter.PubSub, FlowHub.global_topic())
+
+      :telemetry.execute(
+        [:oban, :job, :exception],
+        %{duration: 500_000, memory: 512, queue_time: 50, reductions: 200},
+        %{
+          job: fake_job(),
+          conf: %{},
+          state: :failure,
+          kind: :exit,
+          reason: {:function_clause, [{SomeModule, :run, 1, []}]},
+          result: nil,
+          stacktrace: []
+        }
+      )
+
+      assert_receive {:flow_event,
+                      %FlowEvent{kind: "oban.job.exception", status: :error} = event},
+                     1000
+
+      assert event.payload["error_kind"] == "exit"
+      assert event.payload["error_reason"] =~ "function_clause"
     end
   end
 
