@@ -370,6 +370,53 @@ defmodule SpotterWeb.HistoryLiveTest do
     end
   end
 
+  describe "delta summary display" do
+    test "renders delta unavailable markers when no runs exist" do
+      project = create_project("delta-display")
+      session = create_session(project)
+
+      commit =
+        create_commit(
+          branch: nil,
+          hash: "dd-commit",
+          committed_at: ~U[2026-01-01 12:00:00Z],
+          subject: "feat: delta test"
+        )
+
+      create_link(session, commit)
+
+      {:ok, _view, html} = live(build_conn(), "/history?branch=")
+
+      # Delta row should be present with unavailable markers
+      assert html =~ "history-delta-row"
+      assert html =~ "product"
+      assert html =~ "tests"
+      # mdash rendered for unavailable
+      assert html =~ "&mdash;" or html =~ "\u2014"
+    end
+
+    test "delta row is present in each commit card" do
+      project = create_project("delta-cards")
+      session = create_session(project)
+
+      for i <- 1..3 do
+        c =
+          create_commit(
+            branch: nil,
+            hash: "dc-#{String.pad_leading("#{i}", 3, "0")}",
+            committed_at: DateTime.add(~U[2026-01-01 00:00:00Z], i, :hour),
+            subject: "Commit #{i}"
+          )
+
+        create_link(session, c)
+      end
+
+      {:ok, _view, html} = live(build_conn(), "/history?branch=")
+
+      assert count_occurrences(html, "history-delta-row") == 3
+    end
+  end
+
   defp count_occurrences(string, substring) do
     string
     |> String.split(substring)

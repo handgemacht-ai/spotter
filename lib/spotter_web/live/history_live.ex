@@ -2,6 +2,7 @@ defmodule SpotterWeb.HistoryLive do
   use Phoenix.LiveView
 
   alias Spotter.Services.CommitHistory
+  alias Spotter.Services.CommitHistoryDeltaSummary
   alias Spotter.Transcripts.SessionPresenter
 
   @impl true
@@ -69,10 +70,11 @@ defmodule SpotterWeb.HistoryLive do
       filters = build_filters(socket.assigns)
 
       result = CommitHistory.list_commits_with_sessions(filters, %{after: cursor})
+      rows = enrich_with_delta_summaries(result.rows, socket.assigns.selected_project_id)
 
       {:noreply,
        assign(socket,
-         rows: socket.assigns.rows ++ result.rows,
+         rows: socket.assigns.rows ++ rows,
          next_cursor: result.cursor,
          has_more: result.has_more
        )}
@@ -91,11 +93,29 @@ defmodule SpotterWeb.HistoryLive do
         _ -> %{rows: [], has_more: false, cursor: nil}
       end
 
+    rows = enrich_with_delta_summaries(result.rows, socket.assigns.selected_project_id)
+
     assign(socket,
-      rows: result.rows,
+      rows: rows,
       next_cursor: result.cursor,
       has_more: result.has_more
     )
+  end
+
+  defp enrich_with_delta_summaries([], _project_id), do: []
+  defp enrich_with_delta_summaries(rows, nil), do: rows
+
+  defp enrich_with_delta_summaries(rows, project_id) do
+    summaries =
+      try do
+        CommitHistoryDeltaSummary.summaries_for_commits(project_id, rows)
+      rescue
+        _ -> %{}
+      end
+
+    Enum.map(rows, fn row ->
+      Map.put(row, :delta_summary, Map.get(summaries, row.commit.id))
+    end)
   end
 
   defp build_filters(assigns) do
@@ -172,6 +192,26 @@ defmodule SpotterWeb.HistoryLive do
       _ ->
         subject
     end
+  end
+
+  defp delta_badge(%{counts: nil} = assigns) do
+    ~H"""
+    <span class="delta-chip">
+      <span class="delta-label">{@label}</span>
+      <span class="delta-unavailable">&mdash;</span>
+    </span>
+    """
+  end
+
+  defp delta_badge(assigns) do
+    ~H"""
+    <span class="delta-chip">
+      <span class="delta-label">{@label}</span>
+      <span class="delta-added">+{@counts.added}</span>
+      <span class="delta-changed">~{@counts.changed}</span>
+      <span class="delta-removed">-{@counts.removed}</span>
+    </span>
+    """
   end
 
   defp badge_text(:observed_in_session, _confidence), do: "Verified"
@@ -278,6 +318,11 @@ defmodule SpotterWeb.HistoryLive do
             <span class="history-commit-time">
               {format_timestamp(row.commit.committed_at || row.commit.inserted_at)}
             </span>
+          </div>
+
+          <div :if={Map.has_key?(row, :delta_summary)} class="history-delta-row">
+            <.delta_badge label="product" counts={row.delta_summary && row.delta_summary.product} />
+            <.delta_badge label="tests" counts={row.delta_summary && row.delta_summary.tests} />
           </div>
 
           <%= if row.sessions == [] do %>
