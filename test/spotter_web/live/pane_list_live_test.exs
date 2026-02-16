@@ -193,6 +193,101 @@ defmodule SpotterWeb.PaneListLiveTest do
       assert reloaded.next_due_on == future_item.next_due_on
       assert reloaded.interval_days == future_item.interval_days
     end
+
+    test "single upcoming item does not loop after rating", %{future_item: future_item} do
+      {:ok, view, _html} = live(build_conn(), "/")
+
+      render_click(view, "set_study_include_upcoming", %{"enabled" => "true"})
+
+      html =
+        render_click(view, "rate_card", %{
+          "id" => future_item.id,
+          "importance" => "medium"
+        })
+
+      refute html =~ "Future commit for study ahead"
+      assert html =~ ~s(data-testid="study-queue-empty")
+    end
+
+    test "multiple upcoming items advance and terminate", %{project: project} do
+      commit2 =
+        Ash.create!(Commit, %{
+          commit_hash: String.duplicate("c", 40),
+          subject: "Second future commit"
+        })
+
+      Ash.create!(ReviewItem, %{
+        project_id: project.id,
+        target_kind: :commit_message,
+        commit_id: commit2.id,
+        importance: :medium,
+        interval_days: 4,
+        next_due_on: Date.add(Date.utc_today(), 4)
+      })
+
+      {:ok, view, _html} = live(build_conn(), "/")
+      render_click(view, "set_study_include_upcoming", %{"enabled" => "true"})
+
+      # First card visible
+      html = render(view)
+      assert html =~ "Future commit for study ahead"
+
+      # Rate first card — get the current card's item id from the assigns
+      first_card = view |> element(~s([data-testid="study-card"])) |> render()
+      first_id = Regex.run(~r/data-card-id="([^"]+)"/, first_card) |> List.last()
+
+      html = render_click(view, "rate_card", %{"id" => first_id, "importance" => "low"})
+
+      # Second card should appear
+      assert html =~ "Second future commit"
+      refute html =~ "Future commit for study ahead"
+
+      # Rate second card
+      second_card = view |> element(~s([data-testid="study-card"])) |> render()
+      second_id = Regex.run(~r/data-card-id="([^"]+)"/, second_card) |> List.last()
+
+      html = render_click(view, "rate_card", %{"id" => second_id, "importance" => "low"})
+
+      # Should be empty now
+      assert html =~ ~s(data-testid="study-queue-empty")
+      refute html =~ "Future commit for study ahead"
+      refute html =~ "Second future commit"
+    end
+  end
+
+  describe "study ahead — due-today regression" do
+    setup %{project: project} do
+      commit =
+        Ash.create!(Commit, %{
+          commit_hash: String.duplicate("d", 40),
+          subject: "Due today commit"
+        })
+
+      due_item =
+        Ash.create!(ReviewItem, %{
+          project_id: project.id,
+          target_kind: :commit_message,
+          commit_id: commit.id,
+          importance: :medium,
+          next_due_on: Date.utc_today()
+        })
+
+      %{due_item: due_item}
+    end
+
+    test "due-today item is removed after rating without study-ahead", %{due_item: due_item} do
+      {:ok, view, html} = live(build_conn(), "/")
+
+      assert html =~ "Due today commit"
+
+      html =
+        render_click(view, "rate_card", %{
+          "id" => due_item.id,
+          "importance" => "high"
+        })
+
+      refute html =~ "Due today commit"
+    end
   end
 
   describe "flashcard study queue" do
