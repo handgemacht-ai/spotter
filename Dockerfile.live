@@ -25,6 +25,7 @@ RUN mix local.hex --force && mix local.rebar --force
 
 COPY mix.exs mix.lock ./
 COPY config config
+COPY vendor/claude_agent_sdk/mix.exs vendor/claude_agent_sdk/mix.exs
 RUN mix deps.get
 
 COPY assets/package.json assets/package-lock.json ./assets/
