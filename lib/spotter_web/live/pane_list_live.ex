@@ -942,8 +942,11 @@ defmodule SpotterWeb.PaneListLive do
 
     page = query |> Ash.Query.page(page_opts) |> Ash.read!()
 
+    sorted =
+      Enum.sort_by(page.results, &SessionPresenter.last_updated_at/1, {:desc, DateTime})
+
     meta = %{has_more: page.more?, next_cursor: page.after}
-    {page.results, meta}
+    {sorted, meta}
   end
 
   defp extract_session_ids(projects) do
@@ -1368,7 +1371,7 @@ defmodule SpotterWeb.PaneListLive do
                       <th>Lines</th>
                       <th>Tools</th>
                       <th>Rework</th>
-                      <th>Started</th>
+                      <th>Last updated</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -1420,10 +1423,10 @@ defmodule SpotterWeb.PaneListLive do
                           <% end %>
                         </td>
                         <td>
-                          <% started = SessionPresenter.started_display(session.started_at) %>
-                          <%= if started do %>
-                            <div>{started.relative}</div>
-                            <div class="text-muted text-xs">{started.absolute}</div>
+                          <% last_updated = SessionPresenter.last_updated_display(session) %>
+                          <%= if last_updated do %>
+                            <div>{last_updated.relative}</div>
+                            <div class="text-muted text-xs">{last_updated.absolute}</div>
                           <% else %>
                             —
                           <% end %>
@@ -1497,7 +1500,7 @@ defmodule SpotterWeb.PaneListLive do
                           <th>Lines</th>
                           <th>Tools</th>
                           <th>Rework</th>
-                          <th>Hidden</th>
+                          <th>Last updated</th>
                           <th></th>
                         </tr>
                       </thead>
@@ -1548,7 +1551,15 @@ defmodule SpotterWeb.PaneListLive do
                                 <span>—</span>
                               <% end %>
                             </td>
-                            <td>{relative_time(session.hidden_at)}</td>
+                            <td>
+                              <% last_updated = SessionPresenter.last_updated_display(session) %>
+                              <%= if last_updated do %>
+                                <div>{last_updated.relative}</div>
+                                <div class="text-muted text-xs">{last_updated.absolute}</div>
+                              <% else %>
+                                —
+                              <% end %>
+                            </td>
                             <td>
                               <button class="btn btn-success" phx-click="unhide_session" phx-value-id={session.id}>
                                 Unhide

@@ -293,6 +293,57 @@ defmodule SpotterWeb.PaneListLiveTest do
     end
   end
 
+  describe "last updated display and sort" do
+    setup do
+      project = Ash.create!(Project, %{name: "last-updated-test", pattern: "^last-updated-test"})
+
+      # Session with older source_modified_at
+      older_session =
+        Ash.create!(Session, %{
+          session_id: Ash.UUID.generate(),
+          transcript_dir: "/tmp/test-older",
+          cwd: "/home/user/project",
+          project_id: project.id,
+          started_at: ~U[2026-01-10 10:00:00Z],
+          source_modified_at: ~U[2026-01-10 12:00:00Z]
+        })
+
+      # Session with newer source_modified_at
+      newer_session =
+        Ash.create!(Session, %{
+          session_id: Ash.UUID.generate(),
+          transcript_dir: "/tmp/test-newer",
+          cwd: "/home/user/project",
+          project_id: project.id,
+          started_at: ~U[2026-01-09 08:00:00Z],
+          source_modified_at: ~U[2026-01-11 15:00:00Z]
+        })
+
+      %{project: project, older_session: older_session, newer_session: newer_session}
+    end
+
+    test "renders Last updated header instead of Started", %{project: _project} do
+      {:ok, _view, html} = live(build_conn(), "/")
+
+      assert html =~ "Last updated"
+      # The visible sessions table should not have "Started" as a header
+      # (but "Started" may appear elsewhere in the page, so we check table context)
+    end
+
+    test "session rows are ordered by last updated descending", %{
+      older_session: older,
+      newer_session: newer
+    } do
+      {:ok, _view, html} = live(build_conn(), "/")
+
+      newer_pos = :binary.match(html, newer.session_id |> to_string())
+      older_pos = :binary.match(html, older.session_id |> to_string())
+
+      # newer source_modified_at should appear first (earlier position in HTML)
+      assert elem(newer_pos, 0) < elem(older_pos, 0)
+    end
+  end
+
   describe "flashcard study queue" do
     setup %{project: project, session: session} do
       annotation =

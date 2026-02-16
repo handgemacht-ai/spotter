@@ -169,4 +169,114 @@ defmodule Spotter.Transcripts.SessionPresenterTest do
       assert result.absolute == "2026-01-15 09:05"
     end
   end
+
+  describe "last_updated_at/1" do
+    test "prefers source_modified_at when all timestamps present" do
+      s =
+        session(
+          source_modified_at: ~U[2026-01-15 14:00:00Z],
+          ended_at: ~U[2026-01-15 13:00:00Z],
+          started_at: ~U[2026-01-15 12:00:00Z],
+          inserted_at: ~U[2026-01-15 11:00:00Z]
+        )
+
+      assert SessionPresenter.last_updated_at(s) == ~U[2026-01-15 14:00:00Z]
+    end
+
+    test "falls back to ended_at when source_modified_at is nil" do
+      s =
+        session(
+          source_modified_at: nil,
+          ended_at: ~U[2026-01-15 13:00:00Z],
+          started_at: ~U[2026-01-15 12:00:00Z],
+          inserted_at: ~U[2026-01-15 11:00:00Z]
+        )
+
+      assert SessionPresenter.last_updated_at(s) == ~U[2026-01-15 13:00:00Z]
+    end
+
+    test "falls back to started_at when source_modified_at and ended_at are nil" do
+      s =
+        session(
+          source_modified_at: nil,
+          ended_at: nil,
+          started_at: ~U[2026-01-15 12:00:00Z],
+          inserted_at: ~U[2026-01-15 11:00:00Z]
+        )
+
+      assert SessionPresenter.last_updated_at(s) == ~U[2026-01-15 12:00:00Z]
+    end
+
+    test "falls back to inserted_at when all others are nil" do
+      s =
+        session(
+          source_modified_at: nil,
+          ended_at: nil,
+          started_at: nil,
+          inserted_at: ~U[2026-01-15 11:00:00Z]
+        )
+
+      assert SessionPresenter.last_updated_at(s) == ~U[2026-01-15 11:00:00Z]
+    end
+
+    test "returns nil when all timestamps are nil" do
+      s =
+        session(
+          source_modified_at: nil,
+          ended_at: nil,
+          started_at: nil,
+          inserted_at: nil
+        )
+
+      assert SessionPresenter.last_updated_at(s) == nil
+    end
+  end
+
+  describe "last_updated_display/2" do
+    @now ~U[2026-01-15 12:00:00Z]
+
+    test "returns nil when all timestamps are nil" do
+      s =
+        session(
+          source_modified_at: nil,
+          ended_at: nil,
+          started_at: nil,
+          inserted_at: nil
+        )
+
+      assert SessionPresenter.last_updated_display(s, @now) == nil
+    end
+
+    test "returns relative and absolute for source_modified_at" do
+      s =
+        session(
+          source_modified_at: ~U[2026-01-15 11:55:00Z],
+          ended_at: nil,
+          started_at: nil,
+          inserted_at: nil
+        )
+
+      result = SessionPresenter.last_updated_display(s, @now)
+      assert result.relative == "5m ago"
+      assert result.absolute == "2026-01-15 11:55"
+    end
+
+    test "uses same formatting style as started_display" do
+      dt = ~U[2026-01-15 10:00:00Z]
+
+      s =
+        session(
+          source_modified_at: nil,
+          ended_at: nil,
+          started_at: dt,
+          inserted_at: nil
+        )
+
+      last_updated = SessionPresenter.last_updated_display(s, @now)
+      started = SessionPresenter.started_display(dt, @now)
+
+      assert last_updated.relative == started.relative
+      assert last_updated.absolute == started.absolute
+    end
+  end
 end

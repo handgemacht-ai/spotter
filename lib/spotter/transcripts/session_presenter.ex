@@ -29,6 +29,32 @@ defmodule Spotter.Transcripts.SessionPresenter do
   end
 
   @doc """
+  Returns the canonical "last updated" timestamp for a session.
+
+  Precedence: source_modified_at > ended_at > started_at > inserted_at.
+  Returns nil only when all four are nil.
+  """
+  def last_updated_at(session) do
+    session.source_modified_at ||
+      session.ended_at ||
+      session.started_at ||
+      session.inserted_at
+  end
+
+  @doc """
+  Returns `%{relative: String.t(), absolute: String.t()}` for the session's last-updated
+  timestamp, or nil if all timestamp fields are nil.
+
+  Accepts an optional `now` parameter for deterministic testing.
+  """
+  def last_updated_display(session, now \\ nil) do
+    case last_updated_at(session) do
+      nil -> nil
+      dt -> timestamp_display(dt, now)
+    end
+  end
+
+  @doc """
   Returns `%{relative: String.t(), absolute: String.t()}` for a started_at timestamp,
   or nil if the input is nil.
 
@@ -38,6 +64,10 @@ defmodule Spotter.Transcripts.SessionPresenter do
   def started_display(nil, _now), do: nil
 
   def started_display(dt, now) do
+    timestamp_display(dt, now)
+  end
+
+  defp timestamp_display(dt, now) do
     now = now || DateTime.utc_now()
     %{relative: relative_time(dt, now), absolute: format_absolute(dt)}
   end
