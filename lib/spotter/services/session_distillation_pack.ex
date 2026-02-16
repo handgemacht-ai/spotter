@@ -14,6 +14,7 @@ defmodule Spotter.Services.SessionDistillationPack do
   @default_char_budget 30_000
   @max_file_snapshots 50
   @max_errors 25
+  @max_tool_call_names 25
 
   @doc """
   Builds a distillation pack for the given session.
@@ -43,7 +44,6 @@ defmodule Spotter.Services.SessionDistillationPack do
       commits:
         Enum.map(commits, fn c ->
           %{
-            commit_hash: c.commit_hash,
             git_branch: c.git_branch,
             subject: c.subject,
             body: c.body,
@@ -51,6 +51,7 @@ defmodule Spotter.Services.SessionDistillationPack do
             committed_at: c.committed_at
           }
         end),
+      tool_calls: aggregate_tool_calls(tool_calls),
       stats: %{
         messages_total: session.message_count || 0,
         tool_calls_total: length(tool_calls),
@@ -66,6 +67,17 @@ defmodule Spotter.Services.SessionDistillationPack do
         end),
       transcript_slice: build_transcript_text(sliced_messages)
     }
+  end
+
+  defp aggregate_tool_calls(tool_calls) do
+    by_name =
+      tool_calls
+      |> Enum.frequencies_by(& &1.tool_name)
+      |> Enum.map(fn {name, count} -> %{"tool_name" => name, "count" => count} end)
+      |> Enum.sort_by(fn %{"count" => c, "tool_name" => n} -> {-c, n} end)
+      |> Enum.take(@max_tool_call_names)
+
+    %{total: length(tool_calls), by_name: by_name}
   end
 
   defp load_linked_commits(session) do

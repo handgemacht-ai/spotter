@@ -5,7 +5,7 @@ defmodule Spotter.Services.SessionDistillationPackTest do
   alias Spotter.Repo
 
   alias Spotter.Services.SessionDistillationPack
-  alias Spotter.Transcripts.{Commit, Message, Project, Session, SessionCommitLink}
+  alias Spotter.Transcripts.{Commit, Message, Project, Session, SessionCommitLink, ToolCall}
 
   setup do
     Sandbox.checkout(Repo)
@@ -57,7 +57,43 @@ defmodule Spotter.Services.SessionDistillationPackTest do
 
       pack = SessionDistillationPack.build(session)
       assert length(pack.commits) == 1
-      assert hd(pack.commits).commit_hash == "abc123"
+      assert hd(pack.commits).subject == "test commit"
+      refute Map.has_key?(hd(pack.commits), :commit_hash)
+    end
+
+    test "tool_calls aggregation with correct counts and ordering", %{session: session} do
+      for _ <- 1..3 do
+        Ash.create!(ToolCall, %{
+          session_id: session.id,
+          tool_name: "Read",
+          tool_use_id: Ash.UUID.generate()
+        })
+      end
+
+      for _ <- 1..5 do
+        Ash.create!(ToolCall, %{
+          session_id: session.id,
+          tool_name: "Bash",
+          tool_use_id: Ash.UUID.generate()
+        })
+      end
+
+      Ash.create!(ToolCall, %{
+        session_id: session.id,
+        tool_name: "Write",
+        tool_use_id: Ash.UUID.generate()
+      })
+
+      pack = SessionDistillationPack.build(session)
+
+      assert pack.tool_calls.total == 9
+
+      names = Enum.map(pack.tool_calls.by_name, & &1["tool_name"])
+      counts = Enum.map(pack.tool_calls.by_name, & &1["count"])
+
+      # Sorted by descending count, then ascending name
+      assert names == ["Bash", "Read", "Write"]
+      assert counts == [5, 3, 1]
     end
 
     test "slicing respects char budget and is deterministic", %{session: session} do

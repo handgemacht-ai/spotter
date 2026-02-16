@@ -12,9 +12,11 @@ defmodule Spotter.Services.SessionDistiller.ClaudeCode do
 
   @system_prompt """
   You are summarizing a completed Claude Code session for a developer activity log.
-  Given session metadata, linked commits, and a transcript slice, produce a JSON summary.
+  Given session metadata, tool calls, file snapshots, errors, commits, and a transcript slice, produce a JSON summary.
 
-  Keep each field concise. Omit empty arrays. Focus on committed work.
+  Keep each field concise. Omit empty arrays.
+  Focus on session activity (tool calls, file snapshots, errors, transcript slice).
+  Use commit information only as supporting context.
   """
 
   @json_schema %{
@@ -115,6 +117,12 @@ defmodule Spotter.Services.SessionDistiller.ClaudeCode do
     sections = [
       "## Session",
       Jason.encode!(pack.session, pretty: true),
+      "## Tool calls",
+      Jason.encode!(pack.tool_calls, pretty: true),
+      "## File snapshots",
+      Jason.encode!(pack.file_snapshots, pretty: true),
+      "## Errors",
+      Jason.encode!(pack.errors, pretty: true),
       "## Commits (#{length(pack.commits)})",
       Jason.encode!(pack.commits, pretty: true),
       "## Stats",

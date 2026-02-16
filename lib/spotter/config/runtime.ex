@@ -51,7 +51,9 @@ defmodule Spotter.Config.Runtime do
     "risks": ["potential issues or concerns"]
   }
 
-  Keep each field concise. Omit empty arrays. Focus on committed work.
+  Keep each field concise. Omit empty arrays.
+  Focus on session activity (tool calls, file snapshots, errors, transcript slice).
+  Use commit information only as supporting context.
   """
   @default_project_rollup_system_prompt """
   You are summarizing a project's activity over a time period for a developer activity log.
