@@ -7,6 +7,13 @@ defmodule Spotter.TestSpec.SchemaTest do
 
   @moduletag :live_dolt
 
+  describe "ensure_database!/0" do
+    test "is idempotent — can be called multiple times without error" do
+      assert :ok = Schema.ensure_database!()
+      assert :ok = Schema.ensure_database!()
+    end
+  end
+
   describe "ensure_schema!/0" do
     test "is idempotent — can be called multiple times without error" do
       assert :ok = Schema.ensure_schema!()

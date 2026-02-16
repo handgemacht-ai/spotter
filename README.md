@@ -176,7 +176,7 @@ Start the Dolt SQL-server:
 docker compose -f docker-compose.dolt.yml up -d
 ```
 
-The spec agent runs in-process using `claude_agent_sdk` (Elixir). The schema is created automatically on startup.
+The bootstrap SQL (`docker/dolt-init.sql`) creates both `spotter_product` and `spotter_tests` databases. The `scripts/start_spotter.sh` script also ensures both databases exist before starting the app. The schema is created automatically on startup.
 
 If Dolt is unavailable, the app boots normally — product spec features are simply inactive.
 
@@ -220,6 +220,17 @@ Spotter extracts structured test specifications from commits using Claude agents
 | `SPOTTER_TEST_SPEC_DOLT_PASSWORD` | `SPOTTER_DOLT_PASSWORD` | Test spec Dolt password |
 
 If Dolt is unavailable, the app boots normally — test spec features show a callout and disable data loading.
+
+The `spotter_tests` database is created automatically at two layers:
+1. **Bootstrap SQL** — `docker/dolt-init.sql` (and `install/bundle/dolt/dolt-init.sql`) provisions both databases on first Dolt startup.
+2. **Runtime self-heal** — `Schema.ensure_database!/0` creates the database via a direct MyXQL connection before table DDL runs. This handles cases where the bootstrap SQL was not applied (e.g. existing Dolt instance).
+
+### Troubleshooting
+
+If logs show repeated `database not found: spotter_tests` errors:
+1. Verify Dolt is reachable: `mysql -h127.0.0.1 -P13307 -uspotter -pspotter -e "SELECT 1"`
+2. Check env overrides: `SPOTTER_TEST_SPEC_DOLT_DATABASE` defaults to `spotter_tests`
+3. Restart the app — `ensure_database!/0` will auto-create the missing database
 
 ### Rollout checklist
 

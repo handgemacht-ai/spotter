@@ -10,6 +10,7 @@ COMPOSE_WAIT_TIMEOUT_SECONDS="${COMPOSE_WAIT_TIMEOUT_SECONDS:-30}"
 DOLT_HOST="${SPOTTER_DOLT_HOST:-127.0.0.1}"
 DOLT_HOST_PORT=13307
 DOLT_DATABASE="${SPOTTER_DOLT_DATABASE:-spotter_product}"
+TEST_SPEC_DOLT_DATABASE="${SPOTTER_TEST_SPEC_DOLT_DATABASE:-spotter_tests}"
 DOLT_USERNAME="${SPOTTER_DOLT_USERNAME:-spotter}"
 DOLT_PASSWORD="${SPOTTER_DOLT_PASSWORD:-spotter}"
 
@@ -86,7 +87,7 @@ docker compose "${compose_args[@]}" up -d
 echo "Starting Dolt SQL-server from ${COMPOSE_FILE} on ${DOLT_HOST}:${DOLT_HOST_PORT}..."
 
 for attempt in $(seq 1 "$COMPOSE_WAIT_TIMEOUT_SECONDS"); do
-  if mysql --protocol=TCP -h"${DOLT_HOST}" -P"${DOLT_HOST_PORT}" -u"${DOLT_USERNAME}" -p"${DOLT_PASSWORD}" -e "SELECT 1" "${DOLT_DATABASE}" >/dev/null 2>&1; then
+  if mysql --protocol=TCP -h"${DOLT_HOST}" -P"${DOLT_HOST_PORT}" -u"${DOLT_USERNAME}" -p"${DOLT_PASSWORD}" -e "SELECT 1" >/dev/null 2>&1; then
     echo "Dolt SQL-server is reachable."
     break
   fi
@@ -99,6 +100,15 @@ for attempt in $(seq 1 "$COMPOSE_WAIT_TIMEOUT_SECONDS"); do
 
   sleep 1
 done
+
+# Ensure both product and test databases exist
+mysql --protocol=TCP -h"${DOLT_HOST}" -P"${DOLT_HOST_PORT}" -u"${DOLT_USERNAME}" -p"${DOLT_PASSWORD}" \
+  -e "CREATE DATABASE IF NOT EXISTS \`${DOLT_DATABASE}\`" 2>/dev/null || true
+
+if [ "${TEST_SPEC_DOLT_DATABASE}" != "${DOLT_DATABASE}" ]; then
+  mysql --protocol=TCP -h"${DOLT_HOST}" -P"${DOLT_HOST_PORT}" -u"${DOLT_USERNAME}" -p"${DOLT_PASSWORD}" \
+    -e "CREATE DATABASE IF NOT EXISTS \`${TEST_SPEC_DOLT_DATABASE}\`" 2>/dev/null || true
+fi
 
 echo "Running mix phx.server..."
 exec mix phx.server

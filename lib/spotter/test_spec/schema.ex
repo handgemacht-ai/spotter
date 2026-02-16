@@ -7,21 +7,94 @@ defmodule Spotter.TestSpec.Schema do
   """
 
   require Logger
+  require OpenTelemetry.Tracer, as: Tracer
 
   alias Ecto.Adapters.SQL
   alias Spotter.TestSpec.Repo
+
+  @db_name_pattern ~r/\A[a-zA-Z0-9_]+\z/
+
+  @doc """
+  Ensures the configured Dolt database exists, creating it if necessary.
+
+  Uses a direct MyXQL connection (without selecting a database) to execute
+  `CREATE DATABASE IF NOT EXISTS`. Fails safely — logs warnings and returns
+  `:ok` on any error so startup is never blocked.
+  """
+  @spec ensure_database!() :: :ok
+  def ensure_database! do
+    Tracer.with_span "spotter.test_spec.schema.ensure_database" do
+      repo_config = Application.fetch_env!(:spotter, Spotter.TestSpec.Repo)
+      db_name = Keyword.fetch!(repo_config, :database)
+
+      Tracer.set_attribute("spotter.test_spec.database", db_name)
+
+      if Regex.match?(@db_name_pattern, db_name) do
+        do_ensure_database(repo_config, db_name)
+      else
+        Logger.warning("TestSpec DB bootstrap skipped: invalid database name #{inspect(db_name)}")
+
+        Tracer.set_attribute("spotter.test_spec.db_ensure_result", "skipped_invalid_name")
+        :ok
+      end
+    end
+  end
 
   @doc """
   Ensures the `test_specs` table exists in the Dolt database.
   """
   @spec ensure_schema!() :: :ok
   def ensure_schema! do
+    ensure_database!()
+
     case SQL.query(Repo, test_specs_ddl()) do
       {:ok, _} -> :ok
       {:error, %MyXQL.Error{message: msg}} -> Logger.debug("Schema DDL skipped: #{msg}")
     end
 
     :ok
+  end
+
+  defp do_ensure_database(repo_config, db_name) do
+    conn_opts = [
+      hostname: Keyword.get(repo_config, :hostname, "localhost"),
+      port: Keyword.get(repo_config, :port, 3306),
+      username: Keyword.get(repo_config, :username),
+      password: Keyword.get(repo_config, :password),
+      database: nil
+    ]
+
+    case MyXQL.start_link(conn_opts) do
+      {:ok, conn} ->
+        try do
+          case MyXQL.query(conn, "CREATE DATABASE IF NOT EXISTS `#{db_name}`") do
+            {:ok, _} ->
+              Tracer.set_attribute(
+                "spotter.test_spec.db_ensure_result",
+                "created_or_exists"
+              )
+
+              :ok
+
+            {:error, %MyXQL.Error{message: msg}} ->
+              Logger.warning("TestSpec DB bootstrap CREATE failed: #{msg}")
+              Tracer.set_attribute("spotter.test_spec.db_ensure_result", "skipped_error")
+              Tracer.set_status(:error, msg)
+              :ok
+          end
+        after
+          GenServer.stop(conn)
+        end
+
+      {:error, reason} ->
+        Logger.warning(
+          "TestSpec DB bootstrap connection failed for #{db_name}: #{inspect(reason)}"
+        )
+
+        Tracer.set_attribute("spotter.test_spec.db_ensure_result", "skipped_error")
+        Tracer.set_status(:error, inspect(reason))
+        :ok
+    end
   end
 
   defp test_specs_ddl do
