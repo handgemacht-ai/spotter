@@ -1,6 +1,8 @@
 defmodule Spotter.Services.SessionDistiller.ClaudeCodeTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
   alias Spotter.Services.SessionDistiller.ClaudeCode
 
   @tool_name "mcp__spotter-distill__record_session_distillation"
@@ -65,21 +67,34 @@ defmodule Spotter.Services.SessionDistiller.ClaudeCodeTest do
       assert result.raw_response_text == Jason.encode!(payload)
     end
 
-    test "missing tool result returns :no_distillation_tool_output" do
+    test "missing tool result returns :no_distillation_tool_output with diagnostics" do
       messages = [
         %{type: :system, data: %{}},
         %{type: :result, data: %{result: "done"}}
       ]
 
-      assert {:error, :no_distillation_tool_output} =
-               ClaudeCode.extract_distillation(messages, "test-model")
+      log =
+        capture_log(fn ->
+          assert {:error, :no_distillation_tool_output} =
+                   ClaudeCode.extract_distillation(messages, "test-model")
+        end)
+
+      assert log =~ "SessionDistiller: no_distillation_tool_output"
+      assert log =~ "expected_tool"
+      assert log =~ @tool_name
+      assert log =~ "test-model"
     end
 
-    test "wrong tool name is not matched" do
+    test "wrong tool name logs observed tools in diagnostics" do
       messages = make_messages_with_tool_result("wrong_tool", tool_result_json(valid_payload()))
 
-      assert {:error, :no_distillation_tool_output} =
-               ClaudeCode.extract_distillation(messages, "test-model")
+      log =
+        capture_log(fn ->
+          assert {:error, :no_distillation_tool_output} =
+                   ClaudeCode.extract_distillation(messages, "test-model")
+        end)
+
+      assert log =~ "wrong_tool"
     end
 
     test "validation failure returns :invalid_distillation_payload" do

@@ -145,6 +145,68 @@ defmodule Spotter.Observability.AgentRunScopeTest do
     end
   end
 
+  describe "resolve via $callers fallback" do
+    test "resolves scope when only $callers contains the registry pid" do
+      registry_pid = spawn(fn -> Process.sleep(:infinity) end)
+      scope = %{project_id: "proj-caller", agent_kind: "test_spec"}
+
+      AgentRunScope.put(registry_pid, scope)
+
+      task =
+        Task.async(fn ->
+          # Clear $ancestors so only $callers path can resolve
+          Process.put(:"$ancestors", [])
+          Process.put(:"$callers", [registry_pid])
+          AgentRunScope.resolve_for_current_process()
+        end)
+
+      assert {:ok, ^scope} = Task.await(task)
+
+      AgentRunScope.delete(registry_pid)
+      Process.exit(registry_pid, :kill)
+    end
+
+    test "ancestor precedence wins when both $ancestors and $callers could resolve" do
+      ancestor_pid = spawn(fn -> Process.sleep(:infinity) end)
+      caller_pid = spawn(fn -> Process.sleep(:infinity) end)
+      ancestor_scope = %{project_id: "from-ancestor", agent_kind: "product_spec"}
+      caller_scope = %{project_id: "from-caller", agent_kind: "test_spec"}
+
+      AgentRunScope.put(ancestor_pid, ancestor_scope)
+      AgentRunScope.put(caller_pid, caller_scope)
+
+      task =
+        Task.async(fn ->
+          Process.put(:"$ancestors", [ancestor_pid])
+          Process.put(:"$callers", [caller_pid])
+          AgentRunScope.resolve_for_current_process()
+        end)
+
+      assert {:ok, ^ancestor_scope} = Task.await(task)
+
+      AgentRunScope.delete(ancestor_pid)
+      AgentRunScope.delete(caller_pid)
+      Process.exit(ancestor_pid, :kill)
+      Process.exit(caller_pid, :kill)
+    end
+
+    test "returns {:error, :no_scope} when neither chain resolves" do
+      unrelated_pid = spawn(fn -> Process.sleep(:infinity) end)
+      # Don't put anything in ETS for unrelated_pid
+
+      task =
+        Task.async(fn ->
+          Process.put(:"$ancestors", [unrelated_pid])
+          Process.put(:"$callers", [unrelated_pid])
+          AgentRunScope.resolve_for_current_process()
+        end)
+
+      assert {:error, :no_scope} = Task.await(task)
+
+      Process.exit(unrelated_pid, :kill)
+    end
+  end
+
   describe "deterministic and fail-safe behavior" do
     test "put validates registry_pid is a pid" do
       assert_raise FunctionClauseError, fn ->

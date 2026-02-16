@@ -14,6 +14,16 @@ defmodule Spotter.Observability.AgentRunScope do
   fallback, preventing cross-project scope leakage under concurrent
   agent runs.
 
+  ## Why both `$ancestors` and `$callers`?
+
+  `$ancestors` is set by OTP for linked/supervised processes and covers
+  the normal `Task.async`/`Task.Supervisor.async` paths. However, the
+  Claude Agent SDK dispatches `tools/call` requests through
+  `TaskSupervisor` tasks that may not share `$ancestors` with the
+  runner process. In these async dispatch paths, `$callers` (set by
+  `Task` for every spawned task) preserves the caller chain back to the
+  agent runner, allowing scope resolution without a global ETS scan.
+
   ## Usage
 
   Runners call `put/2` after creating the MCP server and `delete/1`

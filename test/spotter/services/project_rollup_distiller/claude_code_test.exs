@@ -1,6 +1,8 @@
 defmodule Spotter.Services.ProjectRollupDistiller.ClaudeCodeTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
   alias Spotter.Services.ProjectRollupDistiller.ClaudeCode
 
   @tool_name "mcp__spotter-distill__record_project_rollup_distillation"
@@ -55,14 +57,22 @@ defmodule Spotter.Services.ProjectRollupDistiller.ClaudeCodeTest do
       assert result.raw_response_text == Jason.encode!(payload)
     end
 
-    test "missing tool result returns :no_distillation_tool_output" do
+    test "missing tool result returns :no_distillation_tool_output with diagnostics" do
       messages = [
         %{type: :system, data: %{}},
         %{type: :result, data: %{result: "done"}}
       ]
 
-      assert {:error, :no_distillation_tool_output} =
-               ClaudeCode.extract_distillation(messages, "test-model")
+      log =
+        capture_log(fn ->
+          assert {:error, :no_distillation_tool_output} =
+                   ClaudeCode.extract_distillation(messages, "test-model")
+        end)
+
+      assert log =~ "ProjectRollupDistiller: no_distillation_tool_output"
+      assert log =~ "expected_tool"
+      assert log =~ @tool_name
+      assert log =~ "test-model"
     end
 
     test "wrong kind returns :invalid_distillation_payload" do

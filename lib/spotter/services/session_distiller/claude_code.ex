@@ -89,6 +89,7 @@ defmodule Spotter.Services.SessionDistiller.ClaudeCode do
   def extract_distillation(messages, model_used) do
     case extract_last_tool_result(messages, @tool_name) do
       nil ->
+        log_missing_tool_diagnostics(messages, @tool_name, model_used)
         {:error, :no_distillation_tool_output}
 
       raw_json ->
@@ -247,6 +248,28 @@ defmodule Spotter.Services.SessionDistiller.ClaudeCode do
   end
 
   defp extract_assistant_tool_uses(_), do: []
+
+  defp log_missing_tool_diagnostics(messages, expected_tool, model_used) do
+    tool_results = Enum.flat_map(messages, &extract_tool_results/1)
+    tool_use_count = count_tool_calls(messages)
+    observed_names = tool_results |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
+
+    diag = %{
+      expected_tool: expected_tool,
+      model_used: model_used,
+      assistant_tool_use_count: tool_use_count,
+      tool_result_count: length(tool_results),
+      observed_tool_names: observed_names
+    }
+
+    Logger.warning("SessionDistiller: no_distillation_tool_output — #{inspect(diag)}")
+
+    Tracer.set_attribute("spotter.distill.expected_tool", expected_tool)
+    Tracer.set_attribute("spotter.distill.tool_use_count", tool_use_count)
+    Tracer.set_attribute("spotter.distill.tool_result_count", length(tool_results))
+    Tracer.set_attribute("spotter.distill.observed_tools", Enum.join(observed_names, ","))
+    Tracer.set_status(:error, "no_distillation_tool_output")
+  end
 
   defp configured_model do
     System.get_env("SPOTTER_SESSION_DISTILL_MODEL") || @default_model
