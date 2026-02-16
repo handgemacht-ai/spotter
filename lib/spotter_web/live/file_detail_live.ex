@@ -20,7 +20,8 @@ defmodule SpotterWeb.FileDetailLive do
         selected_text: nil,
         selection_line_start: nil,
         selection_line_end: nil,
-        explain_streams: %{}
+        explain_streams: %{},
+        active_sidebar_tab: :annotations
       )
       |> mount_computers(%{
         file_detail: %{project_id: project_id, relative_path: relative_path}
@@ -66,13 +67,28 @@ defmodule SpotterWeb.FileDetailLive do
     {:noreply, update_computer_inputs(socket, :file_detail, %{view_mode: view_mode})}
   end
 
+  def handle_event("switch_sidebar_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, active_sidebar_tab: String.to_existing_atom(tab))}
+  end
+
   def handle_event("file_text_selected", params, socket) do
-    {:noreply,
-     assign(socket,
-       selected_text: params["text"],
-       selection_line_start: params["line_start"],
-       selection_line_end: params["line_end"]
-     )}
+    socket =
+      assign(socket,
+        selected_text: params["text"],
+        selection_line_start: params["line_start"],
+        selection_line_end: params["line_end"]
+      )
+
+    socket =
+      if socket.assigns.active_sidebar_tab != :annotations do
+        socket
+        |> assign(active_sidebar_tab: :annotations)
+        |> push_event("annotations_attention", %{})
+      else
+        socket
+      end
+
+    {:noreply, socket}
   end
 
   def handle_event("clear_selection", _params, socket) do
@@ -88,13 +104,19 @@ defmodule SpotterWeb.FileDetailLive do
     comment = params["comment"] || ""
     purpose = if params["purpose"] == "explain", do: :explain, else: :review
     session_id = find_session_id(socket)
+    line_start = parse_line(socket.assigns.selection_line_start, 1)
+    line_end = parse_line(socket.assigns.selection_line_end, line_start)
 
     create_params = %{
       session_id: session_id,
+      project_id: socket.assigns.file_detail_project_id,
       source: :file,
       selected_text: socket.assigns.selected_text,
       comment: comment,
-      purpose: purpose
+      purpose: purpose,
+      relative_path: socket.assigns.file_detail_relative_path,
+      line_start: line_start,
+      line_end: line_end
     }
 
     case Ash.create(Annotation, create_params) do
@@ -179,8 +201,21 @@ defmodule SpotterWeb.FileDetailLive do
 
   defp find_session_id(socket) do
     case socket.assigns.file_detail_linked_sessions do
-      [first | _] -> first.session.id
-      _ -> nil
+      [first | _] ->
+        first.session.id
+
+      _ ->
+        # Fallback: use most recent session in the project
+        project_id = socket.assigns.file_detail_project_id
+
+        case Spotter.Transcripts.Session
+             |> Ash.Query.filter_input(project_id: project_id)
+             |> Ash.Query.sort(inserted_at: :desc)
+             |> Ash.Query.limit(1)
+             |> Ash.read() do
+          {:ok, [session | _]} -> session.id
+          _ -> nil
+        end
     end
   end
 
@@ -467,7 +502,7 @@ defmodule SpotterWeb.FileDetailLive do
                     phx-hook="FileHighlighter"
                   >
                     <div class="blame-lines">
-                      <div :for={row <- @file_detail_blame_rows} class={"blame-line blame-session-band--#{row.session_band}"}>
+                      <div :for={row <- @file_detail_blame_rows} class={"blame-line blame-session-band--#{row.session_band}"} data-line-no={row.line_no}>
                         <div class="blame-gutter">
                           <a
                             :if={row.commit_id}
@@ -532,12 +567,104 @@ defmodule SpotterWeb.FileDetailLive do
                 <% end %>
               <% end %>
 
-              <%= unless @file_detail_is_directory do %>
-                <%!-- Commits touching this file --%>
-                <div :if={@file_detail_commit_rows != []} class="file-detail-commits">
-                  <div class="file-detail-section-title">
-                    Commits ({length(@file_detail_commit_rows)})
+          </div>
+
+          <%!-- RHS Tabbed Sidebar --%>
+          <div class="file-detail-sidebar" data-testid="file-sidebar">
+            <%= if @file_detail_is_directory do %>
+              <div class="sidebar-tab-content">
+                <div class="file-detail-section-title mb-2">Folder mode</div>
+                <p class="text-muted text-sm">
+                  Open a file to view blame, commits, and linked sessions.
+                </p>
+              </div>
+            <% else %>
+              <div class="sidebar-tabs">
+                <button
+                  id="sidebar-tab-annotations"
+                  class={"sidebar-tab#{if @active_sidebar_tab == :annotations, do: " is-active"}"}
+                  phx-click="switch_sidebar_tab"
+                  phx-value-tab="annotations"
+                >
+                  Annotations ({length(@file_detail_annotation_rows)})
+                </button>
+                <button
+                  class={"sidebar-tab#{if @active_sidebar_tab == :sessions, do: " is-active"}"}
+                  phx-click="switch_sidebar_tab"
+                  phx-value-tab="sessions"
+                >
+                  Sessions ({length(@file_detail_linked_sessions)})
+                </button>
+                <button
+                  class={"sidebar-tab#{if @active_sidebar_tab == :commits, do: " is-active"}"}
+                  phx-click="switch_sidebar_tab"
+                  phx-value-tab="commits"
+                >
+                  Commits ({length(@file_detail_commit_rows)})
+                </button>
+              </div>
+
+              <%!-- Annotations tab --%>
+              <div :if={@active_sidebar_tab == :annotations} class="sidebar-tab-content" data-testid="file-annotations">
+                <%= if @selected_text do %>
+                  <.annotation_editor
+                    selected_text={@selected_text}
+                    selection_label={selection_label(:file, [])}
+                    save_event="save_annotation"
+                    clear_event="clear_selection"
+                  />
+                <% end %>
+
+                <.annotation_cards
+                  annotations={@file_detail_annotation_rows}
+                  explain_streams={@explain_streams}
+                  highlight_event="highlight_annotation"
+                  delete_event="delete_annotation"
+                />
+              </div>
+
+              <%!-- Sessions tab --%>
+              <div :if={@active_sidebar_tab == :sessions} class="sidebar-tab-content">
+                <%= if @file_detail_linked_sessions == [] do %>
+                  <p class="text-muted text-sm">No linked sessions.</p>
+                <% else %>
+                  <div class="file-detail-session-list">
+                    <button
+                      :for={entry <- @file_detail_linked_sessions}
+                      phx-click="select_session"
+                      phx-value-session-id={entry.session.id}
+                      class={"file-detail-session-btn#{if @file_detail_selected_session_id == entry.session.id, do: " is-active"}"}
+                    >
+                      <span class="file-detail-session-name">
+                        {session_label(entry.session)}
+                      </span>
+                      <span :for={lt <- entry.link_types} class={badge_class(lt)}>
+                        {badge_text(lt, entry.max_confidence)}
+                      </span>
+                    </button>
                   </div>
+
+                  <%= if @file_detail_selected_session_id do %>
+                    <div class="mt-3">
+                      <.transcript_panel
+                        rendered_lines={@file_detail_transcript_rendered_lines}
+                        panel_id="file-transcript-messages"
+                        empty_message="No transcript available for this session."
+                      />
+                    </div>
+                  <% else %>
+                    <p class="text-muted text-sm mt-3">
+                      Select a session to view its transcript.
+                    </p>
+                  <% end %>
+                <% end %>
+              </div>
+
+              <%!-- Commits tab --%>
+              <div :if={@active_sidebar_tab == :commits} class="sidebar-tab-content">
+                <%= if @file_detail_commit_rows == [] do %>
+                  <p class="text-muted text-sm">No commits for this file.</p>
+                <% else %>
                   <div :for={row <- @file_detail_commit_rows} class="file-detail-commit-row">
                     <a
                       href={"/history/commits/#{row.commit.id}"}
@@ -555,76 +682,8 @@ defmodule SpotterWeb.FileDetailLive do
                       {format_timestamp(row.commit.committed_at || row.commit.inserted_at)}
                     </span>
                   </div>
-                </div>
-
-                <%!-- Annotations --%>
-                <div class="file-detail-annotations" data-testid="file-annotations">
-                  <div class="file-detail-section-title">Annotations</div>
-
-                  <%= if @selected_text do %>
-                    <.annotation_editor
-                      selected_text={@selected_text}
-                      selection_label={selection_label(:file, [])}
-                      save_event="save_annotation"
-                      clear_event="clear_selection"
-                    />
-                  <% end %>
-
-                  <.annotation_cards
-                    annotations={@file_detail_annotation_rows}
-                    explain_streams={@explain_streams}
-                    highlight_event="highlight_annotation"
-                    delete_event="delete_annotation"
-                  />
-                </div>
-              <% end %>
-          </div>
-
-          <%!-- Transcript panel --%>
-          <div class="file-detail-transcript" data-testid="transcript-panel">
-            <%= if @file_detail_is_directory do %>
-              <div class="file-detail-section-title mb-2">Folder mode</div>
-              <p class="text-muted text-sm">
-                Open a file to view blame, commits, and linked sessions.
-              </p>
-            <% else %>
-              <div class="file-detail-section-title mb-2">
-                Linked Sessions ({length(@file_detail_linked_sessions)})
-              </div>
-
-              <%= if @file_detail_linked_sessions == [] do %>
-                <p class="text-muted text-sm">No linked sessions.</p>
-              <% else %>
-                <div class="file-detail-session-list">
-                  <button
-                    :for={entry <- @file_detail_linked_sessions}
-                    phx-click="select_session"
-                    phx-value-session-id={entry.session.id}
-                    class={"file-detail-session-btn#{if @file_detail_selected_session_id == entry.session.id, do: " is-active"}"}
-                  >
-                    <span class="file-detail-session-name">
-                      {session_label(entry.session)}
-                    </span>
-                    <span :for={lt <- entry.link_types} class={badge_class(lt)}>
-                      {badge_text(lt, entry.max_confidence)}
-                    </span>
-                  </button>
-                </div>
-
-                <%= if @file_detail_selected_session_id do %>
-                  <div class="mt-3">
-                    <.transcript_panel
-                      rendered_lines={@file_detail_transcript_rendered_lines}
-                      panel_id="file-transcript-messages"
-                      empty_message="No transcript available for this session."
-                    />
-                  </div>
-                <% else %>
-                  <p class="text-muted text-sm mt-3">
-                    Select a session to view its transcript.
-                  </p>
                 <% end %>
-              <% end %>
+              </div>
             <% end %>
           </div>
         </div>

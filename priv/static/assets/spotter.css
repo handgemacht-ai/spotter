@@ -1736,11 +1736,13 @@ input::placeholder, textarea::placeholder {
   padding-right: 1rem;
 }
 
-.file-detail-transcript {
+.file-detail-sidebar {
   flex: 1;
+  background: var(--surface-1);
   overflow-y: auto;
   border-left: 1px solid var(--border-default);
-  padding-left: 1rem;
+  display: flex;
+  flex-direction: column;
 }
 
 .file-detail-header {
@@ -1981,6 +1983,12 @@ input::placeholder, textarea::placeholder {
   background: transparent;
 }
 
+.file-detail-blame .blame-line.is-jump-highlight {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: -1px;
+  background: color-mix(in srgb, var(--accent-blue) 12%, transparent) !important;
+}
+
 .file-detail-section-title {
   font-size: 0.85rem;
   font-weight: 600;
@@ -2011,7 +2019,7 @@ input::placeholder, textarea::placeholder {
 }
 
 .file-detail-annotations {
-  margin-top: 1.5rem;
+  margin-top: 0;
 }
 
 .file-detail-session-list {

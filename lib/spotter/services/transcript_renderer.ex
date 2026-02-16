@@ -1166,10 +1166,6 @@ defmodule Spotter.Services.TranscriptRenderer do
   @numbered_line_pattern ~r/^\s*\d+→/
   @numbered_line_capture ~r/^\s*(\d+)→\s?(.*)$/u
 
-  defp classify_result_line(line, inferred_lang) do
-    classify_result_line(line, inferred_lang, false)
-  end
-
   defp classify_result_line(_line, inferred_lang, true) do
     {:code, inferred_lang || "plaintext"}
   end
@@ -1247,8 +1243,10 @@ defmodule Spotter.Services.TranscriptRenderer do
     case Map.get(index, tool_use_id) do
       %{name: "Read", input: %{"file_path" => path}} when is_binary(path) ->
         language_from_extension(path)
+
       %{name: "Write", input: %{"file_path" => path}} when is_binary(path) ->
         language_from_extension(path)
+
       %{name: "Edit", input: %{"file_path" => path}} when is_binary(path) ->
         language_from_extension(path)
 

@@ -202,7 +202,7 @@ Hooks.TranscriptHighlighter = {
       const tick = (remaining) => {
         pulseClass(document.getElementById("sidebar-tab-annotations"), "is-attention", 550)
 
-        const sidebar = document.querySelector(".session-sidebar")
+        const sidebar = document.querySelector(".session-sidebar, .file-detail-sidebar")
         if (!sidebar) return
 
         const editor = sidebar.querySelector(".annotation-form")
@@ -326,8 +326,16 @@ Hooks.TranscriptHighlighter = {
 }
 
 Hooks.FileHighlighter = {
-  mounted() { this._highlight() },
+  mounted() {
+    this._highlight()
+    this._setupSelection()
+    this._setupHighlightEvent()
+  },
   updated() { this._highlight() },
+  destroyed() {
+    if (this._onMouseUp) this.el.removeEventListener("mouseup", this._onMouseUp)
+    if (this._onKeyUp) this.el.removeEventListener("keyup", this._onKeyUp)
+  },
   _highlight() {
     const blocks = this.el.querySelectorAll("pre code")
     for (const block of blocks) {
@@ -335,6 +343,117 @@ Hooks.FileHighlighter = {
       hljs.highlightElement(block)
       block.dataset.hljs = "done"
     }
+  },
+  _setupSelection() {
+    const pushSelection = () => {
+      try {
+        const selection = window.getSelection()
+        if (!selection || selection.isCollapsed || !selection.rangeCount) {
+          this.pushEvent("clear_selection", {})
+          return
+        }
+
+        const text = selection.toString()
+        if (!text || !text.trim()) {
+          this.pushEvent("clear_selection", {})
+          return
+        }
+
+        const range = selection.getRangeAt(0)
+        // Check selection is inside this hook element
+        if (!this.el.contains(range.startContainer) && !this.el.contains(range.endContainer)) {
+          this.pushEvent("clear_selection", {})
+          return
+        }
+
+        let lineStart, lineEnd
+
+        // Blame mode: use data-line-no on .blame-line elements
+        const blameLines = this.el.querySelectorAll(".blame-line[data-line-no]")
+        if (blameLines.length > 0) {
+          const intersecting = []
+          blameLines.forEach((el) => {
+            if (range.intersectsNode(el)) {
+              const n = parseInt(el.getAttribute("data-line-no"), 10)
+              if (!isNaN(n)) intersecting.push(n)
+            }
+          })
+          if (intersecting.length > 0) {
+            lineStart = Math.min(...intersecting)
+            lineEnd = Math.max(...intersecting)
+          } else {
+            lineStart = 1
+            lineEnd = 1
+          }
+        } else {
+          // Raw mode: compute line numbers from text offsets
+          const codeEl = this.el.querySelector("pre code")
+          if (codeEl) {
+            const preRange = document.createRange()
+            preRange.setStart(codeEl, 0)
+            preRange.setEnd(range.startContainer, range.startOffset)
+            const startLine = 1 + (preRange.toString().match(/\n/g) || []).length
+
+            const endRange = document.createRange()
+            endRange.setStart(codeEl, 0)
+            endRange.setEnd(range.endContainer, range.endOffset)
+            const endLine = 1 + (endRange.toString().match(/\n/g) || []).length
+
+            lineStart = Math.min(startLine, endLine)
+            lineEnd = Math.max(startLine, endLine)
+          } else {
+            lineStart = 1
+            lineEnd = 1
+          }
+        }
+
+        this.pushEvent("file_text_selected", {
+          text: text.trim(),
+          line_start: lineStart,
+          line_end: lineEnd,
+        })
+      } catch (_e) {
+        // Fail-safe: never throw from selection capture
+      }
+    }
+
+    this._onMouseUp = () => pushSelection()
+    this._onKeyUp = (e) => { if (e.shiftKey) pushSelection() }
+    this.el.addEventListener("mouseup", this._onMouseUp)
+    this.el.addEventListener("keyup", this._onKeyUp)
+  },
+  _setupHighlightEvent() {
+    this.handleEvent("highlight_file_lines", ({ line_start, line_end }) => {
+      try {
+        // Blame mode: highlight matching .blame-line elements
+        const blameLines = this.el.querySelectorAll(".blame-line[data-line-no]")
+        if (blameLines.length > 0) {
+          const targets = []
+          blameLines.forEach((el) => {
+            const n = parseInt(el.getAttribute("data-line-no"), 10)
+            if (n >= line_start && n <= line_end) targets.push(el)
+          })
+          if (targets.length > 0) {
+            targets[0].scrollIntoView({ behavior: "smooth", block: "center" })
+            targets.forEach((el) => {
+              el.classList.add("is-jump-highlight")
+              setTimeout(() => el.classList.remove("is-jump-highlight"), 2000)
+            })
+          }
+        } else {
+          // Raw mode: best-effort proportional scroll
+          const pre = this.el.querySelector("pre")
+          if (pre) {
+            const codeEl = pre.querySelector("code")
+            const totalLines = codeEl ? (codeEl.textContent.match(/\n/g) || []).length + 1 : 1
+            const ratio = Math.max(0, (line_start - 1)) / totalLines
+            pre.scrollTop = ratio * pre.scrollHeight
+          }
+        }
+      } catch (_e) {
+        // Fail-safe
+      }
+    })
   },
 }
 

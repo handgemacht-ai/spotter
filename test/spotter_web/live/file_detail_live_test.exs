@@ -7,6 +7,8 @@ defmodule SpotterWeb.FileDetailLiveTest do
   alias Ecto.Adapters.SQL.Sandbox
 
   alias Spotter.Transcripts.{
+    Annotation,
+    AnnotationFileRef,
     Commit,
     CommitFile,
     Project,
@@ -65,18 +67,22 @@ defmodule SpotterWeb.FileDetailLiveTest do
     end
 
     test "renders commits for file", %{project: project} do
-      {:ok, _view, html} =
+      {:ok, view, _html} =
         live(build_conn(), "/projects/#{project.id}/files/lib/foo.ex")
+
+      html = view |> element(~s(button[phx-value-tab="commits"])) |> render_click()
 
       assert html =~ String.duplicate("c", 8)
       assert html =~ "modified"
     end
 
     test "renders linked sessions", %{project: project} do
-      {:ok, _view, html} =
+      {:ok, view, _html} =
         live(build_conn(), "/projects/#{project.id}/files/lib/foo.ex")
 
-      assert html =~ "Linked Sessions"
+      html = view |> element(~s(button[phx-value-tab="sessions"])) |> render_click()
+
+      assert html =~ "Sessions"
       assert html =~ "Verified"
     end
 
@@ -128,6 +134,83 @@ defmodule SpotterWeb.FileDetailLiveTest do
 
       # In raw mode, either file content or file error is shown
       assert html =~ ~s(data-testid="file-content") or html =~ ~s(data-testid="file-error")
+    end
+
+    test "selecting file text switches to annotations tab", %{project: project} do
+      {:ok, view, _html} =
+        live(build_conn(), "/projects/#{project.id}/files/lib/foo.ex")
+
+      # Switch away from annotations tab
+      view |> element(~s(button[phx-value-tab="commits"])) |> render_click()
+
+      # Simulate file text selection
+      html =
+        render_hook(view, "file_text_selected", %{
+          "text" => "def hello",
+          "line_start" => 2,
+          "line_end" => 4
+        })
+
+      # Annotations tab should be active with the editor visible
+      assert html =~ "annotation-form"
+      assert html =~ ~s(sidebar-tab is-active)
+      assert html =~ "Annotations"
+    end
+
+    test "saving a file annotation persists line metadata", %{project: project} do
+      {:ok, view, _html} =
+        live(build_conn(), "/projects/#{project.id}/files/lib/foo.ex")
+
+      # Set selection
+      render_hook(view, "file_text_selected", %{
+        "text" => "selected code",
+        "line_start" => 2,
+        "line_end" => 4
+      })
+
+      # Save annotation
+      render_click(view, "save_annotation", %{
+        "comment" => "review note",
+        "purpose" => "review"
+      })
+
+      # Verify annotation was created with line metadata
+      [annotation] = Ash.read!(Annotation)
+      assert annotation.source == :file
+      assert annotation.relative_path == "lib/foo.ex"
+      assert annotation.line_start == 2
+      assert annotation.line_end == 4
+      assert annotation.selected_text == "selected code"
+
+      # Verify file ref was also created
+      [ref] = Ash.read!(AnnotationFileRef)
+      assert ref.annotation_id == annotation.id
+      assert ref.relative_path == "lib/foo.ex"
+      assert ref.line_start == 2
+      assert ref.line_end == 4
+    end
+
+    test "session_id fallback when no linked sessions", %{project: project} do
+      # Use a path with no CommitFile rows (so no linked sessions)
+      {:ok, view, _html} =
+        live(build_conn(), "/projects/#{project.id}/files/lib/unlinked.ex")
+
+      # Set selection and save annotation
+      render_hook(view, "file_text_selected", %{
+        "text" => "some code",
+        "line_start" => 1,
+        "line_end" => 1
+      })
+
+      render_click(view, "save_annotation", %{
+        "comment" => "orphan note",
+        "purpose" => "review"
+      })
+
+      # Should still create annotation with a session_id (fallback to project session)
+      [annotation] = Ash.read!(Annotation)
+      assert annotation.session_id != nil
+      assert annotation.relative_path == "lib/unlinked.ex"
     end
   end
 end
