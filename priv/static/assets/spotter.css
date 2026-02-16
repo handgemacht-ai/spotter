@@ -685,6 +685,47 @@ input::placeholder, textarea::placeholder {
   font-size: var(--text-xs);
 }
 
+/* --- History delta summary --- */
+.history-delta-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+  margin-left: var(--space-6);
+  font-size: var(--text-xs);
+}
+
+.delta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+}
+
+.delta-label {
+  color: var(--text-tertiary);
+  margin-right: var(--space-1);
+}
+
+.delta-added {
+  color: var(--accent-green);
+}
+
+.delta-changed {
+  color: var(--accent-amber);
+}
+
+.delta-removed {
+  color: var(--accent-red);
+}
+
+.delta-unavailable {
+  color: var(--text-tertiary);
+}
+
 /* --- Flash messages --- */
 .flash-info {
   background: rgba(74, 200, 154, 0.1);
