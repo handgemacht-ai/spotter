@@ -201,6 +201,30 @@ defmodule Spotter.Observability.ObanTelemetryTest do
       assert "session:s2" in event.flow_keys
       assert "project:p1" in event.flow_keys
     end
+
+    test "derives agent_run key from run_id in job args" do
+      Phoenix.PubSub.subscribe(Spotter.PubSub, FlowHub.global_topic())
+
+      job =
+        fake_job(%{
+          args: %{
+            "project_id" => "p1",
+            "commit_hash" => "abc123",
+            "run_id" => "run-oban-test"
+          }
+        })
+
+      :telemetry.execute(
+        [:oban, :job, :start],
+        %{system_time: System.system_time()},
+        %{job: job, conf: %{}}
+      )
+
+      assert_receive {:flow_event, %FlowEvent{} = event}, 1000
+      assert "agent_run:run-oban-test" in event.flow_keys
+      assert "project:p1" in event.flow_keys
+      assert "commit:abc123" in event.flow_keys
+    end
   end
 
   describe "trace context propagation" do

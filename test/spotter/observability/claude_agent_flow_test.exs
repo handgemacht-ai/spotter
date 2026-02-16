@@ -146,6 +146,83 @@ defmodule Spotter.Observability.ClaudeAgentFlowTest do
       assert "commit:abc" in event.flow_keys
     end
 
+    test "accepts explicit traceparent option" do
+      Phoenix.PubSub.subscribe(Spotter.PubSub, FlowHub.global_topic())
+
+      explicit_tp = "00-aaaa0000000000000000000000000001-bbbb000000000001-01"
+
+      []
+      |> ClaudeAgentFlow.wrap_stream(
+        run_id: "test-tp-explicit",
+        traceparent: explicit_tp
+      )
+      |> Enum.to_list()
+
+      assert_receive {:flow_event, %FlowEvent{kind: "agent.run.start"} = event}, 1000
+      assert event.traceparent == explicit_tp
+
+      assert_receive {:flow_event, %FlowEvent{kind: "agent.run.stop"} = event}, 1000
+      assert event.traceparent == explicit_tp
+    end
+
+    test "traceparent propagates to delta and tool events" do
+      Phoenix.PubSub.subscribe(Spotter.PubSub, FlowHub.global_topic())
+
+      explicit_tp = "00-cccc0000000000000000000000000002-dddd000000000002-01"
+
+      tool_event = %{
+        type: :stream_event,
+        data: %{
+          event: %{
+            "type" => "content_block_start",
+            "content_block" => %{
+              "type" => "tool_use",
+              "name" => "mcp__spec-tools__features_search",
+              "id" => "tool-tp"
+            }
+          }
+        }
+      }
+
+      delta_event = %{
+        type: :stream_event,
+        data: %{
+          event: %{
+            "type" => "content_block_delta",
+            "delta" => %{"type" => "text_delta", "text" => "traced output"}
+          }
+        }
+      }
+
+      [delta_event, tool_event]
+      |> ClaudeAgentFlow.wrap_stream(
+        run_id: "test-tp-all",
+        traceparent: explicit_tp
+      )
+      |> Enum.to_list()
+
+      assert_receive {:flow_event, %FlowEvent{kind: "agent.output.delta"} = event}, 1000
+      assert event.traceparent == explicit_tp
+
+      assert_receive {:flow_event, %FlowEvent{kind: "agent.tool.start"} = event}, 1000
+      assert event.traceparent == explicit_tp
+    end
+
+    test "generates run_id when nil is passed" do
+      Phoenix.PubSub.subscribe(Spotter.PubSub, FlowHub.global_topic())
+
+      []
+      |> ClaudeAgentFlow.wrap_stream(run_id: nil)
+      |> Enum.to_list()
+
+      assert_receive {:flow_event, %FlowEvent{kind: "agent.run.start"} = event}, 1000
+
+      assert "agent_run:" <> run_id =
+               Enum.find(event.flow_keys, &String.starts_with?(&1, "agent_run:"))
+
+      assert String.starts_with?(run_id, "run-")
+    end
+
     test "caps tool events at 200" do
       Phoenix.PubSub.subscribe(Spotter.PubSub, FlowHub.global_topic())
 

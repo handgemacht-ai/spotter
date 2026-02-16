@@ -142,6 +142,43 @@ defmodule Spotter.Services.CommitHotspotAgentTest do
     end
   end
 
+  describe "run/2 input normalization" do
+    test "returns error for missing required keys" do
+      assert {:error, {:invalid_input, keys}} = CommitHotspotAgent.run(%{project_id: "p1"})
+      assert :commit_hash in keys
+    end
+
+    test "returns error for empty string required keys" do
+      assert {:error, {:invalid_input, _}} =
+               CommitHotspotAgent.run(%{
+                 project_id: "",
+                 commit_hash: "abc",
+                 commit_subject: "s",
+                 diff_stats: %{},
+                 patch_files: [],
+                 git_cwd: "/tmp"
+               })
+    end
+
+    test "string-key input passes normalization" do
+      alias Spotter.Observability.AgentRunInput
+
+      input = %{
+        "project_id" => "p1",
+        "commit_hash" => String.duplicate("a", 40),
+        "commit_subject" => "test",
+        "diff_stats" => %{},
+        "patch_files" => [],
+        "git_cwd" => "/nonexistent"
+      }
+
+      required = ~w(project_id commit_hash commit_subject diff_stats patch_files git_cwd)a
+      assert {:ok, normalized} = AgentRunInput.normalize(input, required, [:run_id])
+      assert normalized.project_id == "p1"
+      assert normalized.commit_hash == String.duplicate("a", 40)
+    end
+  end
+
   describe "parse_main_response/1 shape hardening" do
     test "non-map hotspot items are filtered out" do
       map = %{

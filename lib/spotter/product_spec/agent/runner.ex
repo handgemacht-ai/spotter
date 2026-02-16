@@ -11,6 +11,7 @@ defmodule Spotter.ProductSpec.Agent.Runner do
   require OpenTelemetry.Tracer, as: Tracer
 
   alias Spotter.Config.Runtime
+  alias Spotter.Observability.AgentRunInput
   alias Spotter.Observability.AgentRunScope
   alias Spotter.Observability.ClaudeAgentFlow
   alias Spotter.Observability.ErrorReport
@@ -19,6 +20,7 @@ defmodule Spotter.ProductSpec.Agent.Runner do
   alias Spotter.ProductSpec.Agent.ToolHelpers
   alias Spotter.ProductSpec.Agent.Tools
   alias Spotter.Services.ClaudeCode.ResultExtractor
+  alias Spotter.Telemetry.TraceContext
 
   @max_turns 15
   @timeout_ms 300_000
@@ -39,8 +41,21 @@ defmodule Spotter.ProductSpec.Agent.Runner do
 
   Returns `{:ok, output}` on success or `{:error, reason}` on failure.
   """
+  @spec_required_keys ~w(project_id commit_hash)a
+  @spec_optional_keys [{:git_cwd, nil}, {:run_id, nil}]
+
   @spec run(map()) :: {:ok, map()} | {:error, term()}
   def run(input) do
+    case AgentRunInput.normalize(input, @spec_required_keys, @spec_optional_keys) do
+      {:error, {:missing_keys, keys}} ->
+        {:error, {:invalid_input, keys}}
+
+      {:ok, normalized} ->
+        do_run(normalized)
+    end
+  end
+
+  defp do_run(input) do
     Tracer.with_span "spotter.product_spec.invoke_agent" do
       ToolHelpers.set_project_id(to_string(input.project_id))
       ToolHelpers.set_commit_hash(input.commit_hash)
@@ -80,6 +95,8 @@ defmodule Spotter.ProductSpec.Agent.Runner do
         [FlowKeys.project(to_string(input[:project_id] || "unknown"))] ++
           if(input[:commit_hash], do: [FlowKeys.commit(input.commit_hash)], else: [])
 
+      run_id = Map.get(input, :run_id)
+      traceparent = TraceContext.current_traceparent()
       tool_calls = []
       changed_count = 0
 
@@ -87,7 +104,11 @@ defmodule Spotter.ProductSpec.Agent.Runner do
         messages =
           system_prompt
           |> ClaudeAgentSDK.query(opts)
-          |> ClaudeAgentFlow.wrap_stream(flow_keys: flow_keys)
+          |> ClaudeAgentFlow.wrap_stream(
+            flow_keys: flow_keys,
+            run_id: run_id,
+            traceparent: traceparent
+          )
           |> Enum.to_list()
 
         {tool_calls, changed_count} =

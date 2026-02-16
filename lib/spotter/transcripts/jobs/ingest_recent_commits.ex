@@ -13,6 +13,7 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
   alias Spotter.Observability.ErrorReport
   alias Spotter.ProductSpec.Jobs.UpdateRollingSpec
   alias Spotter.Services.GitCommitReader
+  alias Spotter.Telemetry.TraceContext
   alias Spotter.Transcripts.{Commit, ProjectIngestState, ReviewItem, Session}
   alias Spotter.Transcripts.Jobs.{AnalyzeCommitHotspots, AnalyzeCommitTests}
 
@@ -163,6 +164,7 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
   defp maybe_enqueue_analyze(project_id, commit) do
     if commit.hotspots_status == :pending do
       %{project_id: project_id, commit_hash: commit.commit_hash}
+      |> Map.merge(trace_context())
       |> AnalyzeCommitHotspots.new()
       |> Oban.insert()
     end
@@ -171,6 +173,7 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
   defp maybe_enqueue_analyze_tests(project_id, commit) do
     if commit.tests_status == :pending do
       %{project_id: project_id, commit_hash: commit.commit_hash}
+      |> Map.merge(trace_context())
       |> AnalyzeCommitTests.new()
       |> Oban.insert()
     end
@@ -178,8 +181,24 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
 
   defp maybe_enqueue_rolling_spec(project_id, commit) do
     %{project_id: project_id, commit_hash: commit.commit_hash}
+    |> Map.merge(trace_context())
     |> UpdateRollingSpec.new()
     |> Oban.insert()
+  end
+
+  defp trace_context do
+    context = %{run_id: Ash.UUID.generate()}
+
+    trace_id = TraceContext.current_trace_id()
+    traceparent = TraceContext.current_traceparent()
+
+    context
+    |> then(fn ctx ->
+      if is_binary(trace_id), do: Map.put(ctx, :otel_trace_id, trace_id), else: ctx
+    end)
+    |> then(fn ctx ->
+      if is_binary(traceparent), do: Map.put(ctx, :otel_traceparent, traceparent), else: ctx
+    end)
   end
 
   defp update_ingest_state(project_id) do

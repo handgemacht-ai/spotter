@@ -12,11 +12,13 @@ defmodule Spotter.Services.CommitHotspotAgent do
 
   alias Spotter.Agents.HotspotTools
   alias Spotter.Agents.HotspotToolServer
+  alias Spotter.Observability.AgentRunInput
   alias Spotter.Observability.AgentRunScope
   alias Spotter.Observability.ClaudeAgentFlow
   alias Spotter.Observability.ErrorReport
   alias Spotter.Observability.FlowKeys
   alias Spotter.Services.ClaudeCode.ResultExtractor
+  alias Spotter.Telemetry.TraceContext
 
   @model "claude-opus-4-6-20250918"
   @max_turns 12
@@ -133,16 +135,29 @@ defmodule Spotter.Services.CommitHotspotAgent do
   """
   @spec run(map(), keyword()) ::
           {:ok, %{hotspots: [hotspot()], metadata: map()}} | {:error, term()}
-  def run(input, _opts \\ []) do
-    %{
-      project_id: project_id,
-      commit_hash: commit_hash,
-      commit_subject: commit_subject,
-      diff_stats: diff_stats,
-      patch_files: patch_files,
-      git_cwd: git_cwd
-    } = input
+  @hotspot_required_keys ~w(project_id commit_hash commit_subject diff_stats patch_files git_cwd)a
+  @hotspot_optional_keys ~w(run_id)a
 
+  def run(input, _opts \\ []) do
+    case AgentRunInput.normalize(input, @hotspot_required_keys, @hotspot_optional_keys) do
+      {:error, {:missing_keys, keys}} ->
+        {:error, {:invalid_input, keys}}
+
+      {:ok, normalized} ->
+        do_run(normalized)
+    end
+  end
+
+  defp do_run(
+         %{
+           project_id: project_id,
+           commit_hash: commit_hash,
+           commit_subject: commit_subject,
+           diff_stats: diff_stats,
+           patch_files: patch_files,
+           git_cwd: git_cwd
+         } = input
+       ) do
     Tracer.with_span "spotter.commit_hotspots.agent.run" do
       Tracer.set_attribute("spotter.project_id", project_id)
       Tracer.set_attribute("spotter.commit_hash", commit_hash)
@@ -179,12 +194,18 @@ defmodule Spotter.Services.CommitHotspotAgent do
         |> ClaudeAgentFlow.build_opts()
 
       flow_keys = [FlowKeys.project(project_id), FlowKeys.commit(commit_hash)]
+      run_id = Map.get(input, :run_id)
+      traceparent = TraceContext.current_traceparent()
 
       try do
         messages =
           user_prompt
           |> ClaudeAgentSDK.query(sdk_opts)
-          |> ClaudeAgentFlow.wrap_stream(flow_keys: flow_keys)
+          |> ClaudeAgentFlow.wrap_stream(
+            flow_keys: flow_keys,
+            run_id: run_id,
+            traceparent: traceparent
+          )
           |> Enum.to_list()
 
         build_result(messages)

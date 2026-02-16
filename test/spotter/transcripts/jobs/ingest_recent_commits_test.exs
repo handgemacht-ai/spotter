@@ -1,6 +1,8 @@
 defmodule Spotter.Transcripts.Jobs.IngestRecentCommitsTest do
   use ExUnit.Case, async: false
 
+  import Ecto.Query
+
   alias Ecto.Adapters.SQL.Sandbox
   alias Spotter.Repo
   alias Spotter.Transcripts.{Commit, Project, ReviewItem, Session}
@@ -70,6 +72,33 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommitsTest do
         assert ri.importance == :medium
         assert ri.next_due_on == Date.utc_today()
         assert MapSet.member?(commit_ids, ri.commit_id)
+      end)
+    end
+
+    test "enqueued jobs include run_id in args", %{project: project} do
+      job = %Oban.Job{args: %{"project_id" => project.id, "limit" => 1}}
+      assert :ok = IngestRecentCommits.perform(job)
+
+      enqueued_jobs =
+        Repo.all(
+          from(j in Oban.Job,
+            where:
+              j.worker in [
+                "Spotter.Transcripts.Jobs.AnalyzeCommitHotspots",
+                "Spotter.Transcripts.Jobs.AnalyzeCommitTests",
+                "Spotter.ProductSpec.Jobs.UpdateRollingSpec"
+              ]
+          )
+        )
+
+      assert enqueued_jobs != [], "expected at least one downstream job to be enqueued"
+
+      Enum.each(enqueued_jobs, fn j ->
+        assert is_binary(j.args["run_id"]),
+               "expected run_id in #{j.worker} args, got: #{inspect(j.args)}"
+
+        assert j.args["project_id"] == project.id
+        assert is_binary(j.args["commit_hash"])
       end)
     end
   end

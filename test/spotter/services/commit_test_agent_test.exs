@@ -82,6 +82,43 @@ defmodule Spotter.Services.CommitTestAgentTest do
     end
   end
 
+  describe "run_file/1 input normalization" do
+    test "returns error for missing required keys" do
+      assert {:error, {:invalid_input, keys}} =
+               CommitTestAgent.run_file(%{project_id: "p1"})
+
+      assert :commit_hash in keys
+    end
+
+    test "returns error for empty string required keys" do
+      assert {:error, {:invalid_input, _}} =
+               CommitTestAgent.run_file(%{
+                 project_id: "",
+                 commit_hash: "abc",
+                 relative_path: "test.exs",
+                 file_content: "content",
+                 file_diff: "diff"
+               })
+    end
+
+    test "string-key input passes normalization" do
+      alias Spotter.Observability.AgentRunInput
+
+      input = %{
+        "project_id" => "p1",
+        "commit_hash" => String.duplicate("a", 40),
+        "relative_path" => "test.exs",
+        "file_content" => "content",
+        "file_diff" => "diff"
+      }
+
+      required = ~w(project_id commit_hash relative_path file_content file_diff)a
+      assert {:ok, normalized} = AgentRunInput.normalize(input, required)
+      assert normalized.project_id == "p1"
+      assert normalized.relative_path == "test.exs"
+    end
+  end
+
   describe "extract_tool_counts/1" do
     test "counts tool invocations from query messages (atom keys)" do
       messages = [

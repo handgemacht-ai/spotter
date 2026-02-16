@@ -301,5 +301,17 @@ defmodule Spotter.Observability.FlowHubTest do
       assert FlowKeys.derive(%{"session_id" => nil}) == []
       assert FlowKeys.derive(nil) == []
     end
+
+    test "derives agent_run key from run_id in job args" do
+      keys = FlowKeys.derive(%{"run_id" => "run-123", "project_id" => "p1"})
+      assert "agent_run:run-123" in keys
+      assert "project:p1" in keys
+    end
+
+    test "derives agent_run key from atom run_id" do
+      keys = FlowKeys.derive(%{run_id: "run-456", commit_hash: "abc"})
+      assert "agent_run:run-456" in keys
+      assert "commit:abc" in keys
+    end
   end
 end

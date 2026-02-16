@@ -27,13 +27,14 @@ defmodule Spotter.Observability.ClaudeAgentFlow do
 
   - `:flow_keys` — additional flow keys (e.g. `[FlowKeys.project("1")]`)
   - `:run_id` — unique ID for this agent run (auto-generated if not provided)
+  - `:traceparent` — explicit W3C traceparent override (falls back to current span)
   """
   @spec wrap_stream(Enumerable.t(), keyword()) :: Enumerable.t()
   def wrap_stream(stream, opts \\ []) do
-    run_id = Keyword.get(opts, :run_id, generate_run_id())
+    run_id = Keyword.get(opts, :run_id) || generate_run_id()
     extra_keys = Keyword.get(opts, :flow_keys, [])
     flow_keys = [FlowKeys.agent_run(run_id) | extra_keys]
-    traceparent = TraceContext.current_traceparent()
+    traceparent = Keyword.get(opts, :traceparent) || TraceContext.current_traceparent()
 
     Stream.transform(
       stream,
@@ -160,6 +161,7 @@ defmodule Spotter.Observability.ClaudeAgentFlow do
         kind: "agent.output.delta",
         status: :running,
         flow_keys: state.flow_keys,
+        traceparent: state.traceparent,
         summary: "Agent output (#{byte_size(new_buffer)} bytes)",
         payload: %{"text" => text, "buffer_size" => byte_size(new_buffer)}
       })
@@ -181,6 +183,7 @@ defmodule Spotter.Observability.ClaudeAgentFlow do
         kind: "agent.tool.start",
         status: :running,
         flow_keys: state.flow_keys,
+        traceparent: state.traceparent,
         summary: "Tool: #{tool_name}",
         payload: %{"tool_name" => tool_name, "tool_id" => tool_id}
       })
