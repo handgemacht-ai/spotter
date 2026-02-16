@@ -39,10 +39,32 @@ defmodule Spotter.ProductSpec.Agent.Runner do
   Sets the commit hash for write tracking, creates an in-process MCP server,
   and invokes `ClaudeAgentSDK.query/2` with the system prompt.
 
-  Returns `{:ok, output}` on success or `{:error, reason}` on failure.
+  ## Required keys
+
+    * `project_id` — UUID of the project
+    * `commit_hash` — full 40-char SHA
+    * `commit_subject` — first line of the commit message
+    * `diff_stats` — map with `files_changed`, `insertions`, `deletions`, `binary_files`
+    * `patch_files` — list of patch file maps
+    * `context_windows` — map of file paths to context content
+
+  ## Optional keys
+
+    * `commit_body` — commit message body (default `""`)
+    * `linked_session_summaries` — Claude session summaries (default `[]`)
+    * `git_cwd` — working directory for git operations (default `nil`)
+    * `run_id` — unique run identifier (default `nil`)
+
+  Returns `{:ok, output}` on success or `{:error, {:invalid_input, keys}}` when
+  required keys are missing, or `{:error, reason}` on other failures.
   """
-  @spec_required_keys ~w(project_id commit_hash)a
-  @spec_optional_keys [{:git_cwd, nil}, {:run_id, nil}]
+  @spec_required_keys ~w(project_id commit_hash commit_subject diff_stats patch_files context_windows)a
+  @spec_optional_keys [
+    {:commit_body, ""},
+    {:linked_session_summaries, []},
+    {:git_cwd, nil},
+    {:run_id, nil}
+  ]
 
   @spec run(map()) :: {:ok, map()} | {:error, term()}
   def run(input) do

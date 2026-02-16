@@ -10,6 +10,7 @@ defmodule ClaudeAgentSDK.ClientStderrTest do
 
   @moduletag :spawns_claude
   @moduletag :slow
+  @moduletag timeout: 15_000
 
   test "handle_info({:transport_stderr, _}) does not crash the client" do
     # Start a bare client GenServer (it won't connect to a real CLI process)
@@ -31,15 +32,15 @@ defmodule ClaudeAgentSDK.ClientStderrTest do
     # The client should still be alive (not crashed)
     assert Process.alive?(pid)
 
-    # Clean up
-    GenServer.stop(pid, :normal)
+    # Clean up — use a timeout to avoid hanging under load
+    GenServer.stop(pid, :normal, 2_000)
 
     # Ensure we don't get a DOWN message with an error reason
     receive do
       {:DOWN, ^ref, :process, ^pid, reason} ->
         assert reason == :normal
     after
-      500 -> flunk("Client did not stop cleanly")
+      2_000 -> flunk("Client did not stop cleanly")
     end
   end
 
@@ -54,6 +55,6 @@ defmodule ClaudeAgentSDK.ClientStderrTest do
 
     assert_receive {:claude_stderr, ^stderr_data}, 500
 
-    GenServer.stop(pid, :normal)
+    GenServer.stop(pid, :normal, 2_000)
   end
 end

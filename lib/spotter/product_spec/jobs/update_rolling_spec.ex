@@ -26,6 +26,7 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
   alias Spotter.Transcripts.{Commit, Project, Session, SessionCommitLink}
 
   @max_error_chars 8_000
+  @fallback_subject "(unknown subject)"
 
   @impl Oban.Worker
   def timeout(_job), do: :timer.minutes(10)
@@ -138,6 +139,7 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
 
   defp execute_spec_update(run, project_id, commit_hash, git_cwd) do
     with {:ok, agent_input} <- build_agent_input(project_id, commit_hash, git_cwd),
+         :ok <- validate_agent_input(agent_input),
          {:ok, _output} <- invoke_agent(agent_input),
          {:ok, dolt_hash} <-
            DoltVersioning.commit_spec_changes(commit_hash, agent_input.commit_subject) do
@@ -187,13 +189,17 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
   end
 
   defp load_commit_message(commit_hash, git_cwd) do
-    case Commit |> Ash.Query.filter(commit_hash == ^commit_hash) |> Ash.read_one() do
-      {:ok, %Commit{} = commit} ->
-        {commit.subject || "", commit.body || ""}
+    {subject, body} =
+      case Commit |> Ash.Query.filter(commit_hash == ^commit_hash) |> Ash.read_one() do
+        {:ok, %Commit{} = commit} ->
+          {commit.subject || "", commit.body || ""}
 
-      _ ->
-        load_commit_message_from_git(commit_hash, git_cwd)
-    end
+        _ ->
+          load_commit_message_from_git(commit_hash, git_cwd)
+      end
+
+    subject = if subject == "", do: @fallback_subject, else: subject
+    {subject, body}
   end
 
   defp load_commit_message_from_git(commit_hash, git_cwd) when is_binary(git_cwd) do
@@ -261,6 +267,59 @@ defmodule Spotter.ProductSpec.Jobs.UpdateRollingSpec do
     |> case do
       {:ok, content} -> content
       {:error, _} -> ""
+    end
+  end
+
+  @doc false
+  @spec validate_agent_input(map()) :: :ok | {:error, String.t()}
+  def validate_agent_input(input) do
+    errors =
+      []
+      |> check_non_empty_binary(input, :project_id)
+      |> check_non_empty_binary(input, :commit_hash)
+      |> check_non_empty_binary(input, :commit_subject)
+      |> check_binary(input, :commit_body)
+      |> check_type(input, :diff_stats, &is_map/1, "map")
+      |> check_type(input, :patch_files, &is_list/1, "list")
+      |> check_type(input, :context_windows, &is_map/1, "map")
+      |> check_optional_type(input, :linked_session_summaries, &is_list/1, "list")
+      |> check_optional_type(input, :git_cwd, &is_binary/1, "binary")
+
+    case errors do
+      [] -> :ok
+      _ -> {:error, "invalid agent input: #{Enum.join(errors, ", ")}"}
+    end
+  end
+
+  defp check_non_empty_binary(errors, input, key) do
+    case Map.get(input, key) do
+      v when is_binary(v) and v != "" -> errors
+      _ -> ["#{key} must be a non-empty binary" | errors]
+    end
+  end
+
+  defp check_binary(errors, input, key) do
+    case Map.get(input, key) do
+      v when is_binary(v) -> errors
+      nil -> errors
+      _ -> ["#{key} must be a binary" | errors]
+    end
+  end
+
+  defp check_type(errors, input, key, type_check, type_name) do
+    case Map.get(input, key) do
+      v when not is_nil(v) ->
+        if type_check.(v), do: errors, else: ["#{key} must be a #{type_name}" | errors]
+
+      _ ->
+        ["#{key} is required" | errors]
+    end
+  end
+
+  defp check_optional_type(errors, input, key, type_check, type_name) do
+    case Map.get(input, key) do
+      nil -> errors
+      v -> if type_check.(v), do: errors, else: ["#{key} must be a #{type_name}" | errors]
     end
   end
 
