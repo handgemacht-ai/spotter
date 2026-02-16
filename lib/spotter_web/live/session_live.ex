@@ -563,8 +563,8 @@ defmodule SpotterWeb.SessionLive do
   end
 
   defp maybe_enqueue_explain(socket, annotation, :explain) do
-    ExplainAnnotations.enqueue(annotation.id)
-
+    # Subscribe BEFORE enqueue to prevent race: if the job completes before
+    # subscription, the done broadcast would be missed, leaving UI stuck streaming.
     if connected?(socket) do
       Phoenix.PubSub.subscribe(
         Spotter.PubSub,
@@ -573,10 +573,24 @@ defmodule SpotterWeb.SessionLive do
     end
 
     streams = Map.put(socket.assigns.explain_streams, annotation.id, "")
-    assign(socket, explain_streams: streams)
+    socket = assign(socket, explain_streams: streams)
+
+    case explain_annotations_module().enqueue(annotation.id) do
+      {:ok, _job} ->
+        socket
+
+      {:error, _reason} ->
+        socket
+        |> assign(explain_streams: Map.delete(socket.assigns.explain_streams, annotation.id))
+        |> put_flash(:error, "Could not start explanation job.")
+    end
   end
 
   defp maybe_enqueue_explain(socket, _annotation, _purpose), do: socket
+
+  defp explain_annotations_module do
+    Application.get_env(:spotter, :explain_annotations_module, ExplainAnnotations)
+  end
 
   defp load_annotations(nil), do: []
 

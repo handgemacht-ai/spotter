@@ -5,7 +5,7 @@ defmodule SpotterWeb.PaneListLiveTest do
   import Phoenix.LiveViewTest
 
   alias Ecto.Adapters.SQL.Sandbox
-  alias Spotter.Transcripts.{Commit, Project, ReviewItem, Session}
+  alias Spotter.Transcripts.{Annotation, Commit, Flashcard, Project, ReviewItem, Session}
 
   @endpoint SpotterWeb.Endpoint
 
@@ -192,6 +192,59 @@ defmodule SpotterWeb.PaneListLiveTest do
       reloaded = Ash.get!(ReviewItem, future_item.id)
       assert reloaded.next_due_on == future_item.next_due_on
       assert reloaded.interval_days == future_item.interval_days
+    end
+  end
+
+  describe "flashcard study queue" do
+    setup %{project: project, session: session} do
+      annotation =
+        Ash.create!(Annotation, %{
+          session_id: session.id,
+          source: :transcript,
+          selected_text: "some interesting code",
+          comment: "explain this pattern",
+          purpose: :explain
+        })
+
+      flashcard =
+        Ash.create!(Flashcard, %{
+          project_id: project.id,
+          annotation_id: annotation.id,
+          front_snippet: "Pattern: GenServer callback",
+          question: "What does handle_info do?",
+          answer: "Handles async messages sent to the process."
+        })
+
+      review_item =
+        Ash.create!(ReviewItem, %{
+          project_id: project.id,
+          target_kind: :flashcard,
+          flashcard_id: flashcard.id,
+          importance: :medium,
+          next_due_on: Date.utc_today()
+        })
+
+      %{flashcard: flashcard, review_item: review_item}
+    end
+
+    test "renders flashcard filter button with count", %{} do
+      {:ok, _view, html} = live(build_conn(), "/")
+
+      assert html =~ "Flashcards (1)"
+    end
+
+    test "renders flashcard study card with badge and content", %{} do
+      {:ok, _view, html} = live(build_conn(), "/")
+
+      assert html =~ "Flashcard"
+      assert html =~ "Pattern: GenServer callback"
+      assert html =~ "Show answer"
+    end
+
+    test "renders flashcard question when present", %{} do
+      {:ok, _view, html} = live(build_conn(), "/")
+
+      assert html =~ "What does handle_info do?"
     end
   end
 end

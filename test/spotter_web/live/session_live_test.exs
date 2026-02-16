@@ -1,3 +1,31 @@
+defmodule SpotterWeb.SessionLiveTest.FakeExplainAnnotations do
+  @moduledoc false
+
+  alias Spotter.Services.ExplainAnnotations
+  alias Spotter.Transcripts.Annotation
+
+  def enqueue(annotation_id) do
+    annotation = Ash.get!(Annotation, annotation_id)
+
+    metadata =
+      Map.merge(annotation.metadata || %{}, %{
+        "explain" => %{"status" => "complete", "answer" => "fast explanation result"}
+      })
+
+    Ash.update!(annotation, %{metadata: metadata})
+
+    Phoenix.PubSub.broadcast!(
+      Spotter.PubSub,
+      ExplainAnnotations.topic(annotation_id),
+      {:annotation_explain_done, annotation_id, "fast explanation result", []}
+    )
+
+    {:ok, :fake_job}
+  end
+
+  def topic(annotation_id), do: ExplainAnnotations.topic(annotation_id)
+end
+
 defmodule SpotterWeb.SessionLiveTest do
   use ExUnit.Case, async: false
 
@@ -554,6 +582,52 @@ defmodule SpotterWeb.SessionLiveTest do
       assert html =~ ~r/id="sidebar-tab-annotations"[^>]*class="sidebar-tab is-active"/
       assert html =~ ~s(class="annotation-form")
       assert html =~ "selected snippet"
+    end
+  end
+
+  describe "explain subscribe-before-enqueue race" do
+    test "fast explain job result is not missed (subscribe before enqueue)", %{
+      session: session,
+      session_id: session_id
+    } do
+      Application.put_env(
+        :spotter,
+        :explain_annotations_module,
+        SpotterWeb.SessionLiveTest.FakeExplainAnnotations
+      )
+
+      on_exit(fn ->
+        Application.delete_env(:spotter, :explain_annotations_module)
+      end)
+
+      create_message(session, %{
+        content: %{"blocks" => [%{"type" => "text", "text" => "Hello world"}]}
+      })
+
+      {:ok, view, _html} = live(build_conn(), "/sessions/#{session_id}")
+
+      # Select text to enable annotation editor
+      render_hook(view, "transcript_text_selected", %{
+        "text" => "Hello world",
+        "message_ids" => []
+      })
+
+      # Switch to annotations tab to see the editor
+      render_click(view, "switch_sidebar_tab", %{"tab" => "annotations"})
+
+      # Submit annotation with purpose=explain
+      view
+      |> form(".annotation-form form", %{"comment" => "explain this", "purpose" => "explain"})
+      |> render_submit()
+
+      # The done broadcast was queued during enqueue (inside handle_event).
+      # render/1 forces the view to process pending mailbox messages first.
+      html = render(view)
+
+      # The done event should have been received (subscribe happened before enqueue).
+      # The UI should show the final answer, not be stuck on "Explaining..."
+      assert html =~ "fast explanation result"
+      refute html =~ "Explaining..."
     end
   end
 

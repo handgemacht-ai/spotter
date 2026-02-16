@@ -101,36 +101,37 @@ defmodule SpotterWeb.FileDetailLive do
   end
 
   def handle_event("save_annotation", params, socket) do
-    comment = params["comment"] || ""
-    purpose = if params["purpose"] == "explain", do: :explain, else: :review
-    session_id = find_session_id(socket)
-    line_start = parse_line(socket.assigns.selection_line_start, 1)
-    line_end = parse_line(socket.assigns.selection_line_end, line_start)
+    session_id = socket.assigns.file_detail_selected_session_id
 
-    create_params = %{
-      session_id: session_id,
-      project_id: socket.assigns.file_detail_project_id,
-      source: :file,
-      selected_text: socket.assigns.selected_text,
-      comment: comment,
-      purpose: purpose,
-      relative_path: socket.assigns.file_detail_relative_path,
-      line_start: line_start,
-      line_end: line_end
-    }
+    if is_nil(session_id) do
+      {:noreply,
+       put_flash(socket, :error, "Select a linked session before saving an annotation.")}
+    else
+      comment = params["comment"] || ""
+      purpose = if params["purpose"] == "explain", do: :explain, else: :review
 
-    case Ash.create(Annotation, create_params) do
-      {:ok, annotation} ->
-        create_file_ref(annotation, socket)
-        socket = maybe_enqueue_explain(socket, annotation, purpose)
+      create_params = %{
+        session_id: session_id,
+        project_id: socket.assigns.file_detail_project_id,
+        source: :file,
+        selected_text: socket.assigns.selected_text,
+        comment: comment,
+        purpose: purpose
+      }
 
-        {:noreply,
-         socket
-         |> assign(selected_text: nil, selection_line_start: nil, selection_line_end: nil)
-         |> refresh_annotations()}
+      case Ash.create(Annotation, create_params) do
+        {:ok, annotation} ->
+          create_file_ref(annotation, socket)
+          socket = maybe_enqueue_explain(socket, annotation, purpose)
 
-      {:error, _} ->
-        {:noreply, socket}
+          {:noreply,
+           socket
+           |> assign(selected_text: nil, selection_line_start: nil, selection_line_end: nil)
+           |> refresh_annotations()}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Could not save annotation.")}
+      end
     end
   end
 
@@ -184,8 +185,6 @@ defmodule SpotterWeb.FileDetailLive do
   end
 
   defp maybe_enqueue_explain(socket, annotation, :explain) do
-    ExplainAnnotations.enqueue(annotation.id)
-
     if connected?(socket) do
       Phoenix.PubSub.subscribe(
         Spotter.PubSub,
@@ -194,29 +193,23 @@ defmodule SpotterWeb.FileDetailLive do
     end
 
     streams = Map.put(socket.assigns.explain_streams, annotation.id, "")
-    assign(socket, explain_streams: streams)
+    socket = assign(socket, explain_streams: streams)
+
+    case explain_annotations_module().enqueue(annotation.id) do
+      {:ok, _job} ->
+        socket
+
+      {:error, _reason} ->
+        socket
+        |> assign(explain_streams: Map.delete(socket.assigns.explain_streams, annotation.id))
+        |> put_flash(:error, "Could not start explanation job.")
+    end
   end
 
   defp maybe_enqueue_explain(socket, _annotation, _purpose), do: socket
 
-  defp find_session_id(socket) do
-    case socket.assigns.file_detail_linked_sessions do
-      [first | _] ->
-        first.session.id
-
-      _ ->
-        # Fallback: use most recent session in the project
-        project_id = socket.assigns.file_detail_project_id
-
-        case Spotter.Transcripts.Session
-             |> Ash.Query.filter_input(project_id: project_id)
-             |> Ash.Query.sort(inserted_at: :desc)
-             |> Ash.Query.limit(1)
-             |> Ash.read() do
-          {:ok, [session | _]} -> session.id
-          _ -> nil
-        end
-    end
+  defp explain_annotations_module do
+    Application.get_env(:spotter, :explain_annotations_module, ExplainAnnotations)
   end
 
   defp create_file_ref(annotation, socket) do

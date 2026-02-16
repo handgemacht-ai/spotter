@@ -94,16 +94,23 @@ defmodule SpotterWeb.AnnotationComponents do
 
         <%= if ann.purpose == :explain do %>
           <div class="annotation-explain-answer">
+            <% answer = get_in(ann.metadata, ["explain", "answer"]) %>
+            <% stream = @explain_streams[ann.id] %>
             <%= cond do %>
-              <% stream = @explain_streams[ann.id] ->
+              <% is_binary(answer) and String.trim(answer) != "" ->
+              %>
+                <div class="annotation-explain-text"><%= answer %></div>
+              <% is_binary(stream) and String.trim(stream) != "" ->
               %>
                 <div class="annotation-explain-streaming">
                   <span class="text-muted text-xs">Explaining...</span>
                   <div class="annotation-explain-text"><%= stream %></div>
                 </div>
-              <% answer = get_in(ann.metadata, ["explain", "answer"]) ->
+              <% is_binary(stream) ->
               %>
-                <div class="annotation-explain-text"><%= answer %></div>
+                <div class="annotation-explain-streaming">
+                  <span class="text-muted text-xs">Explaining...</span>
+                </div>
               <% get_in(ann.metadata, ["explain", "status"]) == "pending" ->
               %>
                 <span class="text-muted text-xs">Generating explanation...</span>

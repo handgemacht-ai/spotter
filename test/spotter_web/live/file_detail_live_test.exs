@@ -214,4 +214,63 @@ defmodule SpotterWeb.FileDetailLiveTest do
       assert annotation.relative_path == "lib/unlinked.ex"
     end
   end
+
+  describe "annotation session guard" do
+    test "saving annotation without selected session shows error", %{project: project} do
+      {:ok, view, html} =
+        live(build_conn(), "/projects/#{project.id}/files/lib/foo.ex")
+
+      # Inline hint is shown when no session is selected
+      assert html =~ "Select a linked session before saving an annotation."
+
+      # Select text to enable the annotation editor
+      render_hook(view, "file_text_selected", %{
+        "text" => "some code",
+        "line_start" => "1",
+        "line_end" => "3"
+      })
+
+      # Submit without selecting a session first
+      html =
+        view
+        |> form(".annotation-form form", %{"comment" => "test note", "purpose" => "review"})
+        |> render_submit()
+
+      # Should show error flash and NOT create an annotation
+      assert html =~ "Select a linked session before saving an annotation."
+      assert Ash.read!(Annotation) == []
+    end
+
+    test "saving annotation with selected session succeeds", %{
+      project: project,
+      session: session
+    } do
+      {:ok, view, _html} =
+        live(build_conn(), "/projects/#{project.id}/files/lib/foo.ex")
+
+      # Select a linked session
+      render_click(view, "select_session", %{"session-id" => session.id})
+
+      # Select text
+      render_hook(view, "file_text_selected", %{
+        "text" => "selected code snippet",
+        "line_start" => "5",
+        "line_end" => "10"
+      })
+
+      # Submit annotation
+      html =
+        view
+        |> form(".annotation-form form", %{"comment" => "looks good", "purpose" => "review"})
+        |> render_submit()
+
+      # Annotation should be created and visible
+      assert [annotation] = Ash.read!(Annotation)
+      assert annotation.selected_text == "selected code snippet"
+      assert annotation.session_id == session.id
+
+      # The hint should disappear once a session is selected
+      refute html =~ "Select a linked session before saving an annotation."
+    end
+  end
 end

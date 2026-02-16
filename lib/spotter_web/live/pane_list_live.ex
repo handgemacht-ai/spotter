@@ -5,6 +5,7 @@ defmodule SpotterWeb.PaneListLive do
   alias Spotter.Transcripts.{
     Commit,
     CommitHotspot,
+    Flashcard,
     ProjectIngestState,
     ProjectRollingSummary,
     PromptPattern,
@@ -553,6 +554,7 @@ defmodule SpotterWeb.PaneListLive do
       case scope do
         "messages" -> Ash.Query.filter(base_query, target_kind == :commit_message)
         "hotspots" -> Ash.Query.filter(base_query, target_kind == :commit_hotspot)
+        "flashcards" -> Ash.Query.filter(base_query, target_kind == :flashcard)
         _ -> base_query
       end
 
@@ -590,6 +592,9 @@ defmodule SpotterWeb.PaneListLive do
     hotspot_ids =
       items |> Enum.map(& &1.commit_hotspot_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
 
+    flashcard_ids =
+      items |> Enum.map(& &1.flashcard_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
     commits =
       if commit_ids != [] do
         Commit |> Ash.Query.filter(id in ^commit_ids) |> Ash.read!() |> Map.new(&{&1.id, &1})
@@ -607,6 +612,16 @@ defmodule SpotterWeb.PaneListLive do
         %{}
       end
 
+    flashcards =
+      if flashcard_ids != [] do
+        Flashcard
+        |> Ash.Query.filter(id in ^flashcard_ids)
+        |> Ash.read!()
+        |> Map.new(&{&1.id, &1})
+      else
+        %{}
+      end
+
     Enum.map(items, fn item ->
       upcoming =
         item.next_due_on != nil and Date.compare(item.next_due_on, today) == :gt
@@ -615,6 +630,7 @@ defmodule SpotterWeb.PaneListLive do
         item: item,
         commit: Map.get(commits, item.commit_id),
         hotspot: Map.get(hotspots, item.commit_hotspot_id),
+        flashcard: Map.get(flashcards, item.flashcard_id),
         upcoming: upcoming
       }
     end)
@@ -644,12 +660,13 @@ defmodule SpotterWeb.PaneListLive do
       total: length(items),
       messages: Enum.count(items, &(&1.target_kind == :commit_message)),
       hotspots: Enum.count(items, &(&1.target_kind == :commit_hotspot)),
+      flashcards: Enum.count(items, &(&1.target_kind == :flashcard)),
       high: Enum.count(items, &(&1.importance == :high)),
       medium: Enum.count(items, &(&1.importance == :medium)),
       low: Enum.count(items, &(&1.importance == :low))
     }
   rescue
-    _ -> %{total: 0, messages: 0, hotspots: 0, high: 0, medium: 0, low: 0}
+    _ -> %{total: 0, messages: 0, hotspots: 0, flashcards: 0, high: 0, medium: 0, low: 0}
   end
 
   defp study_queue_empty_context(project_id, tz) do
@@ -916,6 +933,13 @@ defmodule SpotterWeb.PaneListLive do
             >
               Hotspots ({@study_queue_due_counts.hotspots})
             </button>
+            <button
+              phx-click={event(:study_queue, :set_study_scope)}
+              phx-value-scope="flashcards"
+              class={"filter-btn#{if @study_queue_study_scope == "flashcards", do: " is-active"}"}
+            >
+              Flashcards ({@study_queue_due_counts.flashcards})
+            </button>
           </div>
         </div>
 
@@ -979,7 +1003,12 @@ defmodule SpotterWeb.PaneListLive do
             <div class="study-card" data-testid="study-card" data-card-id={current_entry.item.id}>
               <div class="study-card-header">
                 <span class={"badge study-kind-#{current_entry.item.target_kind}"}>
-                  <%= if current_entry.item.target_kind == :commit_message, do: "Commit", else: "Hotspot" %>
+                  <%= case current_entry.item.target_kind do %>
+                    <% :commit_message -> %>Commit
+                    <% :commit_hotspot -> %>Hotspot
+                    <% :flashcard -> %>Flashcard
+                    <% _ -> %>Review
+                  <% end %>
                 </span>
                 <span class={"badge study-importance-#{current_entry.item.importance}"}>
                   {current_entry.item.importance}
@@ -1014,6 +1043,17 @@ defmodule SpotterWeb.PaneListLive do
                   <div class="study-hotspot-score">
                     Score: {current_entry.hotspot.overall_score}
                   </div>
+                <% end %>
+
+                <%= if current_entry.item.target_kind == :flashcard and current_entry.flashcard do %>
+                  <div :if={current_entry.flashcard.question} class="study-flashcard-question text-sm font-medium mb-1">
+                    {current_entry.flashcard.question}
+                  </div>
+                  <div class="study-flashcard-snippet">{current_entry.flashcard.front_snippet}</div>
+                  <details class="study-flashcard-answer mt-2">
+                    <summary>Show answer</summary>
+                    <div class="mt-1">{current_entry.flashcard.answer}</div>
+                  </details>
                 <% end %>
               </div>
 
