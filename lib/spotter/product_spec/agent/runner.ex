@@ -38,6 +38,7 @@ defmodule Spotter.ProductSpec.Agent.Runner do
   @spec run(map()) :: {:ok, map()} | {:error, term()}
   def run(input) do
     Tracer.with_span "spotter.product_spec.invoke_agent" do
+      ToolHelpers.set_project_id(to_string(input.project_id))
       ToolHelpers.set_commit_hash(input.commit_hash)
       ToolHelpers.set_git_cwd(Map.get(input, :git_cwd))
 
@@ -87,6 +88,10 @@ defmodule Spotter.ProductSpec.Agent.Runner do
           Logger.warning("SpecAgent: failed: #{reason}")
           Tracer.set_status(:error, reason)
           {:error, reason}
+      after
+        ToolHelpers.set_project_id(nil)
+        ToolHelpers.set_commit_hash("")
+        ToolHelpers.set_git_cwd(nil)
       end
     end
   end

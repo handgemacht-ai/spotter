@@ -49,6 +49,7 @@ defmodule Spotter.ProductSpec.Agent.Prompt do
     4. Keep changes minimal. If the commit has no product-level impact (e.g., refactoring, CI changes, dependency updates), do nothing.
     5. spec_key values must be lowercase alphanumeric with hyphens, 3-160 chars (e.g., "session-replay", "commit-linking").
     6. Every write operation automatically tracks which commit introduced the change.
+    7. Tools are already scoped to the current project on the server side. Do not pass a project_id.
 
     ### Commit details
 

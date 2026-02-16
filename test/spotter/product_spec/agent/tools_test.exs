@@ -29,6 +29,7 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
   end
 
   setup do
+    ToolHelpers.set_project_id(@project_id)
     ToolHelpers.set_commit_hash(@commit_hash)
 
     # Clean up test data before each test
@@ -59,7 +60,7 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
 
   describe "domains" do
     test "domains_list returns empty list for new project" do
-      {:ok, result} = Tools.DomainsList.execute(%{"project_id" => @project_id})
+      {:ok, result} = Tools.DomainsList.execute(%{})
       parsed = decode_text_result(result)
       assert parsed["domains"] == []
     end
@@ -67,12 +68,11 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
     test "domains_create inserts a domain" do
       {:ok, _} =
         Tools.DomainsCreate.execute(%{
-          "project_id" => @project_id,
           "spec_key" => "auth-system",
           "name" => "Authentication"
         })
 
-      {:ok, result} = Tools.DomainsList.execute(%{"project_id" => @project_id})
+      {:ok, result} = Tools.DomainsList.execute(%{})
       parsed = decode_text_result(result)
       assert length(parsed["domains"]) == 1
       [domain] = parsed["domains"]
@@ -84,7 +84,6 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
     test "domains_create rejects invalid spec_key" do
       {:ok, result} =
         Tools.DomainsCreate.execute(%{
-          "project_id" => @project_id,
           "spec_key" => "INVALID KEY",
           "name" => "Bad"
         })
@@ -96,19 +95,17 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
     test "domains_create upserts on duplicate spec_key" do
       {:ok, _} =
         Tools.DomainsCreate.execute(%{
-          "project_id" => @project_id,
           "spec_key" => "ui-layer",
           "name" => "UI"
         })
 
       {:ok, _} =
         Tools.DomainsCreate.execute(%{
-          "project_id" => @project_id,
           "spec_key" => "ui-layer",
           "name" => "User Interface"
         })
 
-      {:ok, result} = Tools.DomainsList.execute(%{"project_id" => @project_id})
+      {:ok, result} = Tools.DomainsList.execute(%{})
       parsed = decode_text_result(result)
       assert length(parsed["domains"]) == 1
       assert hd(parsed["domains"])["name"] == "User Interface"
@@ -117,22 +114,20 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
     test "domains_update modifies an existing domain" do
       {:ok, _} =
         Tools.DomainsCreate.execute(%{
-          "project_id" => @project_id,
           "spec_key" => "core",
           "name" => "Core"
         })
 
-      {:ok, list_result} = Tools.DomainsList.execute(%{"project_id" => @project_id})
+      {:ok, list_result} = Tools.DomainsList.execute(%{})
       domain_id = hd(decode_text_result(list_result)["domains"])["id"]
 
       {:ok, _} =
         Tools.DomainsUpdate.execute(%{
-          "project_id" => @project_id,
           "domain_id" => domain_id,
           "name" => "Core System"
         })
 
-      {:ok, list_result} = Tools.DomainsList.execute(%{"project_id" => @project_id})
+      {:ok, list_result} = Tools.DomainsList.execute(%{})
       assert hd(decode_text_result(list_result)["domains"])["name"] == "Core System"
     end
   end
@@ -141,12 +136,11 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
     setup do
       {:ok, _} =
         Tools.DomainsCreate.execute(%{
-          "project_id" => @project_id,
           "spec_key" => "test-domain",
           "name" => "Test Domain"
         })
 
-      {:ok, list_result} = Tools.DomainsList.execute(%{"project_id" => @project_id})
+      {:ok, list_result} = Tools.DomainsList.execute(%{})
       domain_id = hd(decode_text_result(list_result)["domains"])["id"]
 
       %{domain_id: domain_id}
@@ -155,7 +149,6 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
     test "features_create and features_search", %{domain_id: domain_id} do
       {:ok, _} =
         Tools.FeaturesCreate.execute(%{
-          "project_id" => @project_id,
           "domain_id" => domain_id,
           "spec_key" => "login-flow",
           "name" => "Login Flow",
@@ -163,7 +156,7 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
         })
 
       {:ok, result} =
-        Tools.FeaturesSearch.execute(%{"project_id" => @project_id, "domain_id" => domain_id})
+        Tools.FeaturesSearch.execute(%{"domain_id" => domain_id})
 
       parsed = decode_text_result(result)
       assert length(parsed["features"]) == 1
@@ -173,14 +166,13 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
     test "features_search with text query", %{domain_id: domain_id} do
       {:ok, _} =
         Tools.FeaturesCreate.execute(%{
-          "project_id" => @project_id,
           "domain_id" => domain_id,
           "spec_key" => "session-mgmt",
           "name" => "Session Management"
         })
 
       {:ok, result} =
-        Tools.FeaturesSearch.execute(%{"project_id" => @project_id, "q" => "session"})
+        Tools.FeaturesSearch.execute(%{"q" => "session"})
 
       parsed = decode_text_result(result)
       assert length(parsed["features"]) == 1
@@ -189,20 +181,18 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
     test "features_delete removes feature and its requirements", %{domain_id: domain_id} do
       {:ok, _} =
         Tools.FeaturesCreate.execute(%{
-          "project_id" => @project_id,
           "domain_id" => domain_id,
           "spec_key" => "to-delete",
           "name" => "To Delete"
         })
 
       {:ok, list_result} =
-        Tools.FeaturesSearch.execute(%{"project_id" => @project_id, "domain_id" => domain_id})
+        Tools.FeaturesSearch.execute(%{"domain_id" => domain_id})
 
       feature_id = hd(decode_text_result(list_result)["features"])["id"]
 
       {:ok, _} =
         Tools.RequirementsCreate.execute(%{
-          "project_id" => @project_id,
           "feature_id" => feature_id,
           "spec_key" => "req-one",
           "statement" => "The system shall delete cleanly"
@@ -210,18 +200,16 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
 
       {:ok, _} =
         Tools.FeaturesDelete.execute(%{
-          "project_id" => @project_id,
           "feature_id" => feature_id
         })
 
       {:ok, result} =
-        Tools.FeaturesSearch.execute(%{"project_id" => @project_id, "domain_id" => domain_id})
+        Tools.FeaturesSearch.execute(%{"domain_id" => domain_id})
 
       assert decode_text_result(result)["features"] == []
 
       {:ok, req_result} =
         Tools.RequirementsSearch.execute(%{
-          "project_id" => @project_id,
           "feature_id" => feature_id
         })
 
@@ -233,24 +221,22 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
     setup do
       {:ok, _} =
         Tools.DomainsCreate.execute(%{
-          "project_id" => @project_id,
           "spec_key" => "req-domain",
           "name" => "Req Domain"
         })
 
-      {:ok, list_result} = Tools.DomainsList.execute(%{"project_id" => @project_id})
+      {:ok, list_result} = Tools.DomainsList.execute(%{})
       domain_id = hd(decode_text_result(list_result)["domains"])["id"]
 
       {:ok, _} =
         Tools.FeaturesCreate.execute(%{
-          "project_id" => @project_id,
           "domain_id" => domain_id,
           "spec_key" => "req-feature",
           "name" => "Req Feature"
         })
 
       {:ok, feat_result} =
-        Tools.FeaturesSearch.execute(%{"project_id" => @project_id, "domain_id" => domain_id})
+        Tools.FeaturesSearch.execute(%{"domain_id" => domain_id})
 
       feature_id = hd(decode_text_result(feat_result)["features"])["id"]
 
@@ -260,7 +246,6 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
     test "requirements_create with valid shall statement", %{feature_id: feature_id} do
       {:ok, result} =
         Tools.RequirementsCreate.execute(%{
-          "project_id" => @project_id,
           "feature_id" => feature_id,
           "spec_key" => "auth-shall-verify",
           "statement" => "The system shall verify credentials before granting access",
@@ -274,7 +259,6 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
     test "requirements_create rejects missing shall", %{feature_id: feature_id} do
       {:ok, result} =
         Tools.RequirementsCreate.execute(%{
-          "project_id" => @project_id,
           "feature_id" => feature_id,
           "spec_key" => "bad-req",
           "statement" => "The system verifies credentials"
@@ -287,14 +271,13 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
     test "requirements_search with text query", %{feature_id: feature_id} do
       {:ok, _} =
         Tools.RequirementsCreate.execute(%{
-          "project_id" => @project_id,
           "feature_id" => feature_id,
           "spec_key" => "searchable-req",
           "statement" => "The system shall encrypt passwords at rest"
         })
 
       {:ok, result} =
-        Tools.RequirementsSearch.execute(%{"project_id" => @project_id, "q" => "encrypt"})
+        Tools.RequirementsSearch.execute(%{"q" => "encrypt"})
 
       parsed = decode_text_result(result)
       assert length(parsed["requirements"]) == 1
@@ -303,7 +286,6 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
     test "requirements_delete removes a requirement", %{feature_id: feature_id} do
       {:ok, _} =
         Tools.RequirementsCreate.execute(%{
-          "project_id" => @project_id,
           "feature_id" => feature_id,
           "spec_key" => "del-req",
           "statement" => "The system shall be deletable"
@@ -311,7 +293,6 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
 
       {:ok, search_result} =
         Tools.RequirementsSearch.execute(%{
-          "project_id" => @project_id,
           "feature_id" => feature_id
         })
 
@@ -319,13 +300,11 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
 
       {:ok, _} =
         Tools.RequirementsDelete.execute(%{
-          "project_id" => @project_id,
           "requirement_id" => req_id
         })
 
       {:ok, result} =
         Tools.RequirementsSearch.execute(%{
-          "project_id" => @project_id,
           "feature_id" => feature_id
         })
 
@@ -337,24 +316,22 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
     setup do
       {:ok, _} =
         Tools.DomainsCreate.execute(%{
-          "project_id" => @project_id,
           "spec_key" => "ev-domain",
           "name" => "Evidence Domain"
         })
 
-      {:ok, list_result} = Tools.DomainsList.execute(%{"project_id" => @project_id})
+      {:ok, list_result} = Tools.DomainsList.execute(%{})
       domain_id = hd(decode_text_result(list_result)["domains"])["id"]
 
       {:ok, _} =
         Tools.FeaturesCreate.execute(%{
-          "project_id" => @project_id,
           "domain_id" => domain_id,
           "spec_key" => "ev-feature",
           "name" => "Evidence Feature"
         })
 
       {:ok, feat_result} =
-        Tools.FeaturesSearch.execute(%{"project_id" => @project_id, "domain_id" => domain_id})
+        Tools.FeaturesSearch.execute(%{"domain_id" => domain_id})
 
       feature_id = hd(decode_text_result(feat_result)["features"])["id"]
 
@@ -366,7 +343,6 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
     } do
       {:ok, _} =
         Tools.RequirementsCreate.execute(%{
-          "project_id" => @project_id,
           "feature_id" => feature_id,
           "spec_key" => "ev-req-one",
           "statement" => "The system shall track evidence",
@@ -375,7 +351,6 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
 
       {:ok, result} =
         Tools.RequirementsSearch.execute(%{
-          "project_id" => @project_id,
           "feature_id" => feature_id
         })
 
@@ -387,7 +362,6 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
     test "requirements_update replaces evidence_files", %{feature_id: feature_id} do
       {:ok, _} =
         Tools.RequirementsCreate.execute(%{
-          "project_id" => @project_id,
           "feature_id" => feature_id,
           "spec_key" => "ev-req-replace",
           "statement" => "The system shall be replaceable",
@@ -396,7 +370,6 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
 
       {:ok, search} =
         Tools.RequirementsSearch.execute(%{
-          "project_id" => @project_id,
           "feature_id" => feature_id
         })
 
@@ -404,14 +377,12 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
 
       {:ok, _} =
         Tools.RequirementsUpdate.execute(%{
-          "project_id" => @project_id,
           "requirement_id" => req_id,
           "evidence_files" => ["lib/new.ex", "lib/also_new.ex"]
         })
 
       {:ok, result} =
         Tools.RequirementsSearch.execute(%{
-          "project_id" => @project_id,
           "feature_id" => feature_id
         })
 
@@ -422,7 +393,6 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
     test "requirements_add_evidence_files merges and de-dupes", %{feature_id: feature_id} do
       {:ok, _} =
         Tools.RequirementsCreate.execute(%{
-          "project_id" => @project_id,
           "feature_id" => feature_id,
           "spec_key" => "ev-req-merge",
           "statement" => "The system shall merge evidence",
@@ -431,7 +401,6 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
 
       {:ok, search} =
         Tools.RequirementsSearch.execute(%{
-          "project_id" => @project_id,
           "feature_id" => feature_id
         })
 
@@ -439,7 +408,6 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
 
       {:ok, result} =
         Tools.RequirementsAddEvidenceFiles.execute(%{
-          "project_id" => @project_id,
           "requirement_id" => req_id,
           "files" => ["lib/b.ex", "lib/c.ex"]
         })
@@ -447,6 +415,42 @@ defmodule Spotter.ProductSpec.Agent.ToolsTest do
       parsed = decode_text_result(result)
       assert parsed["ok"] == true
       assert parsed["evidence_files"] == ["lib/a.ex", "lib/b.ex", "lib/c.ex"]
+    end
+  end
+
+  describe "project scope isolation" do
+    test "model-supplied project_id is ignored; writes go to bound project" do
+      injected_pid = "00000000-0000-0000-0000-000000000123"
+
+      # Create a domain passing a rogue project_id in the input map
+      {:ok, _} =
+        Tools.DomainsCreate.execute(%{
+          "project_id" => injected_pid,
+          "spec_key" => "rogue-domain",
+          "name" => "Rogue"
+        })
+
+      # Domain was written under the bound @project_id, not the injected one
+      {:ok, result} = Tools.DomainsList.execute(%{})
+      parsed = decode_text_result(result)
+      assert length(parsed["domains"]) == 1
+      assert hd(parsed["domains"])["project_id"] == @project_id
+
+      # Confirm nothing was written under the injected project_id
+      injected_result =
+        SQL.query!(Repo, "SELECT COUNT(*) FROM product_domains WHERE project_id = ?", [
+          injected_pid
+        ])
+
+      assert injected_result.rows == [[0]]
+    end
+
+    test "project_id! raises when not bound" do
+      ToolHelpers.set_project_id(nil)
+
+      assert_raise RuntimeError, ~r/spec_agent_project_id not bound/, fn ->
+        Tools.DomainsList.execute(%{})
+      end
     end
   end
 

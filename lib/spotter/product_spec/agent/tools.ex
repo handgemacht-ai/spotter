@@ -17,19 +17,21 @@ defmodule Spotter.ProductSpec.Agent.Tools do
   # ── Domains ──
 
   deftool :domains_list,
-          "List all product domains for a project",
-          ClaudeAgentSDK.Tool.simple_schema(project_id: :string),
+          "List all product domains for the current project",
+          %{type: "object", properties: %{}},
           annotations: %{readOnlyHint: true} do
     alias Spotter.ProductSpec.Agent.ToolHelpers, as: H
 
-    def execute(%{"project_id" => project_id}) do
+    def execute(%{}) do
+      pid = H.project_id!()
+
       result =
         H.dolt_query!(
           """
           SELECT id, project_id, spec_key, name, description, updated_by_git_commit
           FROM product_domains WHERE project_id = ? ORDER BY name
           """,
-          [project_id]
+          [pid]
         )
 
       H.text_result(%{domains: H.rows_to_maps(result)})
@@ -37,20 +39,21 @@ defmodule Spotter.ProductSpec.Agent.Tools do
   end
 
   deftool :domains_create,
-          "Create or upsert a product domain by (project_id, spec_key)",
+          "Create or upsert a product domain by spec_key",
           %{
             type: "object",
             properties: %{
-              project_id: %{type: "string", description: "Project UUID"},
               spec_key: %{type: "string", description: "Unique domain key (lowercase, hyphens)"},
               name: %{type: "string", description: "Human-readable domain name"},
               description: %{type: "string", description: "Domain description"}
             },
-            required: ["project_id", "spec_key", "name"]
+            required: ["spec_key", "name"]
           } do
     alias Spotter.ProductSpec.Agent.ToolHelpers, as: H
 
-    def execute(%{"project_id" => project_id, "spec_key" => spec_key, "name" => name} = input) do
+    def execute(%{"spec_key" => spec_key, "name" => name} = input) do
+      pid = H.project_id!()
+
       case H.validate_spec_key(spec_key) do
         :ok ->
           id = Ash.UUID.generate()
@@ -62,7 +65,7 @@ defmodule Spotter.ProductSpec.Agent.Tools do
             ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description),
               updated_by_git_commit = VALUES(updated_by_git_commit)
             """,
-            [id, project_id, spec_key, name, input["description"], H.commit_hash()]
+            [id, pid, spec_key, name, input["description"], H.commit_hash()]
           )
 
           H.text_result(%{ok: true, spec_key: spec_key})
@@ -78,17 +81,18 @@ defmodule Spotter.ProductSpec.Agent.Tools do
           %{
             type: "object",
             properties: %{
-              project_id: %{type: "string", description: "Project UUID"},
               domain_id: %{type: "string", description: "Domain UUID"},
               spec_key: %{type: "string", description: "New spec_key"},
               name: %{type: "string", description: "New name"},
               description: %{type: "string", description: "New description"}
             },
-            required: ["project_id", "domain_id"]
+            required: ["domain_id"]
           } do
     alias Spotter.ProductSpec.Agent.ToolHelpers, as: H
 
-    def execute(%{"project_id" => project_id, "domain_id" => domain_id} = input) do
+    def execute(%{"domain_id" => domain_id} = input) do
+      pid = H.project_id!()
+
       case H.maybe_validate_spec_key(input["spec_key"]) do
         :ok ->
           {sets, params} = H.build_update_sets(input, ["spec_key", "name", "description"])
@@ -97,7 +101,7 @@ defmodule Spotter.ProductSpec.Agent.Tools do
             H.text_result(%{error: "no fields to update"})
           else
             sets = sets ++ ["updated_by_git_commit = ?"]
-            params = params ++ [H.commit_hash(), project_id, domain_id]
+            params = params ++ [H.commit_hash(), pid, domain_id]
 
             H.dolt_query!(
               "UPDATE product_domains SET #{Enum.join(sets, ", ")} WHERE project_id = ? AND id = ?",
@@ -120,20 +124,19 @@ defmodule Spotter.ProductSpec.Agent.Tools do
           %{
             type: "object",
             properties: %{
-              project_id: %{type: "string", description: "Project UUID"},
               domain_id: %{type: "string", description: "Filter by domain UUID"},
               q: %{
                 type: "string",
                 description: "Substring search on spec_key, name, or description"
               }
-            },
-            required: ["project_id"]
+            }
           },
           annotations: %{readOnlyHint: true} do
     alias Spotter.ProductSpec.Agent.ToolHelpers, as: H
 
-    def execute(%{"project_id" => project_id} = input) do
-      {where, params} = {["project_id = ?"], [project_id]}
+    def execute(%{} = input) do
+      pid = H.project_id!()
+      {where, params} = {["project_id = ?"], [pid]}
 
       {where, params} =
         if input["domain_id"] do
@@ -166,41 +169,39 @@ defmodule Spotter.ProductSpec.Agent.Tools do
   end
 
   deftool :features_create,
-          "Create or upsert a product feature by (project_id, domain_id, spec_key)",
+          "Create or upsert a product feature by (domain_id, spec_key)",
           %{
             type: "object",
             properties: %{
-              project_id: %{type: "string", description: "Project UUID"},
               domain_id: %{type: "string", description: "Parent domain UUID"},
               spec_key: %{type: "string", description: "Unique feature key within domain"},
               name: %{type: "string", description: "Human-readable feature name"},
               description: %{type: "string", description: "Feature description"}
             },
-            required: ["project_id", "domain_id", "spec_key", "name"]
+            required: ["domain_id", "spec_key", "name"]
           } do
     alias Spotter.ProductSpec.Agent.ToolHelpers, as: H
 
-    def execute(
-          %{"project_id" => pid, "domain_id" => did, "spec_key" => sk, "name" => name} = input
-        ) do
-      case H.validate_spec_key(sk) do
-        :ok ->
-          id = Ash.UUID.generate()
+    def execute(%{"domain_id" => did, "spec_key" => sk, "name" => name} = input) do
+      pid = H.project_id!()
 
-          H.dolt_query!(
-            """
-            INSERT INTO product_features (id, project_id, domain_id, spec_key, name, description, updated_by_git_commit)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description),
-              updated_by_git_commit = VALUES(updated_by_git_commit)
-            """,
-            [id, pid, did, sk, name, input["description"], H.commit_hash()]
-          )
+      with :ok <- H.validate_spec_key(sk),
+           :ok <- H.verify_domain_belongs_to_project(did, pid) do
+        id = Ash.UUID.generate()
 
-          H.text_result(%{ok: true, spec_key: sk})
+        H.dolt_query!(
+          """
+          INSERT INTO product_features (id, project_id, domain_id, spec_key, name, description, updated_by_git_commit)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description),
+            updated_by_git_commit = VALUES(updated_by_git_commit)
+          """,
+          [id, pid, did, sk, name, input["description"], H.commit_hash()]
+        )
 
-        {:error, msg} ->
-          H.text_result(%{error: msg})
+        H.text_result(%{ok: true, spec_key: sk})
+      else
+        {:error, msg} -> H.text_result(%{error: msg})
       end
     end
   end
@@ -210,39 +211,43 @@ defmodule Spotter.ProductSpec.Agent.Tools do
           %{
             type: "object",
             properties: %{
-              project_id: %{type: "string", description: "Project UUID"},
               feature_id: %{type: "string", description: "Feature UUID"},
               domain_id: %{type: "string", description: "New parent domain UUID"},
               spec_key: %{type: "string", description: "New spec_key"},
               name: %{type: "string", description: "New name"},
               description: %{type: "string", description: "New description"}
             },
-            required: ["project_id", "feature_id"]
+            required: ["feature_id"]
           } do
     alias Spotter.ProductSpec.Agent.ToolHelpers, as: H
 
-    def execute(%{"project_id" => project_id, "feature_id" => feature_id} = input) do
-      case H.maybe_validate_spec_key(input["spec_key"]) do
-        :ok ->
-          {sets, params} =
-            H.build_update_sets(input, ["domain_id", "spec_key", "name", "description"])
+    def execute(%{"feature_id" => feature_id} = input) do
+      pid = H.project_id!()
 
-          if sets == [] do
-            H.text_result(%{error: "no fields to update"})
-          else
-            sets = sets ++ ["updated_by_git_commit = ?"]
-            params = params ++ [H.commit_hash(), project_id, feature_id]
+      with :ok <- H.maybe_validate_spec_key(input["spec_key"]),
+           :ok <-
+             if(input["domain_id"],
+               do: H.verify_domain_belongs_to_project(input["domain_id"], pid),
+               else: :ok
+             ) do
+        {sets, params} =
+          H.build_update_sets(input, ["domain_id", "spec_key", "name", "description"])
 
-            H.dolt_query!(
-              "UPDATE product_features SET #{Enum.join(sets, ", ")} WHERE project_id = ? AND id = ?",
-              params
-            )
+        if sets == [] do
+          H.text_result(%{error: "no fields to update"})
+        else
+          sets = sets ++ ["updated_by_git_commit = ?"]
+          params = params ++ [H.commit_hash(), pid, feature_id]
 
-            H.text_result(%{ok: true})
-          end
+          H.dolt_query!(
+            "UPDATE product_features SET #{Enum.join(sets, ", ")} WHERE project_id = ? AND id = ?",
+            params
+          )
 
-        {:error, msg} ->
-          H.text_result(%{error: msg})
+          H.text_result(%{ok: true})
+        end
+      else
+        {:error, msg} -> H.text_result(%{error: msg})
       end
     end
   end
@@ -252,23 +257,24 @@ defmodule Spotter.ProductSpec.Agent.Tools do
           %{
             type: "object",
             properties: %{
-              project_id: %{type: "string", description: "Project UUID"},
               feature_id: %{type: "string", description: "Feature UUID to delete"}
             },
-            required: ["project_id", "feature_id"]
+            required: ["feature_id"]
           },
           annotations: %{destructiveHint: true} do
     alias Spotter.ProductSpec.Agent.ToolHelpers, as: H
 
-    def execute(%{"project_id" => project_id, "feature_id" => feature_id}) do
+    def execute(%{"feature_id" => feature_id}) do
+      pid = H.project_id!()
+
       H.dolt_query!(
         "DELETE FROM product_requirements WHERE project_id = ? AND feature_id = ?",
-        [project_id, feature_id]
+        [pid, feature_id]
       )
 
       H.dolt_query!(
         "DELETE FROM product_features WHERE project_id = ? AND id = ?",
-        [project_id, feature_id]
+        [pid, feature_id]
       )
 
       H.text_result(%{ok: true})
@@ -282,20 +288,19 @@ defmodule Spotter.ProductSpec.Agent.Tools do
           %{
             type: "object",
             properties: %{
-              project_id: %{type: "string", description: "Project UUID"},
               feature_id: %{type: "string", description: "Filter by feature UUID"},
               q: %{
                 type: "string",
                 description: "Substring search on spec_key, statement, or rationale"
               }
-            },
-            required: ["project_id"]
+            }
           },
           annotations: %{readOnlyHint: true} do
     alias Spotter.ProductSpec.Agent.ToolHelpers, as: H
 
-    def execute(%{"project_id" => project_id} = input) do
-      {where, params} = {["project_id = ?"], [project_id]}
+    def execute(%{} = input) do
+      pid = H.project_id!()
+      {where, params} = {["project_id = ?"], [pid]}
 
       {where, params} =
         if input["feature_id"] do
@@ -329,11 +334,10 @@ defmodule Spotter.ProductSpec.Agent.Tools do
   end
 
   deftool :requirements_create,
-          "Create or upsert a product requirement by (project_id, feature_id, spec_key)",
+          "Create or upsert a product requirement by (feature_id, spec_key)",
           %{
             type: "object",
             properties: %{
-              project_id: %{type: "string", description: "Project UUID"},
               feature_id: %{type: "string", description: "Parent feature UUID"},
               spec_key: %{type: "string", description: "Unique requirement key within feature"},
               statement: %{
@@ -353,23 +357,24 @@ defmodule Spotter.ProductSpec.Agent.Tools do
                 description: "Repo-relative file paths that evidence this requirement"
               }
             },
-            required: ["project_id", "feature_id", "spec_key", "statement"]
+            required: ["feature_id", "spec_key", "statement"]
           } do
     alias Spotter.ProductSpec.Agent.ToolHelpers, as: H
 
     def execute(
           %{
-            "project_id" => pid,
             "feature_id" => fid,
             "spec_key" => sk,
             "statement" => statement
           } = input
         ) do
+      pid = H.project_id!()
       ev_files = input["evidence_files"] || []
 
       with :ok <- H.validate_spec_key(sk),
            :ok <- H.validate_shall(statement),
-           :ok <- H.validate_evidence_files(ev_files) do
+           :ok <- H.validate_evidence_files(ev_files),
+           :ok <- H.verify_feature_belongs_to_project(fid, pid) do
         id = Ash.UUID.generate()
         ac_json = if input["acceptance_criteria"], do: Jason.encode!(input["acceptance_criteria"])
         ev_json = if ev_files != [], do: Jason.encode!(ev_files)
@@ -410,7 +415,6 @@ defmodule Spotter.ProductSpec.Agent.Tools do
           %{
             type: "object",
             properties: %{
-              project_id: %{type: "string", description: "Project UUID"},
               requirement_id: %{type: "string", description: "Requirement UUID"},
               spec_key: %{type: "string", description: "New spec_key"},
               statement: %{type: "string", description: "New statement (must include 'shall')"},
@@ -427,11 +431,12 @@ defmodule Spotter.ProductSpec.Agent.Tools do
                 description: "Repo-relative file paths (replaces existing evidence)"
               }
             },
-            required: ["project_id", "requirement_id"]
+            required: ["requirement_id"]
           } do
     alias Spotter.ProductSpec.Agent.ToolHelpers, as: H
 
-    def execute(%{"project_id" => project_id, "requirement_id" => requirement_id} = input) do
+    def execute(%{"requirement_id" => requirement_id} = input) do
+      pid = H.project_id!()
       ev_files = input["evidence_files"]
 
       with :ok <- H.maybe_validate_spec_key(input["spec_key"]),
@@ -459,7 +464,7 @@ defmodule Spotter.ProductSpec.Agent.Tools do
           H.text_result(%{error: "no fields to update"})
         else
           sets = sets ++ ["updated_by_git_commit = ?"]
-          params = params ++ [H.commit_hash(), project_id, requirement_id]
+          params = params ++ [H.commit_hash(), pid, requirement_id]
 
           H.dolt_query!(
             "UPDATE product_requirements SET #{Enum.join(sets, ", ")} WHERE project_id = ? AND id = ?",
@@ -479,18 +484,19 @@ defmodule Spotter.ProductSpec.Agent.Tools do
           %{
             type: "object",
             properties: %{
-              project_id: %{type: "string", description: "Project UUID"},
               requirement_id: %{type: "string", description: "Requirement UUID to delete"}
             },
-            required: ["project_id", "requirement_id"]
+            required: ["requirement_id"]
           },
           annotations: %{destructiveHint: true} do
     alias Spotter.ProductSpec.Agent.ToolHelpers, as: H
 
-    def execute(%{"project_id" => project_id, "requirement_id" => requirement_id}) do
+    def execute(%{"requirement_id" => requirement_id}) do
+      pid = H.project_id!()
+
       H.dolt_query!(
         "DELETE FROM product_requirements WHERE project_id = ? AND id = ?",
-        [project_id, requirement_id]
+        [pid, requirement_id]
       )
 
       H.text_result(%{ok: true})
@@ -502,7 +508,6 @@ defmodule Spotter.ProductSpec.Agent.Tools do
           %{
             type: "object",
             properties: %{
-              project_id: %{type: "string", description: "Project UUID"},
               requirement_id: %{type: "string", description: "Requirement UUID"},
               files: %{
                 type: "array",
@@ -510,11 +515,13 @@ defmodule Spotter.ProductSpec.Agent.Tools do
                 description: "Repo-relative file paths to add as evidence"
               }
             },
-            required: ["project_id", "requirement_id", "files"]
+            required: ["requirement_id", "files"]
           } do
     alias Spotter.ProductSpec.Agent.ToolHelpers, as: H
 
-    def execute(%{"project_id" => pid, "requirement_id" => rid, "files" => new_files}) do
+    def execute(%{"requirement_id" => rid, "files" => new_files}) do
+      pid = H.project_id!()
+
       case H.validate_evidence_files(new_files) do
         :ok ->
           result =

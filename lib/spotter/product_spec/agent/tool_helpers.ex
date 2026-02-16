@@ -5,6 +5,39 @@ defmodule Spotter.ProductSpec.Agent.ToolHelpers do
   alias Spotter.ProductSpec.Repo
 
   @spec_key_re ~r/^[a-z0-9][a-z0-9-]{2,159}$/
+  @uuid_re ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+  @doc "Sets the project_id for the current spec agent run."
+  @spec set_project_id(String.t() | nil) :: :ok
+  def set_project_id(nil) do
+    Process.delete(:spec_agent_project_id)
+    :ok
+  end
+
+  def set_project_id(id) when is_binary(id) do
+    Process.put(:spec_agent_project_id, id)
+    :ok
+  end
+
+  @doc "Returns the bound project_id, or nil if not set."
+  @spec project_id() :: String.t() | nil
+  def project_id, do: Process.get(:spec_agent_project_id)
+
+  @doc "Returns the bound project_id or raises if not set or invalid."
+  @spec project_id!() :: String.t()
+  def project_id! do
+    case Process.get(:spec_agent_project_id) do
+      nil ->
+        raise "spec_agent_project_id not bound — call ToolHelpers.set_project_id/1 before executing tools"
+
+      id when is_binary(id) ->
+        unless Regex.match?(@uuid_re, id) do
+          raise "spec_agent_project_id is not a valid UUID: #{inspect(id)}"
+        end
+
+        id
+    end
+  end
 
   @doc "Sets the git commit hash used by write tools for `updated_by_git_commit`."
   @spec set_commit_hash(String.t()) :: :ok
@@ -83,4 +116,34 @@ defmodule Spotter.ProductSpec.Agent.ToolHelpers do
   end
 
   def validate_evidence_files(_), do: {:error, "evidence_files must be a list of strings"}
+
+  @doc "Verifies that domain_id belongs to the given project_id."
+  @spec verify_domain_belongs_to_project(String.t(), String.t()) :: :ok | {:error, String.t()}
+  def verify_domain_belongs_to_project(domain_id, project_id) do
+    result =
+      dolt_query!(
+        "SELECT COUNT(*) FROM product_domains WHERE id = ? AND project_id = ?",
+        [domain_id, project_id]
+      )
+
+    case result.rows do
+      [[n]] when n > 0 -> :ok
+      _ -> {:error, "domain #{domain_id} does not belong to project #{project_id}"}
+    end
+  end
+
+  @doc "Verifies that feature_id belongs to the given project_id."
+  @spec verify_feature_belongs_to_project(String.t(), String.t()) :: :ok | {:error, String.t()}
+  def verify_feature_belongs_to_project(feature_id, project_id) do
+    result =
+      dolt_query!(
+        "SELECT COUNT(*) FROM product_features WHERE id = ? AND project_id = ?",
+        [feature_id, project_id]
+      )
+
+    case result.rows do
+      [[n]] when n > 0 -> :ok
+      _ -> {:error, "feature #{feature_id} does not belong to project #{project_id}"}
+    end
+  end
 end
