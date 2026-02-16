@@ -65,6 +65,10 @@ This additionally exposes:
 - OTLP HTTP: `:4318`
 - Dolt: `:13307`
 
+### Frontend assets in Docker
+
+Docker images prebuild frontend assets (`priv/static/assets/app.js`) during `docker build`. If the file is missing or empty at container startup (e.g. due to a volume mount or manual deletion), the entrypoint performs a one-time rebuild before starting the server. If the rebuild fails, the container exits with a clear error instead of booting with a broken UI.
+
 ### Security note
 
 The launcher mounts your target repo (read-write) and `~/.claude` (read-write) into containers so Claude can edit code and write transcripts. The first run prompts for consent. To revoke consent, delete `~/.local/share/spotter/consent-v1`.

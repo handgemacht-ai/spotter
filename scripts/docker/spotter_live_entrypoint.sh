@@ -15,6 +15,18 @@ mix local.rebar --force
 # Ensure Claude home dirs exist
 mkdir -p "${HOME}/.claude/projects"
 
+# Ensure frontend assets exist (self-heal if missing/empty)
+ASSET_PATH="/app/priv/static/assets/app.js"
+if [ ! -s "$ASSET_PATH" ]; then
+  echo "WARNING: $ASSET_PATH missing or empty, rebuilding assets..." >&2
+  node assets/build.js
+  if [ ! -s "$ASSET_PATH" ]; then
+    echo "ERROR: Asset rebuild failed — $ASSET_PATH still missing or empty. Cannot start." >&2
+    exit 1
+  fi
+  echo "Asset rebuild successful." >&2
+fi
+
 # Run migrations
 mix ecto.migrate
 

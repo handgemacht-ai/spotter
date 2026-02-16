@@ -32,4 +32,9 @@ RUN npm ci --prefix assets
 COPY . .
 RUN mix compile
 
+# Build frontend assets and verify output
+RUN node assets/build.js && \
+    test -s priv/static/assets/app.js || \
+    (echo "ERROR: priv/static/assets/app.js missing or empty after build" >&2 && exit 1)
+
 CMD ["bash", "-lc", "scripts/e2e/start_spotter.sh"]
