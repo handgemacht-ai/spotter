@@ -54,22 +54,8 @@ defmodule SpotterWeb.SearchController do
       []
   end
 
-  defp safe_product_search(q, project_id, limit) do
-    if Spotter.ProductSpec.dolt_available?() do
-      per_kind = max(div(limit, 3), 3)
-
-      domains = Spotter.ProductSpec.search_domains(project_id, q, per_kind)
-      features = Spotter.ProductSpec.search_features(project_id, q, per_kind)
-      requirements = Spotter.ProductSpec.search_requirements(project_id, q, per_kind)
-
-      product_url = product_url(project_id, q)
-
-      to_product_results(domains, "product_domain", project_id, product_url) ++
-        to_product_results(features, "product_feature", project_id, product_url) ++
-        to_product_results(requirements, "product_requirement", project_id, product_url)
-    else
-      []
-    end
+  defp safe_product_search(_q, _project_id, _limit) do
+    []
   rescue
     e ->
       OtelTraceHelpers.set_error("product_search_error", %{
@@ -78,29 +64,6 @@ defmodule SpotterWeb.SearchController do
       })
 
       []
-  end
-
-  defp to_product_results(rows, kind, project_id, url) do
-    Enum.map(rows, &product_row_to_result(&1, kind, project_id, url))
-  end
-
-  defp product_row_to_result(row, kind, project_id, url) do
-    %Spotter.Search.Result{
-      kind: kind,
-      project_id: project_id || row[:project_id] || "",
-      external_id: first_present([row[:id], row[:spec_key]]),
-      title: first_present([row[:name], row[:statement], row[:spec_key]]),
-      subtitle: first_present([row[:description], row[:spec_key]]),
-      url: url,
-      score: 50.0
-    }
-  end
-
-  defp first_present(values), do: Enum.find(values, "", &(&1 != nil && &1 != ""))
-
-  defp product_url(project_id, q) do
-    base = "/specs?artifact=product&spec_view=snapshot&q=#{URI.encode_www_form(q)}"
-    if project_id, do: base <> "&project_id=#{project_id}", else: base
   end
 
   defp result_to_json(r) do

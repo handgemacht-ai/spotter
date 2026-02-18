@@ -1,7 +1,3 @@
-if Application.get_env(:claude_agent_sdk, :use_mock, false) do
-  {:ok, _pid} = ClaudeAgentSDK.Mock.start_link()
-end
-
 # Exclude tests that spawn Claude CLI when:
 # - Running inside a Claude Code session (nested sessions crash)
 # - No SPOTTER_ANTHROPIC_API_KEY set (LLM calls will fail anyway)

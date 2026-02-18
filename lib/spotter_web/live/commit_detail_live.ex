@@ -121,32 +121,6 @@ defmodule SpotterWeb.CommitDetailLive do
                   </div>
                 </div>
 
-                <%!-- Project rollup summary --%>
-                <div class="commit-detail-summary-section">
-                  <div class="commit-detail-section-title">Project Rollup</div>
-                  <%= if @commit_detail_rolling_summary do %>
-                    <pre class="project-rollup">{@commit_detail_rolling_summary.summary_text}</pre>
-                    <div class="text-muted text-xs">
-                      Computed: {format_timestamp(@commit_detail_rolling_summary.computed_at)}
-                    </div>
-                  <% else %>
-                    <p class="text-muted text-sm">No rolling summary computed yet.</p>
-                  <% end %>
-                </div>
-
-                <%!-- Bucket summary --%>
-                <div class="commit-detail-summary-section">
-                  <div class="commit-detail-section-title">Bucket Summary</div>
-                  <%= if @commit_detail_period_summary do %>
-                    <pre class="bucket-summary">{@commit_detail_period_summary.summary_text}</pre>
-                    <div class="text-muted text-xs">
-                      {@commit_detail_period_summary.bucket_kind} starting {@commit_detail_period_summary.bucket_start_date}
-                    </div>
-                  <% else %>
-                    <p class="text-muted text-sm">No bucket summary computed yet.</p>
-                  <% end %>
-                </div>
-
                 <%!-- Changed files list --%>
                 <div :if={@commit_detail_commit.changed_files != []} class="commit-detail-files">
                   <div class="commit-detail-section-title">Changed Files</div>

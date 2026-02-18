@@ -54,9 +54,7 @@ defmodule Spotter.MixProject do
       {:opentelemetry_bandit, "~> 0.3"},
       {:opentelemetry_phoenix, "~> 2.0"},
       {:opentelemetry_ash, "~> 0.1"},
-      {:myxql, "~> 0.8"},
-      # TODO: Switch back to Hex once upstream merges transport_stderr fix
-      {:claude_agent_sdk, path: "vendor/claude_agent_sdk", override: true}
+      {:myxql, "~> 0.8"}
     ]
   end
 

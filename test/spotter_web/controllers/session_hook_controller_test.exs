@@ -2,7 +2,6 @@ defmodule SpotterWeb.SessionHookControllerTest do
   use ExUnit.Case, async: false
 
   alias Ecto.Adapters.SQL.Sandbox
-  alias Spotter.Observability.FlowHub
   alias Spotter.Services.ActiveSessionRegistry
 
   @endpoint SpotterWeb.Endpoint
@@ -15,14 +14,8 @@ defmodule SpotterWeb.SessionHookControllerTest do
     Sandbox.checkout(Spotter.Repo)
     :ets.delete_all_objects(@active_table)
 
-    if :ets.whereis(FlowHub) != :undefined do
-      :ets.delete_all_objects(FlowHub)
-    end
-
     :ok
   end
-
-  defp flush_flow_hub, do: FlowHub.snapshot(minutes: 5)
 
   defp post_session_start(params, headers \\ []) do
     post_hook("/api/hooks/session-start", params, headers)
@@ -92,7 +85,7 @@ defmodule SpotterWeb.SessionHookControllerTest do
       assert body["error"] =~ "required"
     end
 
-    test "succeeds with valid traceparent header and FlowHub events have trace_id" do
+    test "succeeds with valid traceparent header" do
       {status, body, conn} =
         post_session_start(valid_params(), [{"traceparent", @valid_traceparent}])
 
@@ -101,14 +94,6 @@ defmodule SpotterWeb.SessionHookControllerTest do
 
       trace_id = conn |> Plug.Conn.get_resp_header("x-spotter-trace-id") |> List.first()
       assert trace_id != nil
-
-      %{events: events} = flush_flow_hub()
-
-      received_event =
-        Enum.find(events, &(&1.kind == "hook.session_start.received"))
-
-      assert received_event != nil
-      assert received_event.trace_id == trace_id
     end
 
     test "succeeds with malformed traceparent header" do
@@ -136,14 +121,6 @@ defmodule SpotterWeb.SessionHookControllerTest do
       assert body["error"] =~ "required"
     end
 
-    test "returns 400 when transcript_path missing" do
-      {status, body, _conn} =
-        post_json("/api/hooks/waiting-summary", %{"session_id" => "abc"})
-
-      assert status == 400
-      assert body["error"] =~ "required"
-    end
-
     test "returns 400 when both fields missing" do
       {status, body, _conn} = post_json("/api/hooks/waiting-summary", %{})
 
@@ -151,55 +128,17 @@ defmodule SpotterWeb.SessionHookControllerTest do
       assert body["error"] =~ "required"
     end
 
-    test "returns 200 with fallback summary for missing transcript file" do
+    test "returns 200 with static summary when session_id provided" do
       {status, body, _conn} =
         post_json("/api/hooks/waiting-summary", %{
-          "session_id" => "test-session-123",
-          "transcript_path" => "/nonexistent/path.jsonl"
+          "session_id" => "test-session-123"
         })
 
       assert status == 200
       assert body["ok"] == true
-      assert is_binary(body["summary"])
-      assert body["summary"] =~ "test-ses"
-      assert is_integer(body["input_chars"])
+      assert body["summary"] == "Session in progress."
+      assert body["input_chars"] == 0
       assert is_map(body["source_window"])
-    end
-
-    @tag :live_api
-    test "returns 200 with summary for valid transcript" do
-      path = Path.absname(Path.join(@fixtures_dir, "short.jsonl"))
-
-      {status, body, _conn} =
-        post_json("/api/hooks/waiting-summary", %{
-          "session_id" => "55604662-cf2a-4331-851a-ec234028f8ca",
-          "transcript_path" => path
-        })
-
-      assert status == 200
-      assert body["ok"] == true
-      assert is_binary(body["summary"])
-      assert body["summary"] != ""
-      assert is_integer(body["input_chars"])
-      assert body["input_chars"] > 0
-      assert body["source_window"]["head_messages"] >= 0
-      assert body["source_window"]["tail_messages"] >= 0
-    end
-
-    @tag :live_api
-    test "accepts optional token_budget parameter" do
-      path = Path.absname(Path.join(@fixtures_dir, "short.jsonl"))
-
-      {status, body, _conn} =
-        post_json("/api/hooks/waiting-summary", %{
-          "session_id" => "55604662-cf2a-4331-851a-ec234028f8ca",
-          "transcript_path" => path,
-          "token_budget" => 200
-        })
-
-      assert status == 200
-      assert body["ok"] == true
-      assert body["input_chars"] <= 200
     end
   end
 
@@ -213,18 +152,6 @@ defmodule SpotterWeb.SessionHookControllerTest do
       assert status == 200
       assert body["ok"] == true
 
-      # No ComputePromptPatterns jobs should be enqueued
-      import Ecto.Query
-
-      jobs =
-        Spotter.Repo.all(
-          from(j in Oban.Job,
-            where: j.worker == "Spotter.Transcripts.Jobs.ComputePromptPatterns",
-            where: j.state == "available"
-          )
-        )
-
-      assert jobs == []
     end
   end
 

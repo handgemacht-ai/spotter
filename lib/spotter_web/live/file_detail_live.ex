@@ -5,7 +5,7 @@ defmodule SpotterWeb.FileDetailLive do
   import SpotterWeb.TranscriptComponents
   import SpotterWeb.AnnotationComponents
 
-  alias Spotter.Services.{ExplainAnnotations, FileDetail}
+  alias Spotter.Services.FileDetail
   alias Spotter.Transcripts.{Annotation, AnnotationFileRef}
 
   attach_computer(SpotterWeb.Live.FileDetailComputers, :file_detail)
@@ -260,33 +260,7 @@ defmodule SpotterWeb.FileDetailLive do
 
   defp format_annotation_error(error), do: inspect(error)
 
-  defp maybe_enqueue_explain(socket, annotation, :explain) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(
-        Spotter.PubSub,
-        ExplainAnnotations.topic(annotation.id)
-      )
-    end
-
-    streams = Map.put(socket.assigns.explain_streams, annotation.id, "")
-    socket = assign(socket, explain_streams: streams)
-
-    case explain_annotations_module().enqueue(annotation.id) do
-      {:ok, _job} ->
-        socket
-
-      {:error, _reason} ->
-        socket
-        |> assign(explain_streams: Map.delete(socket.assigns.explain_streams, annotation.id))
-        |> put_flash(:error, "Could not start explanation job.")
-    end
-  end
-
   defp maybe_enqueue_explain(socket, _annotation, _purpose), do: socket
-
-  defp explain_annotations_module do
-    Application.get_env(:spotter, :explain_annotations_module, ExplainAnnotations)
-  end
 
   defp create_file_ref(annotation, socket) do
     line_start = parse_line(socket.assigns.selection_line_start, 1)

@@ -11,8 +11,6 @@ defmodule SpotterWeb.CommitDetailLiveTest do
     Commit,
     Message,
     Project,
-    ProjectPeriodSummary,
-    ProjectRollingSummary,
     Session,
     SessionCommitLink
   }
@@ -114,45 +112,6 @@ defmodule SpotterWeb.CommitDetailLiveTest do
   end
 
   describe "summary sections" do
-    test "renders rolling summary when available", %{project: project, commit: commit} do
-      Ash.create!(ProjectRollingSummary, %{
-        project_id: project.id,
-        bucket_kind: :day,
-        timezone: "Etc/UTC",
-        default_branch: "main",
-        lookback_days: 14,
-        included_bucket_start_dates: [],
-        summary_text: "Active work on timezone features",
-        computed_at: DateTime.utc_now()
-      })
-
-      {:ok, _view, html} = live(build_conn(), "/history/commits/#{commit.id}")
-
-      assert html =~ "Active work on timezone features"
-      assert html =~ "Project Rollup"
-    end
-
-    test "renders period summary when available", %{project: project, commit: commit} do
-      bucket_date = Date.utc_today()
-
-      Ash.create!(ProjectPeriodSummary, %{
-        project_id: project.id,
-        bucket_kind: :day,
-        bucket_start_date: bucket_date,
-        timezone: "Etc/UTC",
-        default_branch: "main",
-        included_session_ids: [],
-        included_commit_hashes: [],
-        summary_text: "Focused on distillation pipeline",
-        computed_at: DateTime.utc_now()
-      })
-
-      {:ok, _view, html} = live(build_conn(), "/history/commits/#{commit.id}")
-
-      assert html =~ "Focused on distillation pipeline"
-      assert html =~ "Bucket Summary"
-    end
-
     test "renders session distilled summary when available", %{
       project: project,
       commit: commit
@@ -182,12 +141,6 @@ defmodule SpotterWeb.CommitDetailLiveTest do
       assert html =~ "Implemented commit detail summaries"
     end
 
-    test "shows placeholder when no summaries computed", %{commit: commit} do
-      {:ok, _view, html} = live(build_conn(), "/history/commits/#{commit.id}")
-
-      assert html =~ "No rolling summary computed yet."
-      assert html =~ "No bucket summary computed yet."
-    end
   end
 
   describe "breadcrumb navigation" do

@@ -17,8 +17,6 @@ config :spotter, Spotter.Repo,
 
 config :ash, policies: [show_policy_breakdowns?: true]
 
-config :claude_agent_sdk, task_supervisor_strict: true
-
 asset_watchers =
   if System.get_env("SPOTTER_DISABLE_ASSET_WATCH") == "1" do
     []

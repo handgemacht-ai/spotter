@@ -2,7 +2,6 @@ defmodule SpotterWeb.HooksControllerTest do
   use ExUnit.Case, async: false
 
   alias Ecto.Adapters.SQL.Sandbox
-  alias Spotter.Observability.FlowHub
   alias Spotter.Transcripts.{Commit, Project, Session, SessionCommitLink}
 
   require Ash.Query
@@ -11,10 +10,6 @@ defmodule SpotterWeb.HooksControllerTest do
 
   setup do
     Sandbox.checkout(Spotter.Repo)
-
-    if :ets.whereis(FlowHub) != :undefined do
-      :ets.delete_all_objects(FlowHub)
-    end
 
     project = Ash.create!(Project, %{name: "test-hooks", pattern: "^test"})
 
@@ -27,8 +22,6 @@ defmodule SpotterWeb.HooksControllerTest do
 
     %{session: session}
   end
-
-  defp flush_flow_hub, do: FlowHub.snapshot(minutes: 5)
 
   @valid_traceparent "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
   @malformed_traceparent "not-a-valid-traceparent"
@@ -113,7 +106,7 @@ defmodule SpotterWeb.HooksControllerTest do
       assert body["error"] =~ "invalid change_type"
     end
 
-    test "succeeds with valid traceparent header and FlowHub events have trace_id", %{
+    test "succeeds with valid traceparent header", %{
       session: session
     } do
       {status, body, conn} =
@@ -124,14 +117,6 @@ defmodule SpotterWeb.HooksControllerTest do
 
       trace_id = conn |> Plug.Conn.get_resp_header("x-spotter-trace-id") |> List.first()
       assert trace_id != nil
-
-      %{events: events} = flush_flow_hub()
-
-      received_event =
-        Enum.find(events, &(&1.kind == "hook.file_snapshot.received"))
-
-      assert received_event != nil
-      assert received_event.trace_id == trace_id
     end
 
     test "succeeds with malformed traceparent header", %{session: session} do
@@ -356,23 +341,6 @@ defmodule SpotterWeb.HooksControllerTest do
       assert link.link_type == :observed_in_session
       assert link.confidence == 1.0
 
-      # Verify AnalyzeCommitHotspots job was enqueued
-      import Ecto.Query
-
-      assert [_job] =
-               Spotter.Repo.all(
-                 from(j in Oban.Job,
-                   where: j.worker == "Spotter.Transcripts.Jobs.AnalyzeCommitHotspots"
-                 )
-               )
-
-      # Verify AnalyzeCommitTests job was enqueued
-      assert [_job] =
-               Spotter.Repo.all(
-                 from(j in Oban.Job,
-                   where: j.worker == "Spotter.Transcripts.Jobs.AnalyzeCommitTests"
-                 )
-               )
     end
 
     test "handles empty hashes array", %{session: session} do
@@ -448,7 +416,7 @@ defmodule SpotterWeb.HooksControllerTest do
       assert body["error"] =~ "required"
     end
 
-    test "succeeds with valid traceparent header and FlowHub events have trace_id", %{
+    test "succeeds with valid traceparent header", %{
       session: session
     } do
       {status, body, conn} =
@@ -459,31 +427,6 @@ defmodule SpotterWeb.HooksControllerTest do
 
       trace_id = conn |> Plug.Conn.get_resp_header("x-spotter-trace-id") |> List.first()
       assert trace_id != nil
-
-      %{events: events} = flush_flow_hub()
-
-      received_event =
-        Enum.find(events, &(&1.kind == "hook.commit_event.received"))
-
-      assert received_event != nil
-      assert received_event.trace_id == trace_id
-
-      # Verify oban.enqueued events also carry trace_id
-      enqueued_events = Enum.filter(events, &(&1.kind == "oban.enqueued"))
-      assert enqueued_events != []
-
-      # All enqueued events should have trace context
-      for enqueued <- enqueued_events do
-        assert enqueued.trace_id == trace_id
-        assert Enum.any?(enqueued.flow_keys, &String.starts_with?(&1, "oban:"))
-      end
-
-      # At least one enqueued event should have a commit flow key
-      hash = String.duplicate("a", 40)
-
-      assert Enum.any?(enqueued_events, fn e ->
-               Enum.any?(e.flow_keys, &(&1 == "commit:#{hash}"))
-             end)
     end
 
     test "succeeds with malformed traceparent header", %{session: session} do

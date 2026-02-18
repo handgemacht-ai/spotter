@@ -77,9 +77,6 @@ config :spark,
     ]
   ]
 
-config :claude_agent_sdk,
-  task_supervisor: Spotter.ClaudeTaskSupervisor
-
 config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
 
 # Keep tzdata cache on a writable path in container/dev flows.
