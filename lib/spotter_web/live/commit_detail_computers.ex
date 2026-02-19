@@ -64,33 +64,6 @@ defmodule SpotterWeb.Live.CommitDetailComputers do
       depends_on([:linked_sessions])
     end
 
-    val :rolling_summary do
-      compute(fn
-        %{project: nil} ->
-          nil
-
-        %{project: project} ->
-          SpotterWeb.Live.CommitDetailQueries.load_rolling(project)
-      end)
-
-      depends_on([:project])
-    end
-
-    val :period_summary do
-      compute(fn
-        %{project: nil} ->
-          nil
-
-        %{commit: nil} ->
-          nil
-
-        %{project: project, commit: commit} ->
-          SpotterWeb.Live.CommitDetailQueries.load_period(project, commit)
-      end)
-
-      depends_on([:project, :commit])
-    end
-
     val :co_change_rows do
       compute(fn
         %{commit: nil} ->

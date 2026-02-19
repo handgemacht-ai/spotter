@@ -19,17 +19,8 @@ config :spotter, SpotterWeb.Endpoint,
 
 config :ash, policies: [show_policy_breakdowns?: true], disable_async?: true
 
-config :claude_agent_sdk,
-  use_mock: true,
-  task_supervisor_strict: true,
-  tool_execution_timeout_ms: 5_000,
-  timeout_ms: 30_000
-
 # Bound SSE stream duration so GET /api/mcp tests return quickly
 config :spotter, SpotterWeb.SpotterMcpPlug,
   sse_keepalive_ms: 10,
   sse_max_duration_ms: 25
 
-# Dolt repos - use a test-friendly pool size
-config :spotter, Spotter.ProductSpec.Repo, pool_size: 2
-config :spotter, Spotter.TestSpec.Repo, pool_size: 2

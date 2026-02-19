@@ -1,5 +1,5 @@
 defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
-  @moduledoc "Oban worker that backfills recent commits for a project and enqueues hotspot analysis."
+  @moduledoc "Oban worker that backfills recent commits for a project."
 
   use Oban.Worker,
     queue: :default,
@@ -11,11 +11,8 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
   require OpenTelemetry.Tracer, as: Tracer
 
   alias Spotter.Observability.ErrorReport
-  alias Spotter.ProductSpec.Jobs.UpdateRollingSpec
   alias Spotter.Services.GitCommitReader
-  alias Spotter.Telemetry.TraceContext
-  alias Spotter.Transcripts.{Commit, ProjectIngestState, ReviewItem, Session}
-  alias Spotter.Transcripts.Jobs.{AnalyzeCommitHotspots, AnalyzeCommitTests}
+  alias Spotter.Transcripts.{Commit, ProjectIngestState, Session}
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"project_id" => project_id} = args}) do
@@ -96,7 +93,7 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
         Tracer.set_attribute("spotter.commits_found", length(commit_data))
 
         Enum.each(commit_data, fn data ->
-          upsert_commit_and_review_item(project_id, data)
+          upsert_commit(data)
         end)
 
         update_ingest_state(project_id)
@@ -124,81 +121,15 @@ defmodule Spotter.Transcripts.Jobs.IngestRecentCommits do
     end
   end
 
-  defp upsert_commit_and_review_item(project_id, data) do
+  defp upsert_commit(data) do
     case Ash.create(Commit, data) do
-      {:ok, commit} ->
-        ensure_commit_message_review_item(project_id, commit)
-        maybe_enqueue_analyze(project_id, commit)
-        maybe_enqueue_analyze_tests(project_id, commit)
-        maybe_enqueue_rolling_spec(project_id, commit)
+      {:ok, _commit} ->
+        :ok
 
       {:error, reason} ->
         Tracer.add_event("commit_upsert_failed", [{"error.reason", inspect(reason)}])
         Logger.warning("IngestRecentCommits: failed to upsert commit: #{inspect(reason)}")
     end
-  end
-
-  defp ensure_commit_message_review_item(project_id, commit) do
-    existing =
-      ReviewItem
-      |> Ash.Query.filter(
-        project_id == ^project_id and
-          target_kind == :commit_message and
-          commit_id == ^commit.id
-      )
-      |> Ash.Query.limit(1)
-      |> Ash.read!()
-
-    if existing == [] do
-      Ash.create(ReviewItem, %{
-        project_id: project_id,
-        target_kind: :commit_message,
-        commit_id: commit.id,
-        importance: :medium,
-        interval_days: 4,
-        next_due_on: Date.utc_today()
-      })
-    end
-  end
-
-  defp maybe_enqueue_analyze(project_id, commit) do
-    if commit.hotspots_status == :pending do
-      %{project_id: project_id, commit_hash: commit.commit_hash}
-      |> Map.merge(trace_context())
-      |> AnalyzeCommitHotspots.new()
-      |> Oban.insert()
-    end
-  end
-
-  defp maybe_enqueue_analyze_tests(project_id, commit) do
-    if commit.tests_status == :pending do
-      %{project_id: project_id, commit_hash: commit.commit_hash}
-      |> Map.merge(trace_context())
-      |> AnalyzeCommitTests.new()
-      |> Oban.insert()
-    end
-  end
-
-  defp maybe_enqueue_rolling_spec(project_id, commit) do
-    %{project_id: project_id, commit_hash: commit.commit_hash}
-    |> Map.merge(trace_context())
-    |> UpdateRollingSpec.new()
-    |> Oban.insert()
-  end
-
-  defp trace_context do
-    context = %{run_id: Ash.UUID.generate()}
-
-    trace_id = TraceContext.current_trace_id()
-    traceparent = TraceContext.current_traceparent()
-
-    context
-    |> then(fn ctx ->
-      if is_binary(trace_id), do: Map.put(ctx, :otel_trace_id, trace_id), else: ctx
-    end)
-    |> then(fn ctx ->
-      if is_binary(traceparent), do: Map.put(ctx, :otel_traceparent, traceparent), else: ctx
-    end)
   end
 
   defp update_ingest_state(project_id) do

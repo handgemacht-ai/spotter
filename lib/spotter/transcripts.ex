@@ -77,26 +77,6 @@ defmodule Spotter.Transcripts do
         get :read
         index :read
       end
-
-      base_route "/commit_hotspots", Spotter.Transcripts.CommitHotspot do
-        get :read
-        index :read
-      end
-
-      base_route "/prompt_pattern_runs", Spotter.Transcripts.PromptPatternRun do
-        get :read
-        index :read
-      end
-
-      base_route "/prompt_patterns", Spotter.Transcripts.PromptPattern do
-        get :read
-        index :read
-      end
-
-      base_route "/prompt_pattern_matches", Spotter.Transcripts.PromptPatternMatch do
-        get :read
-        index :read
-      end
     end
   end
 
@@ -134,19 +114,6 @@ defmodule Spotter.Transcripts do
     resource Spotter.Transcripts.CommitHotspot
     resource Spotter.Transcripts.CommitFile
     resource Spotter.Transcripts.AnnotationFileRef
-    resource Spotter.Transcripts.CommitHotspot
-    resource Spotter.Transcripts.Flashcard
-    resource Spotter.Transcripts.ReviewItem
     resource Spotter.Transcripts.ProjectIngestState
-    resource Spotter.Transcripts.PromptPatternRun
-    resource Spotter.Transcripts.PromptPattern
-    resource Spotter.Transcripts.PromptPatternMatch
-    resource Spotter.Transcripts.SessionDistillation
-    resource Spotter.Transcripts.ProjectPeriodSummary
-    resource Spotter.Transcripts.ProjectRollingSummary
-    resource Spotter.Transcripts.TestCase
-    resource Spotter.Transcripts.CommitTestRun
-    resource Spotter.Transcripts.SpecTestLink
-    resource Spotter.ProductSpec.RollingSpecRun
   end
 end

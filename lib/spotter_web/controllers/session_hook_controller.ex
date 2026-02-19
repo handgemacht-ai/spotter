@@ -9,9 +9,8 @@ defmodule SpotterWeb.SessionHookController do
   alias Spotter.Services.ActiveSessionRegistry
   alias Spotter.Services.SessionRegistry
   alias Spotter.Services.TranscriptTailSupervisor
-  alias Spotter.Services.WaitingSummary
   alias Spotter.Telemetry.TraceContext
-  alias Spotter.Transcripts.Jobs.{DistillCompletedSession, IngestRecentCommits, SyncTranscripts}
+  alias Spotter.Transcripts.Jobs.{IngestRecentCommits, SyncTranscripts}
   alias Spotter.Transcripts.Sessions
   alias SpotterWeb.OtelTraceHelpers
 
@@ -91,85 +90,27 @@ defmodule SpotterWeb.SessionHookController do
     end
   end
 
-  def waiting_summary(
-        conn,
-        %{"session_id" => session_id, "transcript_path" => transcript_path} = params
-      )
-      when is_binary(session_id) and is_binary(transcript_path) do
-    flow_keys = [FlowKeys.session(session_id)]
-
+  def waiting_summary(conn, %{"session_id" => session_id} = _params)
+      when is_binary(session_id) do
     OtelTraceHelpers.with_span "spotter.hook.waiting_summary", %{
       "spotter.session_id" => session_id
     } do
-      emit_hook_received("waiting_summary", flow_keys, %{
-        "session_id" => session_id
+      conn
+      |> OtelTraceHelpers.put_trace_response_header()
+      |> json(%{
+        ok: true,
+        summary: "Session #{session_id} in progress.",
+        input_chars: 0,
+        source_window: %{head_messages: 0, tail_messages: 0}
       })
-
-      opts =
-        case params["token_budget"] do
-          budget when is_integer(budget) and budget > 0 -> [token_budget: budget]
-          _ -> []
-        end
-
-      case WaitingSummary.generate(transcript_path, opts) do
-        {:ok, result} ->
-          emit_hook_outcome("waiting_summary", :ok, flow_keys)
-
-          conn
-          |> OtelTraceHelpers.put_trace_response_header()
-          |> json(%{
-            ok: true,
-            summary: result.summary,
-            input_chars: result.input_chars,
-            source_window: result.source_window
-          })
-
-        {:error, _reason} ->
-          fallback = WaitingSummary.build_fallback_summary(session_id, [])
-          emit_hook_outcome("waiting_summary", :ok, flow_keys)
-
-          conn
-          |> OtelTraceHelpers.put_trace_response_header()
-          |> json(%{
-            ok: true,
-            summary: fallback,
-            input_chars: 0,
-            source_window: %{head_messages: 0, tail_messages: 0}
-          })
-      end
     end
   end
 
   def waiting_summary(conn, _params) do
-    hook_event = get_req_header(conn, "x-spotter-hook-event") |> List.first() || "unknown"
-    hook_script = get_req_header(conn, "x-spotter-hook-script") |> List.first() || "unknown"
-
-    OtelTraceHelpers.with_span "spotter.hook.waiting_summary", %{} do
-      error_payload =
-        ErrorReport.hook_flow_error(
-          "invalid_params",
-          "session_id and transcript_path are required",
-          400,
-          hook_event,
-          hook_script,
-          %{
-            "error.source" => "session_hook_controller",
-            "reason" => "session_id and transcript_path are required"
-          }
-        )
-
-      OtelTraceHelpers.set_error("invalid_params", %{
-        "http.status_code" => 400,
-        "error.source" => "session_hook_controller"
-      })
-
-      emit_hook_outcome("waiting_summary", :error, [FlowKeys.system()], error_payload)
-
-      conn
-      |> put_status(:bad_request)
-      |> OtelTraceHelpers.put_trace_response_header()
-      |> json(%{error: "session_id and transcript_path are required"})
-    end
+    conn
+    |> put_status(:bad_request)
+    |> OtelTraceHelpers.put_trace_response_header()
+    |> json(%{error: "session_id is required"})
   end
 
   def session_end(conn, %{"session_id" => session_id} = params)
@@ -193,7 +134,7 @@ defmodule SpotterWeb.SessionHookController do
       ActiveSessionRegistry.end_session(session_id, reason)
       TranscriptTailSupervisor.stop_worker(session_id)
       maybe_enqueue_ingest_for_session(session_id)
-      mark_ended_and_enqueue_distillation(session_id, params)
+      mark_ended(session_id, params)
 
       emit_hook_outcome("session_end", :ok, flow_keys)
 
@@ -298,15 +239,10 @@ defmodule SpotterWeb.SessionHookController do
     end
   end
 
-  defp mark_ended_and_enqueue_distillation(session_id, params) do
+  defp mark_ended(session_id, params) do
     case Sessions.find_or_create(session_id, cwd: params["cwd"]) do
       {:ok, session} ->
         Ash.update!(session, %{hook_ended_at: DateTime.utc_now()})
-
-        %{session_id: session_id}
-        |> OtelTraceHelpers.maybe_add_trace_context()
-        |> DistillCompletedSession.new()
-        |> Oban.insert()
 
       {:error, reason} ->
         Logger.warning("Failed to mark session ended #{session_id}: #{inspect(reason)}")

@@ -5,13 +5,10 @@ defmodule SpotterWeb.HooksController do
   alias Spotter.Observability.ErrorReport
   alias Spotter.Observability.FlowHub
   alias Spotter.Observability.FlowKeys
-  alias Spotter.ProductSpec.Jobs.UpdateRollingSpec
   alias Spotter.Services.ActiveSessionRegistry
   alias Spotter.Telemetry.TraceContext
   alias Spotter.Transcripts.Commit
   alias Spotter.Transcripts.FileSnapshot
-  alias Spotter.Transcripts.Jobs.AnalyzeCommitHotspots
-  alias Spotter.Transcripts.Jobs.AnalyzeCommitTests
   alias Spotter.Transcripts.Jobs.ComputeCoChange
   alias Spotter.Transcripts.Jobs.ComputeHeatmap
   alias Spotter.Transcripts.Jobs.EnrichCommits
@@ -56,9 +53,6 @@ defmodule SpotterWeb.HooksController do
         ingested = ingest_commits(hashes, session, params["git_branch"], evidence)
         enqueue_enrichment(hashes, session)
         enqueue_heatmap(session)
-        enqueue_analyze_hotspots(hashes, session)
-        enqueue_analyze_tests(hashes, session)
-        enqueue_rolling_spec(hashes, session)
 
         emit_hook_outcome("commit_event", :ok, flow_keys)
 
@@ -541,45 +535,6 @@ defmodule SpotterWeb.HooksController do
       "project_id" => session.project_id
     })
   end
-
-  defp enqueue_analyze_hotspots(hashes, session) when hashes != [] do
-    Enum.each(hashes, fn hash ->
-      insert_and_emit(
-        %{project_id: session.project_id, commit_hash: hash},
-        AnalyzeCommitHotspots,
-        %{"project_id" => session.project_id, "commit_hash" => hash}
-      )
-    end)
-  end
-
-  defp enqueue_analyze_hotspots(_, _), do: :ok
-
-  defp enqueue_analyze_tests(hashes, session) when hashes != [] do
-    Enum.each(hashes, fn hash ->
-      insert_and_emit(
-        %{project_id: session.project_id, commit_hash: hash},
-        AnalyzeCommitTests,
-        %{"project_id" => session.project_id, "commit_hash" => hash}
-      )
-    end)
-  end
-
-  defp enqueue_analyze_tests(_, _), do: :ok
-
-  defp enqueue_rolling_spec(hashes, session) when hashes != [] do
-    Enum.each(hashes, fn hash ->
-      args =
-        %{project_id: session.project_id, commit_hash: hash, git_cwd: session.cwd || "."}
-        |> OtelTraceHelpers.maybe_add_trace_context()
-
-      insert_and_emit(args, UpdateRollingSpec, %{
-        "project_id" => session.project_id,
-        "commit_hash" => hash
-      })
-    end)
-  end
-
-  defp enqueue_rolling_spec(_, _), do: :ok
 
   defp enqueue_enrichment(hashes, session) when hashes != [] do
     args =
