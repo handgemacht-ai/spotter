@@ -21,7 +21,7 @@ defmodule SpotterWeb.SpotterMcpPlug do
     otp_app: :spotter,
     mcp_name: "Spotter",
     mcp_server_version: "1.0.0",
-    tools: [:list_sessions, :list_review_annotations, :resolve_annotation]
+    tools: [:list_sessions, :list_review_annotations, :resolve_annotation, :create_hotspot, :list_hotspots]
   ]
 
   @impl true

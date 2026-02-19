@@ -355,24 +355,6 @@ defmodule SpotterWeb.HooksControllerTest do
       assert [link] = Ash.read!(SessionCommitLink)
       assert link.link_type == :observed_in_session
       assert link.confidence == 1.0
-
-      # Verify AnalyzeCommitHotspots job was enqueued
-      import Ecto.Query
-
-      assert [_job] =
-               Spotter.Repo.all(
-                 from(j in Oban.Job,
-                   where: j.worker == "Spotter.Transcripts.Jobs.AnalyzeCommitHotspots"
-                 )
-               )
-
-      # Verify AnalyzeCommitTests job was enqueued
-      assert [_job] =
-               Spotter.Repo.all(
-                 from(j in Oban.Job,
-                   where: j.worker == "Spotter.Transcripts.Jobs.AnalyzeCommitTests"
-                 )
-               )
     end
 
     test "handles empty hashes array", %{session: session} do
@@ -477,13 +459,6 @@ defmodule SpotterWeb.HooksControllerTest do
         assert enqueued.trace_id == trace_id
         assert Enum.any?(enqueued.flow_keys, &String.starts_with?(&1, "oban:"))
       end
-
-      # At least one enqueued event should have a commit flow key
-      hash = String.duplicate("a", 40)
-
-      assert Enum.any?(enqueued_events, fn e ->
-               Enum.any?(e.flow_keys, &(&1 == "commit:#{hash}"))
-             end)
     end
 
     test "succeeds with malformed traceparent header", %{session: session} do

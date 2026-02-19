@@ -11,8 +11,6 @@ defmodule SpotterWeb.CommitDetailLiveTest do
     Commit,
     Message,
     Project,
-    ProjectPeriodSummary,
-    ProjectRollingSummary,
     Session,
     SessionCommitLink
   }
@@ -110,83 +108,6 @@ defmodule SpotterWeb.CommitDetailLiveTest do
       {:ok, _view, html} = live(build_conn(), "/history/commits/#{Ash.UUID.generate()}")
 
       assert html =~ "Commit not found"
-    end
-  end
-
-  describe "summary sections" do
-    test "renders rolling summary when available", %{project: project, commit: commit} do
-      Ash.create!(ProjectRollingSummary, %{
-        project_id: project.id,
-        bucket_kind: :day,
-        timezone: "Etc/UTC",
-        default_branch: "main",
-        lookback_days: 14,
-        included_bucket_start_dates: [],
-        summary_text: "Active work on timezone features",
-        computed_at: DateTime.utc_now()
-      })
-
-      {:ok, _view, html} = live(build_conn(), "/history/commits/#{commit.id}")
-
-      assert html =~ "Active work on timezone features"
-      assert html =~ "Project Rollup"
-    end
-
-    test "renders period summary when available", %{project: project, commit: commit} do
-      bucket_date = Date.utc_today()
-
-      Ash.create!(ProjectPeriodSummary, %{
-        project_id: project.id,
-        bucket_kind: :day,
-        bucket_start_date: bucket_date,
-        timezone: "Etc/UTC",
-        default_branch: "main",
-        included_session_ids: [],
-        included_commit_hashes: [],
-        summary_text: "Focused on distillation pipeline",
-        computed_at: DateTime.utc_now()
-      })
-
-      {:ok, _view, html} = live(build_conn(), "/history/commits/#{commit.id}")
-
-      assert html =~ "Focused on distillation pipeline"
-      assert html =~ "Bucket Summary"
-    end
-
-    test "renders session distilled summary when available", %{
-      project: project,
-      commit: commit
-    } do
-      session =
-        Ash.create!(Session, %{
-          session_id: Ash.UUID.generate(),
-          transcript_dir: "/tmp/test-sessions",
-          cwd: "/home/user/project",
-          project_id: project.id
-        })
-
-      Ash.update!(session, %{
-        distilled_status: :completed,
-        distilled_summary: "Implemented commit detail summaries"
-      })
-
-      Ash.create!(SessionCommitLink, %{
-        session_id: session.id,
-        commit_id: commit.id,
-        link_type: :observed_in_session,
-        confidence: 1.0
-      })
-
-      {:ok, _view, html} = live(build_conn(), "/history/commits/#{commit.id}")
-
-      assert html =~ "Implemented commit detail summaries"
-    end
-
-    test "shows placeholder when no summaries computed", %{commit: commit} do
-      {:ok, _view, html} = live(build_conn(), "/history/commits/#{commit.id}")
-
-      assert html =~ "No rolling summary computed yet."
-      assert html =~ "No bucket summary computed yet."
     end
   end
 

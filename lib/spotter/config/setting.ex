@@ -4,22 +4,7 @@ defmodule Spotter.Config.Setting do
     domain: Spotter.Config,
     data_layer: AshSqlite.DataLayer
 
-  @allowed_keys ~w(
-    transcripts_dir
-    summary_model
-    summary_token_budget
-    prompt_patterns_max_prompts_per_run
-    prompt_patterns_max_prompt_chars
-    prompt_patterns_model
-    product_spec_system_prompt
-    prompt_pattern_system_prompt
-    session_distiller_system_prompt
-    project_rollup_system_prompt
-    waiting_summary_system_prompt
-    commit_hotspot_explore_system_prompt
-    commit_hotspot_main_system_prompt
-    prompt_patterns_sessions_per_run
-  )
+  @allowed_keys ~w(transcripts_dir)
 
   sqlite do
     table "config_settings"

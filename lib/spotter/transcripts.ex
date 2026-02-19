@@ -93,6 +93,14 @@ defmodule Spotter.Transcripts do
     tool :resolve_annotation, Spotter.Transcripts.Annotation, :mcp_resolve do
       description "Resolve a review annotation. `resolution` is a required, non-empty resolution note (1-3 sentences) that will be displayed in the Spotter web UI under Resolved annotations."
     end
+
+    tool :create_hotspot, Spotter.Transcripts.CommitHotspot, :mcp_create do
+      description "Create a code hotspot for a commit. Requires commit_id, relative_path, line_start, line_end, snippet, reason, and overall_score (0-100). Project is auto-scoped via MCP context."
+    end
+
+    tool :list_hotspots, Spotter.Transcripts.CommitHotspot, :mcp_list do
+      description "List code hotspots for the current project (scoped by MCP project context)."
+    end
   end
 
   resources do

@@ -136,32 +136,22 @@ defmodule SpotterWeb.SessionHookControllerTest do
       assert body["error"] =~ "required"
     end
 
-    test "returns 400 when transcript_path missing" do
-      {status, body, _conn} =
-        post_json("/api/hooks/waiting-summary", %{"session_id" => "abc"})
-
-      assert status == 400
-      assert body["error"] =~ "required"
-    end
-
-    test "returns 400 when both fields missing" do
+    test "returns 400 when no params" do
       {status, body, _conn} = post_json("/api/hooks/waiting-summary", %{})
 
       assert status == 400
       assert body["error"] =~ "required"
     end
 
-    test "returns 200 with fallback summary for missing transcript file" do
+    test "returns 200 with static summary when session_id provided" do
       {status, body, _conn} =
         post_json("/api/hooks/waiting-summary", %{
-          "session_id" => "test-session-123",
-          "transcript_path" => "/nonexistent/path.jsonl"
+          "session_id" => "test-session-123"
         })
 
       assert status == 200
       assert body["ok"] == true
       assert is_binary(body["summary"])
-      assert body["summary"] =~ "test-ses"
       assert is_integer(body["input_chars"])
       assert is_map(body["source_window"])
     end
@@ -203,30 +193,6 @@ defmodule SpotterWeb.SessionHookControllerTest do
     end
   end
 
-  describe "POST /api/hooks/session-end (prompt pattern scheduling disabled)" do
-    test "session_end does not enqueue prompt-pattern jobs" do
-      params = valid_params()
-      post_session_start(params)
-
-      {status, body, _conn} = post_session_end(%{"session_id" => params["session_id"]})
-
-      assert status == 200
-      assert body["ok"] == true
-
-      # No ComputePromptPatterns jobs should be enqueued
-      import Ecto.Query
-
-      jobs =
-        Spotter.Repo.all(
-          from(j in Oban.Job,
-            where: j.worker == "Spotter.Transcripts.Jobs.ComputePromptPatterns",
-            where: j.state == "available"
-          )
-        )
-
-      assert jobs == []
-    end
-  end
 
   describe "POST /api/hooks/session-end" do
     test "succeeds with valid session_id" do
