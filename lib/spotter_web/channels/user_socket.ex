@@ -1,7 +1,6 @@
 defmodule SpotterWeb.UserSocket do
   use Phoenix.Socket
 
-  channel("terminal:*", SpotterWeb.TerminalChannel)
   channel("reviews:*", SpotterWeb.ReviewsChannel)
 
   @impl true

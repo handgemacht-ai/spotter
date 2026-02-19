@@ -3,17 +3,14 @@ defmodule SpotterWeb.SessionHookControllerTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Spotter.Observability.FlowHub
-  alias Spotter.Services.ActiveSessionRegistry
 
   @endpoint SpotterWeb.Endpoint
-  @active_table Spotter.Services.ActiveSessionRegistry
 
   @valid_traceparent "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
   @malformed_traceparent "not-a-valid-traceparent"
 
   setup do
     Sandbox.checkout(Spotter.Repo)
-    :ets.delete_all_objects(@active_table)
 
     if :ets.whereis(FlowHub) != :undefined do
       :ets.delete_all_objects(FlowHub)
@@ -66,15 +63,6 @@ defmodule SpotterWeb.SessionHookControllerTest do
 
       assert status == 200
       assert body["ok"] == true
-    end
-
-    test "registers session in ActiveSessionRegistry" do
-      params = valid_params()
-      post_session_start(params)
-
-      info = ActiveSessionRegistry.status(params["session_id"])
-      assert info != nil
-      assert info.status == :active
     end
 
     test "returns 400 for missing session_id" do
@@ -202,17 +190,6 @@ defmodule SpotterWeb.SessionHookControllerTest do
       assert body["ok"] == true
     end
 
-    test "marks session as ended in registry" do
-      params = valid_params()
-      post_session_start(params)
-
-      post_session_end(%{"session_id" => params["session_id"], "reason" => "user_exit"})
-
-      info = ActiveSessionRegistry.status(params["session_id"])
-      assert info.status == :ended
-      assert info.ended_reason == "user_exit"
-    end
-
     test "is idempotent for duplicate end requests" do
       session_id = Ash.UUID.generate()
 
@@ -231,17 +208,6 @@ defmodule SpotterWeb.SessionHookControllerTest do
 
       assert status == 200
       assert body["ok"] == true
-    end
-
-    test "handles missing optional fields gracefully" do
-      session_id = Ash.UUID.generate()
-      {status, body, _conn} = post_session_end(%{"session_id" => session_id})
-
-      assert status == 200
-      assert body["ok"] == true
-
-      info = ActiveSessionRegistry.status(session_id)
-      assert info.ended_reason == nil
     end
 
     test "returns 400 for missing session_id" do

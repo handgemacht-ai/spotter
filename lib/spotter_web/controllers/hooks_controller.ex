@@ -5,7 +5,6 @@ defmodule SpotterWeb.HooksController do
   alias Spotter.Observability.ErrorReport
   alias Spotter.Observability.FlowHub
   alias Spotter.Observability.FlowKeys
-  alias Spotter.Services.ActiveSessionRegistry
   alias Spotter.Telemetry.TraceContext
   alias Spotter.Transcripts.Commit
   alias Spotter.Transcripts.FileSnapshot
@@ -44,8 +43,6 @@ defmodule SpotterWeb.HooksController do
         "hook_event" => hook_event,
         "hook_script" => hook_script
       })
-
-      ActiveSessionRegistry.touch(session_id, :commit_event)
 
       with :ok <- validate_hashes(hashes),
            {:ok, session} <- find_session(session_id) do
@@ -190,8 +187,6 @@ defmodule SpotterWeb.HooksController do
         "hook_script" => hook_script
       })
 
-      ActiveSessionRegistry.touch(session_id, :file_snapshot)
-
       with {:ok, session} <- find_session(session_id),
            {:ok, attrs} <- build_attrs(params, session),
            {:ok, _snapshot} <- Ash.create(FileSnapshot, attrs) do
@@ -325,8 +320,6 @@ defmodule SpotterWeb.HooksController do
         "hook_event" => hook_event,
         "hook_script" => hook_script
       })
-
-      ActiveSessionRegistry.touch(session_id, :tool_call)
 
       with {:ok, session} <- Sessions.find_or_create(session_id),
            {:ok, _tool_call} <- create_tool_call(session, params) do

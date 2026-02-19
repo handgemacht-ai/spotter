@@ -39,6 +39,21 @@ defmodule SpotterWeb.SessionLiveTest do
     Ash.create!(Message, Map.merge(defaults, attrs))
   end
 
+  describe "transcript-first layout" do
+    test "renders transcript and sidebar without terminal container", %{session_id: session_id} do
+      {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}")
+
+      assert html =~ ~s(data-testid="session-root")
+      assert html =~ ~s(data-testid="transcript-container")
+      assert html =~ "session-transcript"
+      assert html =~ "session-sidebar"
+      refute html =~ "session-terminal"
+      refute html =~ "terminal-container"
+      refute html =~ "terminal-connecting"
+      refute html =~ ~s(phx-hook="Terminal")
+    end
+  end
+
   describe "transcript row class mapping" do
     test "text rows have transcript-row class", %{session: session, session_id: session_id} do
       create_message(session, %{
@@ -403,35 +418,6 @@ defmodule SpotterWeb.SessionLiveTest do
   end
 
   describe "PubSub live updates" do
-    test "session_activity updates status badge", %{session_id: session_id} do
-      {:ok, view, html} = live(build_conn(), "/sessions/#{session_id}")
-
-      refute html =~ "session-status-active"
-
-      Phoenix.PubSub.broadcast!(
-        Spotter.PubSub,
-        "session_activity",
-        {:session_activity, %{session_id: session_id, status: :active}}
-      )
-
-      html = render(view)
-      assert html =~ "session-status-active"
-      assert html =~ "active"
-    end
-
-    test "session_activity ignores other sessions", %{session_id: session_id} do
-      {:ok, view, _html} = live(build_conn(), "/sessions/#{session_id}")
-
-      Phoenix.PubSub.broadcast!(
-        Spotter.PubSub,
-        "session_activity",
-        {:session_activity, %{session_id: "other-session", status: :active}}
-      )
-
-      html = render(view)
-      refute html =~ "session-status-active"
-    end
-
     test "transcript_updated reloads messages", %{
       session: session,
       session_id: session_id

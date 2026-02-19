@@ -8,12 +8,8 @@ defmodule SpotterWeb.SessionLive do
   import SpotterWeb.AnnotationComponents
 
   alias Spotter.Services.{
-    ReviewSessionRegistry,
     ReviewUpdates,
-    SessionRegistry,
-    Tmux,
-    TranscriptFileLinks,
-    TranscriptSync
+    TranscriptFileLinks
   }
 
   alias Spotter.Transcripts.{
@@ -33,27 +29,10 @@ defmodule SpotterWeb.SessionLive do
 
   attach_computer(SpotterWeb.Live.TranscriptComputers, :transcript_view)
 
-  @review_heartbeat_interval 10_000
-
   @impl true
   def mount(%{"session_id" => session_id}, _session, socket) do
-    {pane_id, review_session_name} = find_pane_with_review_info(session_id)
-
-    {cols, rows} = pane_dimensions(pane_id)
-
     if connected?(socket) do
-      Phoenix.PubSub.subscribe(Spotter.PubSub, "pane_sessions")
-      Phoenix.PubSub.subscribe(Spotter.PubSub, "session_activity")
       Phoenix.PubSub.subscribe(Spotter.PubSub, "session_transcripts:#{session_id}")
-
-      if is_nil(pane_id) do
-        Process.send_after(self(), :check_pane, 1_000)
-      end
-
-      if review_session_name do
-        ReviewSessionRegistry.register(review_session_name)
-        Process.send_after(self(), :review_heartbeat, @review_heartbeat_interval)
-      end
     end
 
     {session_record, messages} = load_session_data(session_id)
@@ -68,21 +47,12 @@ defmodule SpotterWeb.SessionLive do
     socket =
       socket
       |> assign(
-        pane_id: pane_id,
         session_id: session_id,
-        session_status: nil,
         session_record: session_record,
-        review_session_name: review_session_name,
-        cols: cols,
-        rows: rows,
         annotations: annotations,
         selected_text: nil,
         selection_source: nil,
         selection_message_ids: [],
-        selection_start_row: nil,
-        selection_start_col: nil,
-        selection_end_row: nil,
-        selection_end_col: nil,
         errors: errors,
         rework_events: rework_events,
         commit_links: commit_links,
@@ -99,86 +69,16 @@ defmodule SpotterWeb.SessionLive do
         transcript_view: %{messages: messages, session_cwd: session_cwd}
       })
 
-    rendered_lines = socket.assigns.transcript_view_rendered_lines
-    {breakpoint_map, anchors} = compute_sync_data(pane_id, rendered_lines)
-
-    socket =
-      socket
-      |> assign(breakpoint_map: breakpoint_map, anchors: anchors)
-      |> push_sync_events()
-
     {:ok, socket}
   end
 
   @impl true
-  def terminate(_reason, socket) do
-    if name = socket.assigns[:review_session_name] do
-      ReviewSessionRegistry.deregister(name)
-    end
-
-    :ok
-  end
-
-  @impl true
-  def handle_info(:check_pane, socket) do
-    case find_pane_with_review_info(socket.assigns.session_id) do
-      {nil, _} ->
-        Process.send_after(self(), :check_pane, 1_000)
-        {:noreply, socket}
-
-      {pane_id, review_session_name} ->
-        {cols, rows} = pane_dimensions(pane_id)
-
-        socket =
-          socket
-          |> maybe_start_heartbeat(review_session_name)
-          |> assign(pane_id: pane_id, cols: cols, rows: rows)
-          |> recompute_and_push_sync()
-
-        {:noreply, socket}
-    end
-  end
-
-  def handle_info({:session_registered, _pane_id, session_id}, socket) do
-    if session_id == socket.assigns.session_id and is_nil(socket.assigns.pane_id) do
-      {pane_id, review_session_name} = find_pane_with_review_info(session_id)
-      {cols, rows} = pane_dimensions(pane_id)
-
-      socket =
-        socket
-        |> maybe_start_heartbeat(review_session_name)
-        |> assign(pane_id: pane_id, cols: cols, rows: rows)
-        |> recompute_and_push_sync()
-
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_info({:session_activity, %{session_id: sid, status: status}}, socket) do
-    if sid == socket.assigns.session_id do
-      {:noreply, assign(socket, session_status: status)}
-    else
-      {:noreply, socket}
-    end
-  end
-
   def handle_info({:transcript_updated, session_id, _count}, socket) do
     if session_id == socket.assigns.session_id do
       {:noreply, reload_transcript(socket)}
     else
       {:noreply, socket}
     end
-  end
-
-  def handle_info(:review_heartbeat, socket) do
-    if name = socket.assigns[:review_session_name] do
-      ReviewSessionRegistry.heartbeat(name)
-      Process.send_after(self(), :review_heartbeat, @review_heartbeat_interval)
-    end
-
-    {:noreply, socket}
   end
 
   def handle_info({:annotation_explain_delta, id, chunk}, socket) do
@@ -210,36 +110,13 @@ defmodule SpotterWeb.SessionLive do
   end
 
   @impl true
-  def handle_event("text_selected", params, socket) do
-    current_msg_id = socket.assigns.current_message_id
-
-    socket =
-      socket
-      |> assign(
-        selected_text: params["text"],
-        selection_source: :terminal,
-        selection_message_ids: if(current_msg_id, do: [current_msg_id], else: []),
-        selection_start_row: params["start_row"],
-        selection_start_col: params["start_col"],
-        selection_end_row: params["end_row"],
-        selection_end_col: params["end_col"]
-      )
-      |> maybe_focus_annotations_tab()
-
-    {:noreply, socket}
-  end
-
   def handle_event("transcript_text_selected", params, socket) do
     socket =
       socket
       |> assign(
         selected_text: params["text"],
         selection_source: :transcript,
-        selection_message_ids: params["message_ids"] || [],
-        selection_start_row: nil,
-        selection_start_col: nil,
-        selection_end_row: nil,
-        selection_end_col: nil
+        selection_message_ids: params["message_ids"] || []
       )
       |> maybe_focus_annotations_tab()
 
@@ -251,27 +128,19 @@ defmodule SpotterWeb.SessionLive do
      assign(socket,
        selected_text: nil,
        selection_source: nil,
-       selection_message_ids: [],
-       selection_start_row: nil,
-       selection_start_col: nil,
-       selection_end_row: nil,
-       selection_end_col: nil
+       selection_message_ids: []
      )}
   end
 
   def handle_event("save_annotation", params, socket) do
     comment = params["comment"] || ""
     purpose = if params["purpose"] == "explain", do: :explain, else: :review
-    source = socket.assigns.selection_source || :terminal
+    source = socket.assigns.selection_source || :transcript
 
     create_params = %{
       session_id: socket.assigns.session_record.id,
       source: source,
       selected_text: socket.assigns.selected_text,
-      start_row: socket.assigns.selection_start_row,
-      start_col: socket.assigns.selection_start_col,
-      end_row: socket.assigns.selection_end_row,
-      end_col: socket.assigns.selection_end_col,
       comment: comment,
       purpose: purpose
     }
@@ -312,7 +181,7 @@ defmodule SpotterWeb.SessionLive do
 
   def handle_event("highlight_annotation", %{"id" => id}, socket) do
     case Ash.get(Annotation, id, load: [message_refs: :message]) do
-      {:ok, %{source: :transcript, message_refs: refs}} when refs != [] ->
+      {:ok, %{message_refs: refs}} when refs != [] ->
         message_ids = refs |> Enum.sort_by(& &1.ordinal) |> Enum.map(& &1.message.id)
 
         socket =
@@ -321,15 +190,6 @@ defmodule SpotterWeb.SessionLive do
           |> push_event("highlight_transcript_annotation", %{message_ids: message_ids})
 
         {:noreply, socket}
-
-      {:ok, ann} when not is_nil(ann.start_row) ->
-        {:noreply,
-         push_event(socket, "highlight_annotation", %{
-           start_row: ann.start_row,
-           start_col: ann.start_col,
-           end_row: ann.end_row,
-           end_col: ann.end_col
-         })}
 
       _ ->
         {:noreply, socket}
@@ -377,40 +237,6 @@ defmodule SpotterWeb.SessionLive do
     end
   end
 
-  defp compute_sync_data(nil, _rendered_lines), do: {[], []}
-
-  defp compute_sync_data(pane_id, rendered_lines) do
-    case Tmux.capture_pane(pane_id) do
-      {:ok, capture} ->
-        terminal_lines = TranscriptSync.prepare_terminal_lines(capture)
-        anchors = TranscriptSync.find_anchors(rendered_lines, terminal_lines)
-        breakpoint_map = TranscriptSync.interpolate(anchors, length(terminal_lines))
-        {breakpoint_map, anchors}
-
-      {:error, _} ->
-        {[], []}
-    end
-  end
-
-  defp push_sync_events(socket) do
-    if connected?(socket) and socket.assigns.breakpoint_map != [] do
-      socket
-      |> push_event("breakpoint_map", %{entries: socket.assigns.breakpoint_map})
-      |> push_event("debug_anchors", %{anchors: socket.assigns.anchors})
-    else
-      socket
-    end
-  end
-
-  defp recompute_and_push_sync(socket) do
-    {breakpoint_map, anchors} =
-      compute_sync_data(socket.assigns.pane_id, socket.assigns.transcript_view_rendered_lines)
-
-    socket
-    |> assign(breakpoint_map: breakpoint_map, anchors: anchors)
-    |> push_sync_events()
-  end
-
   defp create_message_refs(annotation, socket) do
     message_ids =
       socket.assigns.selection_message_ids
@@ -441,51 +267,6 @@ defmodule SpotterWeb.SessionLive do
     Enum.filter(ids, &MapSet.member?(valid_ids, &1))
   end
 
-  defp find_pane_with_review_info(session_id) do
-    case SessionRegistry.get_pane_id(session_id) do
-      nil -> find_review_pane(session_id)
-      pane_id -> {pane_id, nil}
-    end
-  end
-
-  defp find_review_pane(session_id) do
-    review_name = "spotter-review-#{String.slice(session_id, 0, 8)}"
-
-    with {:ok, panes} <- Tmux.list_panes(),
-         %{pane_id: pane_id} <- Enum.find(panes, &(&1.session_name == review_name)) do
-      {pane_id, review_name}
-    else
-      _ -> {nil, nil}
-    end
-  end
-
-  defp maybe_start_heartbeat(socket, nil), do: socket
-
-  defp maybe_start_heartbeat(socket, review_session_name) do
-    if is_nil(socket.assigns[:review_session_name]) do
-      ReviewSessionRegistry.register(review_session_name)
-      Process.send_after(self(), :review_heartbeat, @review_heartbeat_interval)
-      assign(socket, review_session_name: review_session_name)
-    else
-      socket
-    end
-  end
-
-  defp pane_dimensions(nil), do: {80, 24}
-
-  defp pane_dimensions(pane_id) do
-    case Tmux.list_panes() do
-      {:ok, panes} ->
-        case Enum.find(panes, &(&1.pane_id == pane_id)) do
-          %{pane_width: w, pane_height: h} -> {w, h}
-          _ -> {80, 24}
-        end
-
-      _ ->
-        {80, 24}
-    end
-  end
-
   defp reload_transcript(socket) do
     session_id = socket.assigns.session_id
     {session_record, messages} = load_session_data(session_id)
@@ -497,28 +278,20 @@ defmodule SpotterWeb.SessionLive do
     rework_events = load_rework_events(session_record)
     commit_links = load_commit_links(session_id)
 
-    socket =
-      socket
-      |> assign(
-        session_record: session_record,
-        errors: errors,
-        rework_events: rework_events,
-        commit_links: commit_links,
-        subagent_labels: load_subagent_labels(session_record),
-        transcript_link_project_id: link_project_id,
-        transcript_link_fileset: link_fileset
-      )
-      |> update_computer_inputs(:transcript_view, %{
-        messages: messages,
-        session_cwd: session_cwd
-      })
-
-    rendered_lines = socket.assigns.transcript_view_rendered_lines
-    {breakpoint_map, anchors} = compute_sync_data(socket.assigns.pane_id, rendered_lines)
-
     socket
-    |> assign(breakpoint_map: breakpoint_map, anchors: anchors)
-    |> push_sync_events()
+    |> assign(
+      session_record: session_record,
+      errors: errors,
+      rework_events: rework_events,
+      commit_links: commit_links,
+      subagent_labels: load_subagent_labels(session_record),
+      transcript_link_project_id: link_project_id,
+      transcript_link_fileset: link_fileset
+    )
+    |> update_computer_inputs(:transcript_view, %{
+      messages: messages,
+      session_cwd: session_cwd
+    })
   end
 
   defp resolve_file_link_context(nil), do: {nil, nil}
@@ -639,39 +412,9 @@ defmodule SpotterWeb.SessionLive do
         <a href="/">Dashboard</a>
         <span class="breadcrumb-sep">/</span>
         <span class="breadcrumb-current">Session {String.slice(@session_id, 0..7)}</span>
-        <span :if={@pane_id} class="breadcrumb-meta">
-          Pane: {@pane_id}
-        </span>
-        <span :if={@session_status} class={"badge session-status-#{@session_status}"}>
-          {@session_status}
-        </span>
       </div>
       <.distilled_summary_section session_record={@session_record} />
       <div class="session-layout">
-        <div class="session-terminal">
-          <div class="session-terminal-inner">
-            <%= if @pane_id do %>
-              <div
-                id="terminal"
-                phx-hook="Terminal"
-                data-pane-id={@pane_id}
-                data-cols={@cols}
-                data-rows={@rows}
-                phx-update="ignore"
-                class="terminal-container"
-              >
-              </div>
-            <% else %>
-              <div class="terminal-connecting">
-                <div>
-                  <div class="terminal-connecting-title">Connecting to session...</div>
-                  <div class="terminal-connecting-subtitle">Waiting for terminal to be ready</div>
-                </div>
-              </div>
-            <% end %>
-          </div>
-        </div>
-
         <div id="transcript-panel" class="session-transcript" data-testid="transcript-container">
           <div class="transcript-header">
             <h3>Transcript</h3>
@@ -690,7 +433,6 @@ defmodule SpotterWeb.SessionLive do
             session_id={@session_id}
             subagent_labels={@subagent_labels}
             show_debug={@transcript_view_show_debug}
-            anchors={@anchors}
             project_id={@transcript_link_project_id}
             existing_files={@transcript_link_fileset}
             empty_message="No transcript available for this session."
@@ -768,7 +510,7 @@ defmodule SpotterWeb.SessionLive do
           <.annotation_cards
             annotations={@annotations}
             explain_streams={@explain_streams}
-            empty_message="Select text in terminal or transcript to add annotations."
+            empty_message="Select text in transcript to add annotations."
           />
         </div>
 

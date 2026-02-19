@@ -52,7 +52,6 @@ export function initGlobalSearchPalette() {
     if (!el) return false
     const tag = el.tagName.toLowerCase()
     if (tag === "input" || tag === "textarea" || el.isContentEditable) return true
-    if (el.closest && el.closest(".xterm")) return true
     return false
   }
 

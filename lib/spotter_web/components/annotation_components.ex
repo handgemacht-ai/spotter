@@ -170,5 +170,5 @@ defmodule SpotterWeb.AnnotationComponents do
 
   def selection_label(:transcript, _), do: "Selected transcript text"
   def selection_label(:file, _), do: "Selected file text"
-  def selection_label(_, _), do: "Selected terminal text"
+  def selection_label(_, _), do: "Selected text"
 end

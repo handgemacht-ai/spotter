@@ -19,7 +19,7 @@ defmodule SpotterWeb.TranscriptComponents do
     * `:current_message_id` - message ID to highlight as active (default `nil`)
     * `:clicked_subagent` - currently clicked subagent ref (default `nil`)
     * `:show_debug` - whether debug sidecar is visible (default `false`)
-    * `:anchors` - list of sync anchors for debug mode (default `[]`)
+    * `:anchors` - deprecated, unused (default `[]`)
     * `:panel_id` - DOM id for the transcript container (default "transcript-messages")
     * `:empty_message` - text shown when no lines exist (default "No transcript available.")
   """
@@ -67,7 +67,6 @@ defmodule SpotterWeb.TranscriptComponents do
             subagent_labels={@subagent_labels}
             current_agent_id={@current_agent_id}
             show_debug={@show_debug}
-            anchors={@anchors}
             tool_hook_controls={@tool_hook_controls}
             project_id={@project_id}
             existing_files={@existing_files}
@@ -99,7 +98,6 @@ defmodule SpotterWeb.TranscriptComponents do
   attr(:subagent_labels, :map, default: %{})
   attr(:current_agent_id, :string, default: nil)
   attr(:show_debug, :boolean, default: false)
-  attr(:anchors, :list, default: [])
   attr(:tool_hook_controls, :map, default: %{})
   attr(:project_id, :string, default: nil)
   attr(:existing_files, :any, default: nil)
@@ -120,15 +118,6 @@ defmodule SpotterWeb.TranscriptComponents do
       >
       <div class="row-main">
         <span class="row-content">
-          <%= if @show_debug do %>
-            <% anchor = Enum.find(@anchors, &(&1.tl == @line.line_number)) %>
-            <span
-              :if={anchor}
-              class="transcript-anchor"
-              style={"background:#{anchor_color(anchor.type)};"}
-              title={"#{anchor.type} → terminal line #{anchor.t}"}
-            />
-          <% end %>
           <%= if @line[:subagent_invocation?] == true and is_binary(@line[:subagent_ref]) and is_binary(@session_id) and @current_agent_id != @line.subagent_ref do %>
             <% agent_id = @line.subagent_ref %>
             <% label = Map.get(@subagent_labels, agent_id) || String.slice(agent_id, 0, 7) %>
@@ -160,6 +149,12 @@ defmodule SpotterWeb.TranscriptComponents do
               data-render-markdown={if markdown_line?(@line), do: "true", else: "false"}
             ><%= linkify_file_refs(@line, @project_id, @existing_files) %></span>
           <% end %>
+        </span>
+        <span :if={@line[:token_count_total]} class="row-token-count">
+          <span class="token-total">&Sigma; {@line[:token_count_total]}</span>
+          <span :if={@line[:token_count_delta]} class="token-delta">
+            &Delta; {format_token_delta(@line[:token_count_delta])}
+          </span>
         </span>
         <span :if={has_row_meta?(@line, @tool_hook_controls)} class="row-meta">
           <span :if={tool_hook_controls(@line, @tool_hook_controls) != []} class="row-hook-controls">
@@ -445,9 +440,6 @@ defmodule SpotterWeb.TranscriptComponents do
     end
   end
 
-  defp anchor_color(:tool_use), do: "var(--accent-amber)"
-  defp anchor_color(:user), do: "var(--accent-blue)"
-  defp anchor_color(:result), do: "var(--accent-green)"
-  defp anchor_color(:text), do: "var(--accent-purple)"
-  defp anchor_color(_), do: "var(--text-tertiary)"
+  defp format_token_delta(delta) when delta >= 0, do: "+#{delta}"
+  defp format_token_delta(delta), do: "#{delta}"
 end

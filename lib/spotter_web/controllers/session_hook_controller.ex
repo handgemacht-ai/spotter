@@ -6,8 +6,6 @@ defmodule SpotterWeb.SessionHookController do
   alias Spotter.Observability.ErrorReport
   alias Spotter.Observability.FlowHub
   alias Spotter.Observability.FlowKeys
-  alias Spotter.Services.ActiveSessionRegistry
-  alias Spotter.Services.SessionRegistry
   alias Spotter.Services.TranscriptTailSupervisor
   alias Spotter.Telemetry.TraceContext
   alias Spotter.Transcripts.Jobs.{IngestRecentCommits, SyncTranscripts}
@@ -36,9 +34,6 @@ defmodule SpotterWeb.SessionHookController do
         "hook_event" => hook_event,
         "hook_script" => hook_script
       })
-
-      SessionRegistry.register(pane_id, session_id)
-      ActiveSessionRegistry.start_session(session_id, pane_id)
 
       case Sessions.find_or_create(session_id, cwd: params["cwd"]) do
         {:ok, session} ->
@@ -130,8 +125,6 @@ defmodule SpotterWeb.SessionHookController do
         "hook_script" => hook_script
       })
 
-      reason = params["reason"]
-      ActiveSessionRegistry.end_session(session_id, reason)
       TranscriptTailSupervisor.stop_worker(session_id)
       maybe_enqueue_ingest_for_session(session_id)
       mark_ended(session_id, params)

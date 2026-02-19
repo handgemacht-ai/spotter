@@ -11,8 +11,6 @@ defmodule SpotterWeb.PaneListLive do
     ToolCall
   }
 
-  alias Spotter.Services.Tmux
-
   alias Spotter.Transcripts.Jobs.IngestRecentCommits
 
   require OpenTelemetry.Tracer, as: Tracer
@@ -147,8 +145,6 @@ defmodule SpotterWeb.PaneListLive do
   end
 
   def handle_event("review_session", %{"session-id" => session_id}, socket) do
-    cwd = lookup_session_cwd(session_id)
-    Task.start(fn -> Tmux.launch_review_session(session_id, cwd: cwd) end)
     {:noreply, push_navigate(socket, to: "/sessions/#{session_id}")}
   end
 
@@ -261,13 +257,6 @@ defmodule SpotterWeb.PaneListLive do
   end
 
   defp extract_timezone_error(_), do: "invalid timezone"
-
-  defp lookup_session_cwd(session_id) do
-    case Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one() do
-      {:ok, %Session{cwd: cwd}} when is_binary(cwd) -> cwd
-      _ -> nil
-    end
-  end
 
   defp load_session_data(socket) do
     projects =

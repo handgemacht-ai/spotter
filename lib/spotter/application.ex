@@ -17,9 +17,6 @@ defmodule Spotter.Application do
     children =
       [
         {Phoenix.PubSub, name: Spotter.PubSub},
-        Spotter.Services.SessionRegistry,
-        Spotter.Services.ActiveSessionRegistry,
-        Spotter.Services.ReviewSessionRegistry,
         Spotter.Services.TranscriptFileLinks,
         Spotter.Observability.FlowHub,
         {Registry, keys: :unique, name: Spotter.Services.TranscriptTailRegistry},
