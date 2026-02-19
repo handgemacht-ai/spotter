@@ -193,7 +193,6 @@ defmodule SpotterWeb.SessionHookControllerTest do
     end
   end
 
-
   describe "POST /api/hooks/session-end" do
     test "succeeds with valid session_id" do
       session_id = Ash.UUID.generate()

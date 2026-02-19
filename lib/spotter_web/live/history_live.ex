@@ -179,7 +179,6 @@ defmodule SpotterWeb.HistoryLive do
     end
   end
 
-
   defp badge_text(:observed_in_session, _confidence), do: "Verified"
 
   defp badge_text(_type, confidence) do
