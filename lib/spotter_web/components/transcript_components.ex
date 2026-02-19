@@ -53,7 +53,7 @@ defmodule SpotterWeb.TranscriptComponents do
     <%= if @rendered_lines != [] do %>
       <div
         id={@panel_id}
-        data-testid="transcript-container"
+        data-testid="transcript-messages"
         phx-hook="TranscriptHighlighter"
         phx-update="replace"
         class={if @show_debug, do: "transcript-debug-grid", else: ""}

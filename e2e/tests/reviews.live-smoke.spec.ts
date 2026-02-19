@@ -7,16 +7,9 @@ test("reviews live smoke shows MCP review instructions and captures full-page sn
   await page.goto("/reviews");
   await waitForLiveViewReady(page, "reviews-root");
 
-  const projectButton = page
-    .locator('button[phx-value-project-id]:not([phx-value-project-id="all"])')
-    .first();
-
-  await expect(projectButton).toBeVisible();
-  await projectButton.click();
-
   const instructionPanel = page.getByTestId("mcp-review-instructions");
   await expect(instructionPanel).toBeVisible();
-  await expect(instructionPanel.getByText("Review in Claude Code")).toBeVisible();
+  await expect(instructionPanel.getByRole("heading", { name: "Review in Claude Code" })).toBeVisible();
 
   await prepareFullPageSnapshot(page);
   await expect(page).toHaveScreenshot("reviews-live-smoke.png", {

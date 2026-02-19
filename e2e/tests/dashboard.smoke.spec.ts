@@ -5,7 +5,7 @@ test("dashboard smoke uses stable selectors and full-page snapshot", async ({ pa
   await page.goto("/");
   await waitForLiveViewReady(page, "dashboard-root");
 
-  await expect(page.getByTestId("sync-transcripts-button")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Refresh" })).toBeVisible();
   await expect(page.getByTestId("session-row").first()).toBeVisible();
 
   await prepareFullPageSnapshot(page);

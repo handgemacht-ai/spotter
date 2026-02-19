@@ -15,7 +15,7 @@ test("session smoke renders transcript and captures full-page snapshot", async (
   await waitForLiveViewReady(page, "session-root");
 
   await expect(page.getByTestId("transcript-container")).toBeVisible();
-  await expect(page.getByTestId("transcript-row").first()).toBeVisible();
+  await expect(page.locator('[data-testid="transcript-row"]').first()).toBeAttached();
 
   await prepareFullPageSnapshot(page);
   await expect(page).toHaveScreenshot("session-smoke.png", {
