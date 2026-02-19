@@ -1,4 +1,7 @@
 {
-  "database": "beads.db",
+  "backend": "dolt",
+  "database": "dolt",
+  "dolt_database": "spotter",
+  "dolt_mode": "server",
   "jsonl_export": "issues.jsonl"
 }
