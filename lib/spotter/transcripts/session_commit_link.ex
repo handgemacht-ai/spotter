@@ -75,5 +75,4 @@ defmodule Spotter.Transcripts.SessionCommitLink do
   identities do
     identity :unique_session_commit_link_type, [:session_id, :commit_id, :link_type]
   end
-
 end

@@ -151,9 +151,9 @@ defmodule SpotterWeb.TranscriptComponents do
           <% end %>
         </span>
         <span :if={@line[:token_count_total]} class="row-token-count">
-          <span class="token-total">&Sigma; {@line[:token_count_total]}</span>
+          <span class="token-total">&Sigma; {@line.token_count_total}</span>
           <span :if={@line[:token_count_delta]} class="token-delta">
-            &Delta; {format_token_delta(@line[:token_count_delta])}
+            &Delta; {format_token_delta(@line.token_count_delta)}
           </span>
         </span>
         <span :if={has_row_meta?(@line, @tool_hook_controls)} class="row-meta">
@@ -306,6 +306,9 @@ defmodule SpotterWeb.TranscriptComponents do
     if clicked == ref, do: ["is-subagent", "is-clicked"], else: ["is-subagent"]
   end
 
+  defp format_token_delta(delta) when delta >= 0, do: "+#{delta}"
+  defp format_token_delta(delta), do: "#{delta}"
+
   defp markdown_line?(line) do
     line[:render_mode] == :plain and line[:kind] in [:text, :thinking]
   end
@@ -439,7 +442,4 @@ defmodule SpotterWeb.TranscriptComponents do
       _ -> "is-default"
     end
   end
-
-  defp format_token_delta(delta) when delta >= 0, do: "+#{delta}"
-  defp format_token_delta(delta), do: "#{delta}"
 end

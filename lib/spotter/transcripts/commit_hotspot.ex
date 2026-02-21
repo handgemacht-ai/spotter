@@ -64,7 +64,10 @@ defmodule Spotter.Transcripts.CommitHotspot do
             |> Ash.Changeset.force_change_attribute(:metadata, %{"source" => "mcp_review"})
 
           _ ->
-            Ash.Changeset.add_error(changeset, "MCP project scope is required but missing or invalid")
+            Ash.Changeset.add_error(
+              changeset,
+              "MCP project scope is required but missing or invalid"
+            )
         end
       end
 

@@ -7,10 +7,7 @@ defmodule SpotterWeb.SessionLive do
   import SpotterWeb.TranscriptComponents
   import SpotterWeb.AnnotationComponents
 
-  alias Spotter.Services.{
-    ReviewUpdates,
-    TranscriptFileLinks
-  }
+  alias Spotter.Services.{ReviewUpdates, TranscriptFileLinks}
 
   alias Spotter.Transcripts.{
     Annotation,
@@ -32,6 +29,7 @@ defmodule SpotterWeb.SessionLive do
   @impl true
   def mount(%{"session_id" => session_id}, _session, socket) do
     if connected?(socket) do
+      Phoenix.PubSub.subscribe(Spotter.PubSub, "session_activity")
       Phoenix.PubSub.subscribe(Spotter.PubSub, "session_transcripts:#{session_id}")
     end
 
@@ -48,6 +46,7 @@ defmodule SpotterWeb.SessionLive do
       socket
       |> assign(
         session_id: session_id,
+        session_status: nil,
         session_record: session_record,
         annotations: annotations,
         selected_text: nil,
@@ -73,6 +72,14 @@ defmodule SpotterWeb.SessionLive do
   end
 
   @impl true
+  def handle_info({:session_activity, %{session_id: sid, status: status}}, socket) do
+    if sid == socket.assigns.session_id do
+      {:noreply, assign(socket, session_status: status)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info({:transcript_updated, session_id, _count}, socket) do
     if session_id == socket.assigns.session_id do
       {:noreply, reload_transcript(socket)}
@@ -412,6 +419,9 @@ defmodule SpotterWeb.SessionLive do
         <a href="/">Dashboard</a>
         <span class="breadcrumb-sep">/</span>
         <span class="breadcrumb-current">Session {String.slice(@session_id, 0..7)}</span>
+        <span :if={@session_status} class={"badge session-status-#{@session_status}"}>
+          {@session_status}
+        </span>
       </div>
       <.distilled_summary_section session_record={@session_record} />
       <div class="session-layout">
@@ -510,7 +520,7 @@ defmodule SpotterWeb.SessionLive do
           <.annotation_cards
             annotations={@annotations}
             explain_streams={@explain_streams}
-            empty_message="Select text in transcript to add annotations."
+            empty_message="Select text in the transcript to add annotations."
           />
         </div>
 

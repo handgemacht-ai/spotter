@@ -165,5 +165,4 @@ defmodule Spotter.Services.FileMetrics do
       }
     end)
   end
-
 end

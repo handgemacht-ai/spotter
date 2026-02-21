@@ -23,4 +23,3 @@ config :ash, policies: [show_policy_breakdowns?: true], disable_async?: true
 config :spotter, SpotterWeb.SpotterMcpPlug,
   sse_keepalive_ms: 10,
   sse_max_duration_ms: 25
-

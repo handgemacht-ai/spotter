@@ -831,7 +831,7 @@ input::placeholder, textarea::placeholder {
 }
 
 /* ============================================================
-   Session Layout (3-panel)
+   Session Layout (2-panel: transcript + sidebar)
    ============================================================ */
 
 .session-layout {
@@ -841,7 +841,7 @@ input::placeholder, textarea::placeholder {
 }
 
 .session-transcript {
-  flex: 2;
+  flex: 3;
   padding: var(--space-4);
   overflow-y: auto;
   background: var(--surface-1);
@@ -859,18 +859,16 @@ input::placeholder, textarea::placeholder {
 @media (max-width: 1024px) {
   .session-layout {
     flex-direction: column;
-    height: auto;
   }
-
   .session-transcript {
-    min-height: 50vh;
-    border-left: none;
+    flex: none;
+    height: 60vh;
+    border-bottom: 1px solid var(--border-default);
   }
-
   .session-sidebar {
+    flex: none;
+    height: 40vh;
     border-left: none;
-    border-top: 1px solid var(--border-default);
-    max-height: 40vh;
   }
 }
 
@@ -1540,6 +1538,14 @@ input::placeholder, textarea::placeholder {
   flex-shrink: 0;
   font-size: 0.9em;
   white-space: normal;
+}
+
+.token-total, .token-delta {
+  margin-left: var(--space-2);
+}
+
+.token-delta {
+  opacity: 0.7;
 }
 
 .btn-expand-tool-hook {
