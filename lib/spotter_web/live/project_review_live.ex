@@ -80,10 +80,10 @@ defmodule SpotterWeb.ProjectReviewLive do
   end
 
   defp source_badge(:transcript), do: "Transcript"
-  defp source_badge(_), do: "Terminal"
+  defp source_badge(_), do: "Transcript"
 
   defp source_badge_class(:transcript), do: "badge badge-agent"
-  defp source_badge_class(_), do: "badge badge-terminal"
+  defp source_badge_class(_), do: "badge badge-agent"
 
   defp subagent_label(%{subagent: %{slug: slug}}) when is_binary(slug), do: slug
   defp subagent_label(%{subagent: %{agent_id: aid}}), do: String.slice(aid, 0, 8)

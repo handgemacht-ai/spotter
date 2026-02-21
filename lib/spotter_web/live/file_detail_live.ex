@@ -417,10 +417,10 @@ defmodule SpotterWeb.FileDetailLive do
           <span class="breadcrumb-sep">/</span>
           <span class="breadcrumb-current">File not found</span>
         </div>
-        <div class="terminal-connecting">
+        <div class="empty-state">
           <div>
-            <div class="terminal-connecting-title">File not found</div>
-            <div class="terminal-connecting-subtitle">
+            <div class="empty-state-title">File not found</div>
+            <div class="empty-state-subtitle">
               The requested project or file could not be found.
             </div>
           </div>

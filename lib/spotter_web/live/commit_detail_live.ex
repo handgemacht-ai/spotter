@@ -69,10 +69,10 @@ defmodule SpotterWeb.CommitDetailLive do
             <span class="breadcrumb-sep">/</span>
             <span class="breadcrumb-current">Commit not found</span>
           </div>
-          <div class="terminal-connecting">
+          <div class="empty-state">
             <div>
-              <div class="terminal-connecting-title">Commit not found</div>
-              <div class="terminal-connecting-subtitle">
+              <div class="empty-state-title">Commit not found</div>
+              <div class="empty-state-subtitle">
                 The requested commit could not be found.
               </div>
             </div>

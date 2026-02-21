@@ -67,7 +67,7 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
       assert html =~ "Reviews"
       assert html =~ "important code"
       assert html =~ "needs review"
-      assert html =~ "Terminal"
+      assert html =~ "Transcript"
     end
 
     test "renders transcript annotation with message ref count" do

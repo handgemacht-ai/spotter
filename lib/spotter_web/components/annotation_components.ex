@@ -153,7 +153,7 @@ defmodule SpotterWeb.AnnotationComponents do
 
   @doc false
   def source_badge_text(:transcript), do: "Transcript"
-  def source_badge_text(:terminal), do: "Terminal"
+  def source_badge_text(:terminal), do: "Transcript"
   def source_badge_text(:file), do: "File"
 
   def source_badge_text(source) when is_atom(source),

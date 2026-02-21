@@ -258,10 +258,10 @@ defmodule SpotterWeb.SubagentLive do
         <span class="breadcrumb-sep">/</span>
         <span class="breadcrumb-current">Agent not found</span>
       </div>
-      <div class="terminal-connecting">
+      <div class="empty-state">
         <div>
-          <div class="terminal-connecting-title">Subagent not found</div>
-          <div class="terminal-connecting-subtitle">
+          <div class="empty-state-title">Subagent not found</div>
+          <div class="empty-state-subtitle">
             The requested subagent could not be found.
           </div>
         </div>

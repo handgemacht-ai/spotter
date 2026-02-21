@@ -668,7 +668,7 @@ defmodule Spotter.Transcripts.ResourcesTest do
       assert ann.end_col == nil
     end
 
-    test "defaults source to terminal", %{session: session} do
+    test "defaults source to transcript", %{session: session} do
       ann =
         Ash.create!(Annotation, %{
           session_id: session.id,
@@ -680,7 +680,7 @@ defmodule Spotter.Transcripts.ResourcesTest do
           comment: "default source"
         })
 
-      assert ann.source == :terminal
+      assert ann.source == :transcript
     end
 
     test "defaults state to open", %{session: session} do

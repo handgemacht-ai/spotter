@@ -186,7 +186,7 @@ defmodule Spotter.Transcripts.Annotation do
 
     attribute :source, :atom do
       allow_nil? false
-      default :terminal
+      default :transcript
       public? true
       constraints one_of: [:terminal, :transcript, :file, :commit_message, :code, :prompt_pattern]
     end
