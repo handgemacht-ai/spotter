@@ -9,7 +9,6 @@ Run Spotter + Claude Code + tmux in Docker without cloning this repo.
 ### Prerequisites
 
 - Docker Desktop or Docker Engine with `docker compose`
-- `SPOTTER_ANTHROPIC_API_KEY` exported
 - A local git repo to run inside (or pass `--repo`)
 
 ### Install
@@ -23,7 +22,6 @@ Ensure `~/.local/bin` is in your `PATH`.
 ### Run
 
 ```bash
-export SPOTTER_ANTHROPIC_API_KEY=sk-ant-...
 cd /path/to/target-repo
 spotter
 ```
@@ -131,15 +129,6 @@ Only links with `confidence >= 0.60` are persisted.
 - Squash merges may require inference and can be low-confidence
 - Git-only in V1; no GitHub/GitLab API integration
 
-## Anthropic API key
-
-LLM-powered features (hotspot scoring) use the Anthropic API via LangChain.
-
-- **Environment variable**: `SPOTTER_ANTHROPIC_API_KEY`
-- **LangChain app config**: `:langchain, :anthropic_key` (wired in `config/runtime.exs`)
-- **Resolution order**: app config first, then system env fallback
-- **Fail-safe**: when the key is missing or blank, LLM features degrade gracefully (scoring skipped) without crashing workers or making outbound API calls
-
 ## MCP Server
 
 The Spotter MCP server is provided by the plugin via `spotter-plugin/.mcp.json`. The server name is `spotter`, so tools are exposed as `mcp__spotter__*`.
@@ -166,7 +155,6 @@ Spotter includes a local-only E2E harness that runs:
 ### Prerequisites
 
 - Docker + Docker Compose
-- `SPOTTER_ANTHROPIC_API_KEY` exported in your shell (the app will fail to start in dev/prod without it)
 
 ### Refresh transcript fixtures from host Claude sessions
 
@@ -187,13 +175,13 @@ The snapshot script selects longer sessions (line-count based), forces subagent 
 ### Run E2E suite
 
 ```bash
-SPOTTER_ANTHROPIC_API_KEY=... scripts/e2e/run.sh
+scripts/e2e/run.sh
 ```
 
 Default host port is `1101`. If it is already in use, override it:
 
 ```bash
-SPOTTER_E2E_HOST_PORT=1102 SPOTTER_ANTHROPIC_API_KEY=... scripts/e2e/run.sh
+SPOTTER_E2E_HOST_PORT=1102 scripts/e2e/run.sh
 ```
 
 This command:

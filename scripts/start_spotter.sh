@@ -48,12 +48,6 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ -z "${SPOTTER_ANTHROPIC_API_KEY:-}" ] && [ -z "${SKIP_ANTHROPIC_CHECK:-}" ]; then
-  echo "SPOTTER_ANTHROPIC_API_KEY is required to run Spotter in dev/prod mode." >&2
-  echo "Export SPOTTER_ANTHROPIC_API_KEY or set SKIP_ANTHROPIC_CHECK=1 to bypass." >&2
-  exit 1
-fi
-
 if [ -z "${OTEL_EXPORTER:-}" ]; then
   export OTEL_EXPORTER=otlp
 fi

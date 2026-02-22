@@ -3,11 +3,6 @@ set -euo pipefail
 
 COMPOSE_FILE="docker-compose.e2e.yml"
 
-if [[ -z "${SPOTTER_ANTHROPIC_API_KEY:-}" ]]; then
-  echo "SPOTTER_ANTHROPIC_API_KEY is required for scripts/e2e/run.sh" >&2
-  exit 1
-fi
-
 cleanup() {
   docker compose -f "${COMPOSE_FILE}" down -v --remove-orphans >/dev/null 2>&1 || true
 }
