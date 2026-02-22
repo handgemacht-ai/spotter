@@ -2,6 +2,83 @@
 
 Spotter reviews Claude Code sessions and generated code. It links Claude sessions to Git commits using deterministic hook capture plus asynchronous enrichment so each session can be traced to concrete repository changes. The runtime stack is Phoenix/LiveView for the app, xterm.js for terminal rendering, and tmux-integrated hook scripts for session event capture.
 
+## Local Development Runtime
+
+**Scope:** local-dev only. No installer or production deployment support in this contract.
+
+### Required Tools
+
+| Tool | Purpose |
+|------|---------|
+| [just](https://github.com/casey/just) | Command runner (delegates to `scripts/runtime/`) |
+| [overmind](https://github.com/DarthSim/overmind) | Process manager (reads `Procfile`) |
+| [docker](https://docs.docker.com/get-docker/) | Runs Dolt SQL-server container |
+
+All three must be on `$PATH`. If any are missing, `just up` exits non-zero with a single error listing all missing tools.
+
+### Environment Variables
+
+None required. All variables have sensible defaults:
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `SPOTTER_DOLT_HOST` | `127.0.0.1` | Dolt server host |
+| `SPOTTER_DOLT_HOST_PORT` | `13307` | Dolt host-mapped port |
+| `SPOTTER_DOLT_DATABASE` | `spotter_product` | Main Dolt database |
+| `SPOTTER_DOLT_USERNAME` | `spotter` | Dolt credentials |
+| `SPOTTER_DOLT_PASSWORD` | `spotter` | Dolt credentials |
+
+### Commands
+
+```
+just up        # Start all services (Dolt + Phoenix)
+just down      # Stop all services
+just status    # Show service health
+just logs      # Tail service logs
+just reset     # Stop, wipe state, restart clean
+```
+
+### Startup Sequence (`just up`)
+
+1. Check prerequisites (`just`, `overmind`, `docker`) — batch all missing into one error
+2. Start Dolt container via Docker Compose
+3. Readiness check: ping Dolt with 30-second timeout
+4. Start Phoenix via overmind (reads `Procfile`)
+
+### Service Ports
+
+| Service | Port | Binding |
+|---------|------|---------|
+| Phoenix | `1100` | `0.0.0.0` (per-worktree via `config/dev.local.exs`) |
+| Dolt | `13307` | `0.0.0.0` (Docker host mapping) |
+
+### OpenTelemetry (opt-in)
+
+OTEL is **not** started by `just up`. Enable separately:
+
+```
+just otel-up     # Start OTEL Collector + Jaeger
+just otel-down   # Stop OTEL stack
+```
+
+| Service | Port | Binding |
+|---------|------|---------|
+| OTEL Collector (gRPC) | `4317` | `127.0.0.1` |
+| OTEL Collector (HTTP) | `4318` | `127.0.0.1` |
+| Jaeger UI | `16686` | `127.0.0.1` |
+
+### CLI UX Contract
+
+- Service state indicators: `●` running, `✕` stopped, `!` error
+- ANSI colors only when stdout is a TTY
+- Justfile recipes delegate to `scripts/runtime/` for testability
+
+### Out of Scope
+
+- Installer / bundle path (no `curl | bash` setup)
+- Production deployment
+- Remote/cloud runtime
+
 ## Showcase quickstart (one command)
 
 Run Spotter + Claude Code + tmux in Docker without cloning this repo.
