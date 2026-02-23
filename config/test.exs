@@ -3,6 +3,9 @@ import Config
 # Disable trace exporting during tests to avoid noise
 config :opentelemetry, traces_exporter: :none
 
+# Use simple (synchronous) processor so spans can be routed to test processes
+config :opentelemetry, :processors, [{:otel_simple_processor, %{}}]
+
 config :spotter, Oban, testing: :manual
 config :logger, level: :warning
 
