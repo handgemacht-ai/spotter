@@ -352,4 +352,95 @@ defmodule Spotter.Transcripts.JsonlParserTest do
       assert record.detection_source == :transcript_sync
     end
   end
+
+  describe "team field extraction" do
+    test "normalize_message includes team_name and agent_name from JSONL" do
+      team_file = Path.join(@fixtures_dir, "team_session.jsonl")
+
+      lines = [
+        Jason.encode!(%{
+          "uuid" => "msg-1",
+          "type" => "user",
+          "sessionId" => "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+          "slug" => "team-test",
+          "cwd" => "/tmp/test",
+          "gitBranch" => "main",
+          "version" => "2.1.0",
+          "teamName" => "my-team",
+          "agentName" => "backend-architect",
+          "timestamp" => "2026-01-01T00:00:00.000Z",
+          "message" => %{"role" => "user", "content" => "Hello"}
+        })
+      ]
+
+      File.write!(team_file, Enum.join(lines, "\n"))
+
+      {:ok, result} = JsonlParser.parse_session_file(team_file)
+
+      msg = hd(result.messages)
+      assert msg.team_name == "my-team"
+      assert msg.agent_name == "backend-architect"
+    end
+
+    test "normalize_message returns nil team_name and agent_name when absent" do
+      no_team_file = Path.join(@fixtures_dir, "no_team_session.jsonl")
+
+      lines = [
+        Jason.encode!(%{
+          "uuid" => "msg-1",
+          "type" => "user",
+          "sessionId" => "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+          "slug" => "no-team-test",
+          "cwd" => "/tmp/test",
+          "gitBranch" => "main",
+          "version" => "2.1.0",
+          "timestamp" => "2026-01-01T00:00:00.000Z",
+          "message" => %{"role" => "user", "content" => "Hello"}
+        })
+      ]
+
+      File.write!(no_team_file, Enum.join(lines, "\n"))
+
+      {:ok, result} = JsonlParser.parse_session_file(no_team_file)
+
+      msg = hd(result.messages)
+      assert msg.team_name == nil
+      assert msg.agent_name == nil
+    end
+
+    test "parse_session_file returns team_name and agent_name at session level" do
+      team_file = Path.join(@fixtures_dir, "team_session_level.jsonl")
+
+      lines = [
+        Jason.encode!(%{
+          "uuid" => "msg-1",
+          "type" => "user",
+          "sessionId" => "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+          "slug" => "team-session",
+          "cwd" => "/tmp/test",
+          "gitBranch" => "main",
+          "version" => "2.1.0",
+          "teamName" => "my-team",
+          "agentName" => "qa-tester",
+          "timestamp" => "2026-01-01T00:00:00.000Z",
+          "message" => %{"role" => "user", "content" => "Hello"}
+        })
+      ]
+
+      File.write!(team_file, Enum.join(lines, "\n"))
+
+      {:ok, result} = JsonlParser.parse_session_file(team_file)
+
+      assert result.team_name == "my-team"
+      assert result.agent_name == "qa-tester"
+    end
+
+    test "parse_session_file returns nil team_name and agent_name when absent" do
+      {:ok, result} =
+        JsonlParser.parse_session_file(@fixtures_dir |> Path.join("test_session.jsonl"))
+
+      assert result.team_name == nil
+      assert result.agent_name == nil
+    end
+  end
 end

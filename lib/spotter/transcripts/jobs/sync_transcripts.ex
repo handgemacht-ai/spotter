@@ -17,6 +17,8 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   alias Spotter.Transcripts.Session
   alias Spotter.Transcripts.Sessions
   alias Spotter.Transcripts.SessionsIndex
+  alias Spotter.Transcripts.Team
+  alias Spotter.Transcripts.TeamMember
 
   require Ash.Query
 
@@ -98,20 +100,11 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
           index_meta = Map.get(index, parsed.session_id, %{})
 
           # Ensure session and project exist
-          session_record =
-            case Session
-                 |> Ash.Query.filter(session_id == ^parsed.session_id)
-                 |> Ash.read_one!() do
-              %Session{} = existing ->
-                existing
-
-              nil ->
-                {:ok, stub} = Sessions.find_or_create(parsed.session_id, cwd: parsed.cwd)
-                stub
-            end
+          session_record = find_or_create_session!(parsed)
 
           # Upsert session with full metadata + transcript_dir backfill
           session = upsert_existing_session!(session_record, transcript_dir, parsed, index_meta)
+          link_team_membership!(session, parsed)
           subagent_type_by_agent_id = build_subagent_type_index(parsed.messages)
 
           ingested = upsert_messages!(session, parsed.messages)
@@ -400,6 +393,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
       {:ok, parsed} ->
         index_meta = Map.get(index, parsed.session_id, %{})
         session = upsert_session!(project, transcript_dir, parsed, index_meta)
+        link_team_membership!(session, parsed)
         subagent_type_by_agent_id = build_subagent_type_index(parsed.messages)
         create_messages!(session, parsed.messages)
         create_tool_calls!(session, parsed.messages)
@@ -425,7 +419,9 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
       summary: index_meta[:summary],
       first_prompt: index_meta[:first_prompt],
       source_created_at: index_meta[:source_created_at],
-      source_modified_at: index_meta[:source_modified_at]
+      source_modified_at: index_meta[:source_modified_at],
+      team_name: parsed.team_name,
+      agent_name: parsed.agent_name
     }
 
     case Spotter.Transcripts.Session
@@ -715,7 +711,9 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
       summary: index_meta[:summary],
       first_prompt: index_meta[:first_prompt],
       source_created_at: index_meta[:source_created_at],
-      source_modified_at: index_meta[:source_modified_at]
+      source_modified_at: index_meta[:source_modified_at],
+      team_name: parsed.team_name,
+      agent_name: parsed.agent_name
     }
 
     update_attrs = apply_timestamp_fallbacks(base_attrs, session_record)
@@ -792,6 +790,58 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   end
 
   defp extract_agent_progress_refs(_), do: []
+
+  defp find_or_create_session!(parsed) do
+    case Session |> Ash.Query.filter(session_id == ^parsed.session_id) |> Ash.read_one!() do
+      %Session{} = existing ->
+        existing
+
+      nil ->
+        case Sessions.find_or_create(parsed.session_id, cwd: parsed.cwd) do
+          {:ok, stub} -> stub
+          {:error, _} -> create_session_with_db_project!(parsed)
+        end
+    end
+  end
+
+  defp create_session_with_db_project!(parsed) do
+    project = find_project_by_cwd!(parsed.cwd)
+
+    Ash.create!(Session, %{
+      session_id: parsed.session_id,
+      project_id: project.id,
+      cwd: parsed.cwd
+    })
+  end
+
+  defp find_project_by_cwd!(cwd) when is_binary(cwd) do
+    dir_name = String.replace(cwd, "/", "-")
+    basename = Path.basename(cwd)
+
+    Spotter.Transcripts.Project
+    |> Ash.read!()
+    |> Enum.find(fn project ->
+      pattern = Regex.compile!(project.pattern)
+      Regex.match?(pattern, dir_name) or Regex.match?(pattern, basename)
+    end) || raise "No project matching cwd: #{cwd}"
+  end
+
+  defp link_team_membership!(session, parsed) do
+    with team_name when is_binary(team_name) <- parsed[:team_name],
+         project_id when is_binary(project_id) <- session.project_id do
+      team = Ash.create!(Team, %{name: team_name, project_id: project_id})
+
+      if is_binary(parsed[:agent_name]) do
+        Ash.create!(TeamMember, %{
+          agent_name: parsed[:agent_name],
+          team_id: team.id,
+          session_id: session.id
+        })
+      end
+    else
+      _ -> :ok
+    end
+  end
 
   defp upsert_subagent!(session, parsed, subagent_type) do
     update_attrs = %{

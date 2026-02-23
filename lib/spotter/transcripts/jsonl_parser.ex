@@ -25,7 +25,9 @@ defmodule Spotter.Transcripts.JsonlParser do
          schema_version: schema_version,
          started_at: metadata[:started_at],
          ended_at: metadata[:ended_at],
-         messages: messages
+         messages: messages,
+         team_name: metadata[:team_name],
+         agent_name: metadata[:agent_name]
        }}
     end
   end
@@ -53,7 +55,9 @@ defmodule Spotter.Transcripts.JsonlParser do
          schema_version: schema_version,
          started_at: metadata[:started_at],
          ended_at: metadata[:ended_at],
-         messages: messages
+         messages: messages,
+         team_name: metadata[:team_name],
+         agent_name: metadata[:agent_name]
        }}
     end
   end
@@ -256,7 +260,9 @@ defmodule Spotter.Transcripts.JsonlParser do
       slug: data["slug"],
       cwd: data["cwd"],
       git_branch: data["gitBranch"],
-      version: data["version"]
+      version: data["version"],
+      team_name: data["teamName"],
+      agent_name: data["agentName"]
     }
   end
 
@@ -311,7 +317,9 @@ defmodule Spotter.Transcripts.JsonlParser do
       git_branch: find_field(first_messages, :git_branch),
       version: find_field(first_messages, :version),
       started_at: first_non_nil_timestamp(messages),
-      ended_at: last_non_nil_timestamp(messages)
+      ended_at: last_non_nil_timestamp(messages),
+      team_name: find_field(first_messages, :team_name),
+      agent_name: find_field(first_messages, :agent_name)
     }
   end
 

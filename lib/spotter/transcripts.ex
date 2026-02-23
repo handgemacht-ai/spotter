@@ -123,5 +123,7 @@ defmodule Spotter.Transcripts do
     resource Spotter.Transcripts.CommitFile
     resource Spotter.Transcripts.AnnotationFileRef
     resource Spotter.Transcripts.ProjectIngestState
+    resource Spotter.Transcripts.Team
+    resource Spotter.Transcripts.TeamMember
   end
 end

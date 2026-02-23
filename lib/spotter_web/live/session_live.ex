@@ -3,11 +3,14 @@ defmodule SpotterWeb.SessionLive do
   use AshComputer.LiveView
 
   require Logger
+  require OpenTelemetry.Tracer, as: Tracer
 
   import SpotterWeb.TranscriptComponents
   import SpotterWeb.AnnotationComponents
+  import SpotterWeb.LanesComponents
 
   alias Spotter.Services.{ReviewUpdates, TranscriptFileLinks}
+  alias Spotter.Transcripts.ParallelLanes
 
   alias Spotter.Transcripts.{
     Annotation,
@@ -19,6 +22,7 @@ defmodule SpotterWeb.SessionLive do
     SessionCommitLink,
     SessionRework,
     Subagent,
+    Team,
     ToolCall
   }
 
@@ -62,7 +66,12 @@ defmodule SpotterWeb.SessionLive do
         active_sidebar_tab: :commits,
         explain_streams: %{},
         transcript_link_project_id: link_project_id,
-        transcript_link_fileset: link_fileset
+        transcript_link_fileset: link_fileset,
+        view_mode: :list,
+        lanes: [],
+        overlaps: [],
+        lanes_timeline: %{earliest: nil, latest: nil},
+        active_lane_index: 0
       )
       |> mount_computers(%{
         transcript_view: %{messages: messages, session_cwd: session_cwd}
@@ -219,6 +228,52 @@ defmodule SpotterWeb.SessionLive do
 
   def handle_event("switch_sidebar_tab", %{"tab" => tab}, socket) do
     {:noreply, assign(socket, active_sidebar_tab: String.to_existing_atom(tab))}
+  end
+
+  def handle_event("switch_view_mode", %{"mode" => "lanes"}, socket) do
+    Tracer.with_span "spotter.session_live.switch_view_mode" do
+      Tracer.set_attribute("view_mode", "lanes")
+      {:noreply, socket |> assign(view_mode: :lanes) |> load_lanes_data()}
+    end
+  end
+
+  def handle_event("switch_view_mode", %{"mode" => "list"}, socket) do
+    Tracer.with_span "spotter.session_live.switch_view_mode" do
+      Tracer.set_attribute("view_mode", "list")
+      {:noreply, assign(socket, view_mode: :list)}
+    end
+  end
+
+  def handle_event("switch_view_mode", _params, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("switch_lane", %{"index" => idx_str}, socket) do
+    case Integer.parse(idx_str) do
+      {idx, ""} when idx >= 0 and idx < length(socket.assigns.lanes) ->
+        {:noreply, assign(socket, active_lane_index: idx)}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  defp load_lanes_data(socket) do
+    team_name = socket.assigns.session_record && socket.assigns.session_record.team_name
+
+    case team_name && Team |> Ash.Query.filter(name == ^team_name) |> Ash.read_one() do
+      {:ok, %Team{} = team} ->
+        case ParallelLanes.compute(team.id) do
+          {:ok, %{lanes: lanes, timeline: timeline, overlaps: overlaps}} ->
+            assign(socket, lanes: lanes, overlaps: overlaps, lanes_timeline: timeline)
+
+          _ ->
+            assign(socket, lanes: [], overlaps: [], lanes_timeline: %{earliest: nil, latest: nil})
+        end
+
+      _ ->
+        assign(socket, lanes: [], overlaps: [], lanes_timeline: %{earliest: nil, latest: nil})
+    end
   end
 
   defp maybe_focus_annotations_tab(socket) do
@@ -423,31 +478,43 @@ defmodule SpotterWeb.SessionLive do
           {@session_status}
         </span>
       </div>
+      <div :if={@session_record && @session_record.team_name} data-testid="view-mode-toggle" style="display: flex; gap: var(--space-1); margin-bottom: var(--space-2);">
+        <button phx-click="switch_view_mode" phx-value-mode="list" class={"lanes-tab#{if @view_mode == :list, do: " is-active", else: ""}"}>
+          List
+        </button>
+        <button phx-click="switch_view_mode" phx-value-mode="lanes" class={"lanes-tab#{if @view_mode == :lanes, do: " is-active", else: ""}"}>
+          Lanes
+        </button>
+      </div>
       <.distilled_summary_section session_record={@session_record} />
       <div class="session-layout">
-        <div id="transcript-panel" class="session-transcript" data-testid="transcript-container">
-          <div class="transcript-header">
-            <h3>Transcript</h3>
-            <span class={"transcript-header-hint#{if @transcript_view_show_debug, do: " debug-active", else: ""}"}>
-              <%= if @transcript_view_show_debug, do: "DEBUG ON", else: "Ctrl+Shift+D: debug" %>
-            </span>
-          </div>
+        <%= if @view_mode == :lanes do %>
+          <.lanes_panel lanes={@lanes} overlaps={@overlaps} timeline={@lanes_timeline} active_lane_index={@active_lane_index} />
+        <% else %>
+          <div id="transcript-panel" class="session-transcript" data-testid="transcript-container">
+            <div class="transcript-header">
+              <h3>Transcript</h3>
+              <span class={"transcript-header-hint#{if @transcript_view_show_debug, do: " debug-active", else: ""}"}>
+                <%= if @transcript_view_show_debug, do: "DEBUG ON", else: "Ctrl+Shift+D: debug" %>
+              </span>
+            </div>
 
-          <.transcript_panel
-            rendered_lines={@transcript_view_visible_lines}
-            all_rendered_lines={@transcript_view_rendered_lines}
-            expanded_tool_groups={@transcript_view_expanded_tool_groups}
-            expanded_hook_groups={@transcript_view_expanded_hook_groups}
-            current_message_id={@current_message_id}
-            clicked_subagent={@clicked_subagent}
-            session_id={@session_id}
-            subagent_labels={@subagent_labels}
-            show_debug={@transcript_view_show_debug}
-            project_id={@transcript_link_project_id}
-            existing_files={@transcript_link_fileset}
-            empty_message="No transcript available for this session."
-          />
-        </div>
+            <.transcript_panel
+              rendered_lines={@transcript_view_visible_lines}
+              all_rendered_lines={@transcript_view_rendered_lines}
+              expanded_tool_groups={@transcript_view_expanded_tool_groups}
+              expanded_hook_groups={@transcript_view_expanded_hook_groups}
+              current_message_id={@current_message_id}
+              clicked_subagent={@clicked_subagent}
+              session_id={@session_id}
+              subagent_labels={@subagent_labels}
+              show_debug={@transcript_view_show_debug}
+              project_id={@transcript_link_project_id}
+              existing_files={@transcript_link_fileset}
+              empty_message="No transcript available for this session."
+            />
+          </div>
+        <% end %>
         <div class="session-sidebar">
         <div class="sidebar-tabs">
           <button

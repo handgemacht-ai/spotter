@@ -58,7 +58,9 @@ defmodule Spotter.Transcripts.Session do
         :first_prompt,
         :source_created_at,
         :source_modified_at,
-        :hook_ended_at
+        :hook_ended_at,
+        :team_name,
+        :agent_name
       ]
     end
 
@@ -84,7 +86,9 @@ defmodule Spotter.Transcripts.Session do
         :distilled_status,
         :distilled_model_used,
         :distilled_at,
-        :hook_ended_at
+        :hook_ended_at,
+        :team_name,
+        :agent_name
       ]
 
       require_atomic? false
@@ -162,6 +166,9 @@ defmodule Spotter.Transcripts.Session do
     attribute :distilled_at, :utc_datetime_usec
     attribute :hook_ended_at, :utc_datetime_usec
 
+    attribute :team_name, :string, public?: true
+    attribute :agent_name, :string, public?: true
+
     attribute :distilled_status, :atom do
       constraints one_of: [:pending, :skipped, :completed, :error]
       default :pending
@@ -182,6 +189,7 @@ defmodule Spotter.Transcripts.Session do
     has_many :annotations, Spotter.Transcripts.Annotation
     has_many :tool_calls, Spotter.Transcripts.ToolCall
     has_many :session_reworks, Spotter.Transcripts.SessionRework
+    has_many :team_members, Spotter.Transcripts.TeamMember
   end
 
   identities do

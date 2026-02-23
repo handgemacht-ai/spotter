@@ -4,7 +4,17 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscriptsTest do
   alias Ecto.Adapters.SQL.Sandbox
   alias Spotter.Repo
   alias Spotter.Transcripts.Jobs.SyncTranscripts
-  alias Spotter.Transcripts.{JsonlParser, Message, Project, Session, SessionRework, Subagent}
+
+  alias Spotter.Transcripts.{
+    JsonlParser,
+    Message,
+    Project,
+    Session,
+    SessionRework,
+    Subagent,
+    Team,
+    TeamMember
+  }
 
   require Ash.Query
 
@@ -591,5 +601,119 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscriptsTest do
         ]
       }
     }
+  end
+
+  defp write_team_session_jsonl(dir, session_id, team_name, agent_name) do
+    File.mkdir_p!(dir)
+
+    lines = [
+      %{
+        "uuid" => "#{session_id}-system",
+        "type" => "system",
+        "sessionId" => session_id,
+        "cwd" => "test-sync/project",
+        "version" => "1.0.0",
+        "teamName" => team_name,
+        "agentName" => agent_name,
+        "timestamp" => "2026-02-01T12:00:00Z"
+      },
+      %{
+        "uuid" => "#{session_id}-user-1",
+        "type" => "human",
+        "role" => "user",
+        "teamName" => team_name,
+        "agentName" => agent_name,
+        "content" => [%{"type" => "text", "text" => "hello"}],
+        "timestamp" => "2026-02-01T12:00:01Z"
+      }
+    ]
+
+    path = Path.join(dir, "#{session_id}.jsonl")
+    content = Enum.map_join(lines, "\n", &Jason.encode!/1)
+    File.write!(path, content)
+    path
+  end
+
+  describe "team linking during sync" do
+    test "sync sets team_name and agent_name on session", %{tmp_dir: tmp_dir} do
+      session_id = Ash.UUID.generate()
+      dir = Path.join(tmp_dir, "test-sync")
+      file = write_team_session_jsonl(dir, session_id, "my-team", "backend-architect")
+
+      result = SyncTranscripts.sync_session_file(file)
+      assert result.status == :ok
+
+      session = Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one!()
+      assert session.team_name == "my-team"
+      assert session.agent_name == "backend-architect"
+    end
+
+    test "sync creates Team record when team_name present", %{tmp_dir: tmp_dir} do
+      session_id = Ash.UUID.generate()
+      dir = Path.join(tmp_dir, "test-sync")
+      file = write_team_session_jsonl(dir, session_id, "sync-team", "qa-tester")
+
+      SyncTranscripts.sync_session_file(file)
+
+      teams = Team |> Ash.Query.filter(name == "sync-team") |> Ash.read!()
+      assert teams != []
+
+      team = hd(teams)
+      assert team.name == "sync-team"
+      assert team.project_id != nil
+    end
+
+    test "sync creates TeamMember linking session to team", %{tmp_dir: tmp_dir} do
+      session_id = Ash.UUID.generate()
+      dir = Path.join(tmp_dir, "test-sync")
+      file = write_team_session_jsonl(dir, session_id, "member-team", "qa-tester")
+
+      SyncTranscripts.sync_session_file(file)
+
+      session = Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one!()
+      team = Team |> Ash.Query.filter(name == "member-team") |> Ash.read_one!()
+
+      members =
+        TeamMember
+        |> Ash.Query.filter(team_id == ^team.id and session_id == ^session.id)
+        |> Ash.read!()
+
+      assert members != []
+
+      member = hd(members)
+      assert member.agent_name == "qa-tester"
+      assert member.team_id == team.id
+      assert member.session_id == session.id
+    end
+
+    test "sync without team fields creates no Team or TeamMember", %{tmp_dir: tmp_dir} do
+      session_id = Ash.UUID.generate()
+      dir = Path.join(tmp_dir, "test-sync")
+      file = write_session_jsonl(dir, session_id)
+
+      SyncTranscripts.sync_session_file(file)
+
+      teams = Ash.read!(Team)
+      members = Ash.read!(TeamMember)
+
+      assert teams == []
+      assert members == []
+    end
+
+    test "re-sync is idempotent — still one Team and one TeamMember", %{tmp_dir: tmp_dir} do
+      session_id = Ash.UUID.generate()
+      dir = Path.join(tmp_dir, "test-sync")
+      file = write_team_session_jsonl(dir, session_id, "idem-team", "architect")
+
+      SyncTranscripts.sync_session_file(file)
+      SyncTranscripts.sync_session_file(file)
+
+      teams = Team |> Ash.Query.filter(name == "idem-team") |> Ash.read!()
+      assert length(teams) == 1
+
+      session = Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one!()
+      members = TeamMember |> Ash.Query.filter(session_id == ^session.id) |> Ash.read!()
+      assert length(members) == 1
+    end
   end
 end
