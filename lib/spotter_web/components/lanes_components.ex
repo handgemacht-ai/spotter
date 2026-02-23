@@ -29,11 +29,12 @@ defmodule SpotterWeb.LanesComponents do
 
   def lanes_panel(assigns) do
     ~H"""
-    <div id="lanes-scroll" class="lanes-container" phx-hook="LaneScroll">
+    <div id="lanes-scroll" class="lanes-container" data-testid="lanes-panel" phx-hook="LaneScroll">
       <div :if={@lanes != []} class="lanes-tab-bar" role="tablist">
         <button
           :for={{lane, idx} <- Enum.with_index(@lanes)}
           class={"lanes-tab#{if idx == @active_lane_index, do: " is-active", else: ""}"}
+          data-testid={"lane-tab-#{sanitize_agent_name(lane.agent_name)}"}
           phx-click="switch_lane"
           phx-value-index={idx}
           role="tab"
@@ -75,8 +76,8 @@ defmodule SpotterWeb.LanesComponents do
     ~H"""
     <div class="lanes-header" data-testid="lane-header">
       <span style={"width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(#{@color})"}></span>
-      <span style="font-weight: 600;"><%= @lane.agent_name %></span>
-      <span style="font-size: var(--text-xs); color: var(--text-secondary);"><%= @duration %></span>
+      <span data-testid="lane-name" style="font-weight: 600;"><%= @lane.agent_name %></span>
+      <span data-testid="lane-duration" style="font-size: var(--text-xs); color: var(--text-secondary);"><%= @duration %></span>
       <span style="font-size: var(--text-xs); color: var(--text-secondary);"><%= @msg_count %></span>
     </div>
     """
@@ -101,6 +102,7 @@ defmodule SpotterWeb.LanesComponents do
     ~H"""
     <div
       class={"lanes-column#{if @active, do: " is-active", else: ""}"}
+      data-testid={"lane-column-#{sanitize_agent_name(@lane.agent_name)}"}
       style={"border-left: 3px solid var(#{@color})"}
       role={@role}
     >
@@ -126,15 +128,16 @@ defmodule SpotterWeb.LanesComponents do
 
   def time_axis(assigns) do
     ~H"""
-    <div class="lanes-time-axis">
+    <div class="lanes-time-axis" data-testid="lanes-time-axis">
       <div class="lanes-header">
         <span style="font-size: var(--text-xs); color: var(--text-tertiary);">TIME</span>
       </div>
       <div
         :for={overlap <- @overlaps}
         class={"lanes-gutter-bar#{if overlap.type == :partial, do: " partial", else: ""}"}
+        data-testid={"overlap-bar-#{format_time(overlap.start)}"}
       >
-        <span style="font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-tertiary);">
+        <span data-testid={"overlap-time-#{format_time(overlap.start)}"} style="font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-tertiary);">
           <%= format_time(overlap.start) %>
         </span>
       </div>
@@ -173,4 +176,9 @@ defmodule SpotterWeb.LanesComponents do
   end
 
   defp format_duration(_, _), do: ""
+
+  @doc "Sanitizes an agent name for use in data-testid attributes: lowercase, spaces to hyphens."
+  def sanitize_agent_name(name) when is_binary(name) do
+    name |> String.downcase() |> String.replace(" ", "-")
+  end
 end
