@@ -8,6 +8,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- `--scenario` and `--cleanup` flags for e2e seed mix task (`mix spotter.e2e.seed`) (bd-e8f.1)
+  - `--scenario=session_lanes` creates deterministic test data with fixed timestamps and agent names
+  - `--cleanup` removes scenario-specific seed data without affecting other records
+  - 132+ lines of new tests covering scenario creation, cleanup, and edge cases
+  - Files: `lib/mix/tasks/spotter.e2e.seed.ex`, `test/mix/tasks/spotter.e2e.seed_test.exs`
+- 8 `data-testid` selectors on lanes LiveView components for stable e2e targeting (bd-e8f.2)
+  - Selectors: `lane-row`, `lane-agent`, `lane-duration`, `lane-tab-count`, `lane-overlap-badge`, `lane-tabs-panel`, `lane-model-badge`, `lane-cost`
+  - 129+ lines of new component tests verifying selector presence
+  - Files: `lib/spotter_web/components/lanes_components.ex`, `test/spotter_web/components/lanes_components_test.exs`
+- `LanesPage` Page Object Model for e2e tests (bd-e8f.3)
+  - Encapsulates lane element queries, agent extraction, duration parsing, overlap detection
+  - Files: `e2e/support/pages/`
+- Rewrote `session-lanes.smoke.spec.ts` with semantic assertions (bd-e8f.4)
+  - Asserts agent names, durations, overlaps, tab counts via Page Object Model
+  - Replaced brittle snapshot-only checks with structural validation
+  - Files: `e2e/tests/session-lanes.smoke.spec.ts`
+- Documented e2e setup/cleanup contract in `e2e/CLAUDE.md` (bd-e8f.5)
+  - Scenario lifecycle, selector conventions, test data expectations
+
+### Added
+
 - `Spotter.Test.OtelHelpers` module for OpenTelemetry span assertions in tests (sp-mvg)
   - 7 public functions: `setup_otel_test/1`, `assert_span_recorded/2`, `assert_span_attributes/3`, `assert_span_status/3`, `assert_child_span/3`, `refute_span_recorded/2`, `collect_spans/1`
   - `:otel_exporter_pid` pattern routes finished spans to test process mailbox
