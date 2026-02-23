@@ -9,23 +9,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 
 - `--scenario` and `--cleanup` flags for e2e seed mix task (`mix spotter.e2e.seed`) (bd-e8f.1)
-  - `--scenario=session_lanes` creates deterministic test data with fixed timestamps and agent names
-  - `--cleanup` removes scenario-specific seed data without affecting other records
-  - 132+ lines of new tests covering scenario creation, cleanup, and edge cases
+  - `--scenario=team_overlap` creates deterministic test data with fixed timestamps and agent names
+  - `--cleanup` removes scenario-specific seed data via FK-safe cascading deletes (annotation refs → annotations → tool_calls → file_snapshots → session_commit_links → session_reworks → subagents → messages → team_members → sessions → orphaned teams)
+  - Deterministic UUIDs (`00000000-0000-0000-0000-00000000000N`) for reproducible e2e state
+  - Auto-upserts `e2e-spotter` project so `SyncTranscripts` processes fixture files
+  - 6 new tests covering seed, cleanup, and scenario edge cases
   - Files: `lib/mix/tasks/spotter.e2e.seed.ex`, `test/mix/tasks/spotter.e2e.seed_test.exs`
 - 8 `data-testid` selectors on lanes LiveView components for stable e2e targeting (bd-e8f.2)
-  - Selectors: `lane-row`, `lane-agent`, `lane-duration`, `lane-tab-count`, `lane-overlap-badge`, `lane-tabs-panel`, `lane-model-badge`, `lane-cost`
-  - 129+ lines of new component tests verifying selector presence
+  - Selectors: `lanes-panel`, `lane-tab-{agent}`, `lane-column-{agent}`, `lane-name`, `lane-duration`, `lanes-time-axis`, `overlap-bar-{HH:MM}`, `overlap-time-{HH:MM}`
+  - Added `sanitize_agent_name/1` for parametric selector generation
+  - 8 new unit tests (14 total)
   - Files: `lib/spotter_web/components/lanes_components.ex`, `test/spotter_web/components/lanes_components_test.exs`
 - `LanesPage` Page Object Model for e2e tests (bd-e8f.3)
-  - Encapsulates lane element queries, agent extraction, duration parsing, overlap detection
-  - Files: `e2e/support/pages/`
+  - Parametric locators: `tab(name)`, `column(name)`, `overlapBar(time)`, `overlapTime(time)`
+  - Scoped locators: `laneName(agent)`, `laneDuration(agent)` within column
+  - Assertion helpers: `expectVisible()`, `expectTabCount()`, `expectColumnCount()`, `expectLaneName()`, `expectLaneDuration()`, `expectOverlapsPresent()`, `expectOverlapCount()`, `expectTabActive()`
+  - Navigation: `goto(sessionId)`, `switchToLanesView()`
+  - Files: `e2e/support/pages/lanes.ts`
 - Rewrote `session-lanes.smoke.spec.ts` with semantic assertions (bd-e8f.4)
-  - Asserts agent names, durations, overlaps, tab counts via Page Object Model
-  - Replaced brittle snapshot-only checks with structural validation
+  - Desktop (1440x900): 6 tests — column count, agent names, durations (30m/15m/20m), overlap regions, time axis, snapshot
+  - Responsive tabs (768x900): 3 tests — tab bar visibility, default active tab, tab switching (below `@media (max-width: 1199px)` breakpoint)
+  - Deterministic fixtures: team-lead 10:00–10:30, qa-tester 10:05–10:20, implementer 10:10–10:30
   - Files: `e2e/tests/session-lanes.smoke.spec.ts`
 - Documented e2e setup/cleanup contract in `e2e/CLAUDE.md` (bd-e8f.5)
-  - Scenario lifecycle, selector conventions, test data expectations
+  - Scenario seed/cleanup lifecycle, POM convention, new-scenario guide
 
 ### Added
 
