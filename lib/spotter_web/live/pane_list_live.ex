@@ -856,9 +856,14 @@ defmodule SpotterWeb.PaneListLive do
                   <% end %>
                 </nav>
               <% end %>
-              <%= if MapSet.size(@selected_transcripts) > 0 do %>
-                <div data-testid="selection-count"><%= MapSet.size(@selected_transcripts) %> selected</div>
-              <% end %>
+              <div class="import-modal-footer">
+                <%= if MapSet.size(@selected_transcripts) > 0 do %>
+                  <div data-testid="selection-count"><%= MapSet.size(@selected_transcripts) %> selected</div>
+                <% end %>
+                <button data-testid="import-action-button" class={"btn#{if MapSet.size(@selected_transcripts) > 0, do: " btn-primary"}"} {if MapSet.size(@selected_transcripts) == 0, do: [disabled: "disabled"], else: []}>
+                  <%= if MapSet.size(@selected_transcripts) > 0 do %>Import <%= MapSet.size(@selected_transcripts) %><% else %>Import<% end %>
+                </button>
+              </div>
             </div>
           </div>
         </div>

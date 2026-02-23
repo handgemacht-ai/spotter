@@ -510,5 +510,26 @@ defmodule SpotterWeb.ImportModalTest do
       # Should select only the 2 non-imported transcripts
       assert html =~ "2 selected"
     end
+
+    test "import button is disabled when 0 selected and enabled with count when selected", %{
+      view: view
+    } do
+      html = render(view)
+
+      # With no selection, import action button should be disabled
+      assert has_element?(view, ~s([data-testid="import-action-button"][disabled]))
+
+      # Select a transcript
+      view
+      |> element(~s([data-testid="select-transcript"][value="/tmp/sel-proj/sel-session-1.jsonl"]))
+      |> render_click()
+
+      html = render(view)
+
+      # Button should now be enabled with count and primary styling
+      refute has_element?(view, ~s([data-testid="import-action-button"][disabled]))
+      assert html =~ "Import 1"
+      assert has_element?(view, ~s([data-testid="import-action-button"].btn-primary))
+    end
   end
 end
