@@ -16,6 +16,11 @@ defmodule Spotter.Test.OtelHelpers do
     Record.extract(:span, from_lib: "opentelemetry/include/otel_span.hrl")
   )
 
+  Record.defrecord(
+    :status,
+    Record.extract(:status, from_lib: "opentelemetry_api/include/opentelemetry.hrl")
+  )
+
   @default_timeout 1_000
 
   @doc """
@@ -93,6 +98,12 @@ defmodule Spotter.Test.OtelHelpers do
     parent = Enum.find(spans, fn s -> span(s, :name) == parent_name end)
     child = Enum.find(spans, fn s -> span(s, :name) == child_name end)
 
+    # Re-queue spans not involved in this assertion
+    Enum.each(spans, fn s ->
+      name = span(s, :name)
+      if name != parent_name and name != child_name, do: send(self(), {:span, s})
+    end)
+
     assert parent != nil,
            "Expected parent span #{inspect(parent_name)} to exist"
 
@@ -167,9 +178,8 @@ defmodule Spotter.Test.OtelHelpers do
     :otel_attributes.map(attrs)
   end
 
-  defp extract_status_code(status) when is_tuple(status) do
-    # status is a #status{code: atom, message: binary} record
-    elem(status, 1)
+  defp extract_status_code(s) when is_tuple(s) and elem(s, 0) == :status do
+    status(s, :code)
   end
 
   defp extract_status_code(:undefined), do: :unset
