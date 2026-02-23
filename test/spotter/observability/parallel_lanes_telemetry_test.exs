@@ -1,35 +1,40 @@
 defmodule Spotter.Observability.ParallelLanesTelemetryTest do
   use ExUnit.Case, async: false
 
+  require OpenTelemetry.Tracer, as: Tracer
+  require Record
+
   alias Spotter.Observability.ParallelLanesTelemetry
   alias Spotter.Test.OtelHelpers
 
-  @compute_events [
-    [:spotter, :parallel_lanes, :compute, :start],
+  Record.defrecord(:span, Record.extract(:span, from_lib: "opentelemetry/include/otel_span.hrl"))
+
+  # After refactor, handler only attaches to these 2 events
+  @expected_events [
     [:spotter, :parallel_lanes, :compute, :stop],
-    [:spotter, :parallel_lanes, :compute, :exception]
+    [:spotter, :parallel_lanes, :compute, :error]
   ]
 
-  @mode_switch_events [
+  # These events should NOT have handlers after refactor
+  @removed_events [
+    [:spotter, :parallel_lanes, :compute, :start],
+    [:spotter, :parallel_lanes, :compute, :exception],
     [:spotter, :parallel_lanes, :mode_switch, :start],
     [:spotter, :parallel_lanes, :mode_switch, :stop],
     [:spotter, :parallel_lanes, :mode_switch, :exception]
   ]
 
-  @all_events @compute_events ++ @mode_switch_events
-
   setup do
-    # Detach any leftover handlers from previous tests
     _ = :telemetry.detach("spotter.observability.parallel_lanes_telemetry")
     OtelHelpers.setup_otel_test(%{})
     :ok
   end
 
-  describe "setup/0 attaches handlers" do
-    test "attaches handlers for all expected telemetry events" do
-      assert :ok = ParallelLanesTelemetry.setup()
+  describe "dead code removal" do
+    test "handler only attaches to compute :stop and :error events" do
+      ParallelLanesTelemetry.setup()
 
-      for event <- @all_events do
+      for event <- @expected_events do
         handlers = :telemetry.list_handlers(event)
 
         matching =
@@ -41,151 +46,113 @@ defmodule Spotter.Observability.ParallelLanesTelemetryTest do
                "Expected handler attached for #{inspect(event)}, found none"
       end
     end
+
+    test "no handlers attached for removed events (mode_switch, compute :start/:exception)" do
+      ParallelLanesTelemetry.setup()
+
+      for event <- @removed_events do
+        handlers = :telemetry.list_handlers(event)
+
+        matching =
+          Enum.filter(handlers, fn h ->
+            h.id == "spotter.observability.parallel_lanes_telemetry"
+          end)
+
+        assert matching == [],
+               "Expected NO handler for #{inspect(event)}, but found #{length(matching)}"
+      end
+    end
   end
 
-  describe "compute span lifecycle" do
+  describe "no double span" do
     setup do
       ParallelLanesTelemetry.setup()
       :ok
     end
 
-    test "emits a span named spotter.parallel_lanes.compute on start+stop" do
-      :telemetry.execute(
-        [:spotter, :parallel_lanes, :compute, :start],
-        %{system_time: System.system_time()},
-        %{lane_count: 3, overlap_count: 1, team_id: "team-abc"}
-      )
+    test "business logic with_span produces exactly 1 span, not 2" do
+      # Simulate what parallel_lanes.compute/1 does:
+      # Business logic wraps in with_span, then emits telemetry :stop
+      Tracer.with_span "spotter.parallel_lanes.compute" do
+        Tracer.set_attribute("spotter.team_id", "team-no-double")
 
-      :telemetry.execute(
-        [:spotter, :parallel_lanes, :compute, :stop],
-        %{duration: 1_500_000},
-        %{lane_count: 3, overlap_count: 1, team_id: "team-abc"}
-      )
+        :telemetry.execute(
+          [:spotter, :parallel_lanes, :compute, :stop],
+          %{duration: 1_000_000},
+          %{lane_count: 3, overlap_count: 1, team_id: "team-no-double"}
+        )
+      end
 
-      OtelHelpers.assert_span_recorded("spotter.parallel_lanes.compute")
+      spans = OtelHelpers.collect_spans(timeout: 500)
+
+      compute_spans =
+        Enum.filter(spans, fn s -> span(s, :name) == "spotter.parallel_lanes.compute" end)
+
+      assert length(compute_spans) == 1,
+             "Expected exactly 1 compute span, got #{length(compute_spans)}"
+    end
+  end
+
+  describe "stop handler does not end span" do
+    setup do
+      ParallelLanesTelemetry.setup()
+      :ok
     end
 
-    test "compute span has correct attributes from metadata" do
-      :telemetry.execute(
-        [:spotter, :parallel_lanes, :compute, :start],
-        %{system_time: System.system_time()},
-        %{lane_count: 5, overlap_count: 2, team_id: "team-xyz"}
-      )
+    test "stop event does not prematurely end the parent span" do
+      # Start a span manually (simulating business logic's with_span)
+      Tracer.with_span "spotter.parallel_lanes.compute" do
+        # Fire the stop telemetry event mid-span
+        :telemetry.execute(
+          [:spotter, :parallel_lanes, :compute, :stop],
+          %{duration: 500_000},
+          %{lane_count: 2, overlap_count: 0, team_id: "team-stop"}
+        )
 
-      :telemetry.execute(
-        [:spotter, :parallel_lanes, :compute, :stop],
-        %{duration: 1_000_000},
-        %{lane_count: 5, overlap_count: 2, team_id: "team-xyz"}
-      )
+        # If stop handler called end_span(), setting attributes here would
+        # go to a noop span. We verify the span is still active by setting
+        # an attribute after the telemetry event.
+        Tracer.set_attribute("after_stop", "still_active")
+      end
 
+      # The span should have the attribute set AFTER the stop event
       OtelHelpers.assert_span_attributes("spotter.parallel_lanes.compute", %{
-        "spotter.parallel_lanes.lane_count" => 5,
-        "spotter.parallel_lanes.overlap_count" => 2,
-        "spotter.parallel_lanes.team_id" => "team-xyz"
+        "after_stop" => "still_active"
       })
     end
   end
 
-  describe "compute exception handling" do
+  describe "error handler records error" do
     setup do
       ParallelLanesTelemetry.setup()
       :ok
     end
 
-    test "exception sets span status to :error" do
-      :telemetry.execute(
-        [:spotter, :parallel_lanes, :compute, :start],
-        %{system_time: System.system_time()},
-        %{lane_count: 2, overlap_count: 0, team_id: "team-err"}
-      )
-
-      :telemetry.execute(
-        [:spotter, :parallel_lanes, :compute, :exception],
-        %{duration: 500_000},
-        %{
-          kind: :error,
-          reason: %RuntimeError{message: "compute failed"},
-          stacktrace: [],
-          lane_count: 2,
-          overlap_count: 0,
-          team_id: "team-err"
-        }
-      )
+    test "error event records structured error info on the active span" do
+      Tracer.with_span "spotter.parallel_lanes.compute" do
+        :telemetry.execute(
+          [:spotter, :parallel_lanes, :compute, :error],
+          %{},
+          %{team_id: "t1", reason: "not_found"}
+        )
+      end
 
       OtelHelpers.assert_span_status("spotter.parallel_lanes.compute", :error)
     end
-  end
 
-  describe "mode_switch span lifecycle" do
-    setup do
-      ParallelLanesTelemetry.setup()
-      :ok
-    end
+    test "error event sets error attributes from ErrorReport" do
+      Tracer.with_span "spotter.parallel_lanes.compute" do
+        :telemetry.execute(
+          [:spotter, :parallel_lanes, :compute, :error],
+          %{},
+          %{team_id: "t1", reason: %RuntimeError{message: "compute blew up"}}
+        )
+      end
 
-    test "emits a span named spotter.parallel_lanes.mode_switch on start+stop" do
-      :telemetry.execute(
-        [:spotter, :parallel_lanes, :mode_switch, :start],
-        %{system_time: System.system_time()},
-        %{from_mode: :transcript, to_mode: :parallel_lanes, session_id: "sess-123"}
-      )
-
-      :telemetry.execute(
-        [:spotter, :parallel_lanes, :mode_switch, :stop],
-        %{duration: 200_000},
-        %{from_mode: :transcript, to_mode: :parallel_lanes, session_id: "sess-123"}
-      )
-
-      OtelHelpers.assert_span_recorded("spotter.parallel_lanes.mode_switch")
-    end
-
-    test "mode_switch span has correct attributes from metadata" do
-      :telemetry.execute(
-        [:spotter, :parallel_lanes, :mode_switch, :start],
-        %{system_time: System.system_time()},
-        %{from_mode: :transcript, to_mode: :parallel_lanes, session_id: "sess-456"}
-      )
-
-      :telemetry.execute(
-        [:spotter, :parallel_lanes, :mode_switch, :stop],
-        %{duration: 100_000},
-        %{from_mode: :transcript, to_mode: :parallel_lanes, session_id: "sess-456"}
-      )
-
-      OtelHelpers.assert_span_attributes("spotter.parallel_lanes.mode_switch", %{
-        "spotter.parallel_lanes.from_mode" => "transcript",
-        "spotter.parallel_lanes.to_mode" => "parallel_lanes",
-        "spotter.parallel_lanes.session_id" => "sess-456"
+      OtelHelpers.assert_span_attributes("spotter.parallel_lanes.compute", %{
+        "error.type" => "parallel_lanes_compute_error",
+        "error.source" => "telemetry.parallel_lanes"
       })
-    end
-  end
-
-  describe "mode_switch exception handling" do
-    setup do
-      ParallelLanesTelemetry.setup()
-      :ok
-    end
-
-    test "exception sets span status to :error" do
-      :telemetry.execute(
-        [:spotter, :parallel_lanes, :mode_switch, :start],
-        %{system_time: System.system_time()},
-        %{from_mode: :transcript, to_mode: :parallel_lanes, session_id: "sess-err"}
-      )
-
-      :telemetry.execute(
-        [:spotter, :parallel_lanes, :mode_switch, :exception],
-        %{duration: 300_000},
-        %{
-          kind: :error,
-          reason: %RuntimeError{message: "mode switch failed"},
-          stacktrace: [],
-          from_mode: :transcript,
-          to_mode: :parallel_lanes,
-          session_id: "sess-err"
-        }
-      )
-
-      OtelHelpers.assert_span_status("spotter.parallel_lanes.mode_switch", :error)
     end
   end
 
@@ -194,8 +161,7 @@ defmodule Spotter.Observability.ParallelLanesTelemetryTest do
       assert :ok = ParallelLanesTelemetry.setup()
       assert :ok = ParallelLanesTelemetry.setup()
 
-      # Pick one event and check there's exactly one handler with our ID
-      handlers = :telemetry.list_handlers([:spotter, :parallel_lanes, :compute, :start])
+      handlers = :telemetry.list_handlers([:spotter, :parallel_lanes, :compute, :stop])
 
       matching =
         Enum.filter(handlers, fn h ->

@@ -30,7 +30,7 @@ defmodule Spotter.Test.OtelHelpers do
   @spec setup_otel_test(map()) :: :ok
   def setup_otel_test(_context) do
     :otel_simple_processor.set_exporter(:otel_exporter_pid, self())
-    Process.delete(:otel_ctx)
+    :otel_ctx.clear()
     :ok
   end
 
@@ -43,8 +43,8 @@ defmodule Spotter.Test.OtelHelpers do
 
     {matched, rest} = Enum.split_with(spans, fn s -> span(s, :name) == name end)
 
-    # Re-queue non-matching spans
-    Enum.each(rest, fn s -> send(self(), {:span, s}) end)
+    # Re-queue all spans so subsequent assertions can find them
+    Enum.each(rest ++ matched, fn s -> send(self(), {:span, s}) end)
 
     assert matched != [],
            "Expected span #{inspect(name)} to be recorded within #{timeout}ms"
