@@ -113,6 +113,7 @@ defmodule SpotterWeb.PaneListLive do
       |> assign(import_transcripts: [])
       |> assign(all_import_transcripts: [])
       |> assign(import_project_filter: nil)
+      |> assign(import_pagination: %{total_count: 0, page: 1, per_page: 20})
       |> mount_computers()
       |> load_session_data()
       |> ensure_default_project_filter()
@@ -223,6 +224,10 @@ defmodule SpotterWeb.PaneListLive do
   end
 
   @impl true
+  def handle_info({:update_import_pagination, meta}, socket) do
+    {:noreply, assign(socket, import_pagination: meta)}
+  end
+
   def handle_info({:update_import_transcripts, transcripts}, socket) do
     {:noreply,
      assign(socket, import_transcripts: transcripts, all_import_transcripts: transcripts)}
@@ -791,6 +796,13 @@ defmodule SpotterWeb.PaneListLive do
                     <% end %>
                   </tbody>
                 </table>
+              <% end %>
+              <%= if @import_pagination.total_count > @import_pagination.per_page do %>
+                <nav data-testid="pagination">
+                  <%= for page <- 1..ceil(@import_pagination.total_count / @import_pagination.per_page) do %>
+                    <button data-testid={"page-#{page}"} phx-click="import_page" phx-value-page={page}><%= page %></button>
+                  <% end %>
+                </nav>
               <% end %>
             </div>
           </div>

@@ -282,5 +282,22 @@ defmodule SpotterWeb.ImportModalTest do
       assert html =~ "alpha-proj"
       refute html =~ "beta-proj"
     end
+
+    test "pagination renders when total exceeds per_page" do
+      {:ok, view, _html} = live(build_conn(), "/")
+
+      view
+      |> element(~s([data-testid="import-button"]))
+      |> render_click()
+
+      # Inject pagination metadata to simulate multi-page results
+      send(view.pid, {:update_import_pagination, %{total_count: 45, page: 1, per_page: 20}})
+      html = render(view)
+
+      assert html =~ ~s(data-testid="pagination")
+      assert html =~ ~s(data-testid="page-1")
+      assert html =~ ~s(data-testid="page-2")
+      assert html =~ ~s(data-testid="page-3")
+    end
   end
 end
