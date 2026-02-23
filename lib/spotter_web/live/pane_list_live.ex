@@ -936,11 +936,11 @@ defmodule SpotterWeb.PaneListLive do
       </div>
 
       <%= if @show_import_modal do %>
-        <div class="import-modal-overlay" data-testid="import-modal" phx-click-away="close_import_modal" phx-window-keydown="close_import_modal" phx-key="Escape">
+        <div role="dialog" aria-modal="true" aria-labelledby="import-modal-title" class="import-modal-overlay" data-testid="import-modal" phx-click-away="close_import_modal" phx-window-keydown="close_import_modal" phx-key="Escape">
           <div class="import-modal-dialog">
             <div class="import-modal-header">
-              <h2>Import Transcripts</h2>
-              <button class="btn btn-ghost import-modal-close" phx-click="close_import_modal" data-testid="import-modal-close">&times;</button>
+              <h2 id="import-modal-title">Import Transcripts</h2>
+              <button aria-label="Close import modal" class="btn btn-ghost import-modal-close" phx-click="close_import_modal" data-testid="import-modal-close">&times;</button>
             </div>
             <div class="import-modal-body">
               <div class="import-modal-controls">
@@ -999,17 +999,17 @@ defmodule SpotterWeb.PaneListLive do
                   <% end %>
                 </div>
               <% end %>
-              <div class="import-modal-footer">
-                <%= if MapSet.size(@selected_transcripts) > 0 do %>
-                  <div data-testid="selection-count"><%= MapSet.size(@selected_transcripts) %> selected</div>
-                <% end %>
-                <button data-testid="import-action-button" class={"btn#{if MapSet.size(@selected_transcripts) > 0, do: " btn-primary"}"} phx-click="import_selected" {if MapSet.size(@selected_transcripts) == 0, do: [disabled: "disabled"], else: []}>
-                  <%= if MapSet.size(@selected_transcripts) > 0 do %>Import <%= MapSet.size(@selected_transcripts) %><% else %>Import<% end %>
-                </button>
-                <%= if @importing do %>
-                  <div data-testid="import-progress">Importing...</div>
-                <% end %>
-              </div>
+            </div>
+            <div class="import-modal-footer">
+              <%= if MapSet.size(@selected_transcripts) > 0 do %>
+                <div data-testid="selection-count"><%= MapSet.size(@selected_transcripts) %> selected</div>
+              <% end %>
+              <button data-testid="import-action-button" class={"btn#{if MapSet.size(@selected_transcripts) > 0, do: " btn-primary"}"} phx-click="import_selected" {if MapSet.size(@selected_transcripts) == 0, do: [disabled: "disabled"], else: []}>
+                <%= if MapSet.size(@selected_transcripts) > 0 do %>Import <%= MapSet.size(@selected_transcripts) %><% else %>Import<% end %>
+              </button>
+              <%= if @importing do %>
+                <div data-testid="import-progress">Importing...</div>
+              <% end %>
             </div>
           </div>
         </div>
