@@ -211,6 +211,10 @@ defmodule SpotterWeb.PaneListLive do
   end
 
   @impl true
+  def handle_info({:update_import_transcripts, transcripts}, socket) do
+    {:noreply, assign(socket, import_transcripts: transcripts)}
+  end
+
   def handle_info({:session_activity, %{session_id: session_id, status: status}}, socket) do
     active_status_map = Map.put(socket.assigns.active_status_map, session_id, status)
     {:noreply, assign(socket, active_status_map: active_status_map)}
@@ -739,6 +743,31 @@ defmodule SpotterWeb.PaneListLive do
             <div class="import-modal-body">
               <%= if @import_transcripts == [] do %>
                 <div class="empty-state">No transcripts found</div>
+              <% else %>
+                <table class="import-transcript-table">
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>Project</th>
+                      <th>Messages</th>
+                      <th>Team</th>
+                      <th>Last Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <%= for t <- @import_transcripts do %>
+                      <tr data-testid="transcript-row" data-first-prompt={t[:first_prompt]} class={if t.already_imported, do: "already-imported"}>
+                        <td>
+                          <input type="checkbox" {if t.already_imported, do: [disabled: "disabled"], else: []} />
+                        </td>
+                        <td><%= t.project_name %></td>
+                        <td><%= t.message_count %></td>
+                        <td><%= if t.is_team_session, do: "●" %></td>
+                        <td><%= relative_time(t.last_modified) %></td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
               <% end %>
             </div>
           </div>
