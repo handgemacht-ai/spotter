@@ -9,16 +9,18 @@ OTEL_COMPOSE_FILE="${OTEL_COMPOSE_FILE:-${REPO_ROOT}/docker-compose.otel.yml}"
 COMPOSE_WAIT_TIMEOUT_SECONDS="${COMPOSE_WAIT_TIMEOUT_SECONDS:-30}"
 
 # Two-switch design:
-#   OBS_ENABLED        — controls startup script: docker compose decisions + OTLP endpoint default
-#   SPOTTER_OTEL_ENABLED — controls Elixir SDK instrumentation at runtime (not managed here)
-_obs_enabled=0
-case "${OBS_ENABLED:-}" in
-  1|true|yes|TRUE|YES) _obs_enabled=1 ;;
+#   OBS_ENABLED          — startup behavior + OTLP endpoint default (always-on default)
+#   SPOTTER_OTEL_ENABLED — Elixir SDK instrumentation at runtime (not managed here)
+_obs_enabled=1
+case "${OBS_ENABLED:-true}" in
+  0|false|FALSE|no|NO)
+    echo "[obs] OBS_ENABLED=false is deprecated; forcing observability ON" >&2
+    ;;
 esac
 
-_obs_fallback=0
-case "${SPOTTER_OTEL_LOCAL_FALLBACK:-}" in
-  1|true|yes|TRUE|YES) _obs_fallback=1 ;;
+_obs_fallback=1
+case "${SPOTTER_OTEL_LOCAL_FALLBACK:-true}" in
+  0|false|FALSE|no|NO) _obs_fallback=0 ;;
 esac
 
 # ---------------------------------------------------------------------------
@@ -133,6 +135,15 @@ if [ -z "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
   fi
 fi
 
+_external_obs_mode=0
+case "${OTEL_EXPORTER_OTLP_ENDPOINT}" in
+  "http://localhost:14318"|"http://127.0.0.1:14318")
+    ;;
+  *)
+    _external_obs_mode=1
+    ;;
+esac
+
 if is_port_in_use "$DOLT_HOST_PORT"; then
   echo "Port ${DOLT_HOST_PORT} is already in use."
   echo "Set a different port in scripts/start_spotter.sh or free 13307."
@@ -156,6 +167,10 @@ compose_args=(
 _include_local_otel=0
 
 if [ "$_obs_enabled" -eq 1 ]; then
+  if [ "$_external_obs_mode" -eq 1 ]; then
+    echo "[obs] External endpoint mode: OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}"
+    echo "[obs] Skipping local/shared stack checks"
+  else
   # Resolve path to workspace obs-dev-check.sh
   _workspace_root="$(cd -- "${REPO_ROOT}/.." 2>/dev/null && pwd)"
   OBS_CHECK="${OBS_CHECK:-${_workspace_root}/.runtime/docker/obs-dev-check.sh}"
@@ -182,32 +197,26 @@ if [ "$_obs_enabled" -eq 1 ]; then
       ;;
     2)
       # Port conflict with non-contract services — script already printed remediation
-      echo "[obs] Port conflict detected (see above). Continuing without observability..." >&2
-      export OTEL_EXPORTER=none
+      echo "[obs] ERROR: Port conflict detected (see above)." >&2
+      echo "[obs] Observability is required. Resolve the conflict or run shared stack restart (just obs-restart)." >&2
+      exit 1
       ;;
     1)
       # Expected: no contract collector available
-      if [ "$_obs_fallback" -eq 1 ]; then
-        if [ -f "$OTEL_COMPOSE_FILE" ]; then
-          echo "[obs] No contract collector found, starting local OTEL stack (fallback)"
-          _include_local_otel=1
-        else
-          echo "[obs] WARNING: Fallback requested but docker-compose.otel.yml not found, skipping local OTEL" >&2
-        fi
+      if [ "$_obs_fallback" -eq 1 ] && [ -f "$OTEL_COMPOSE_FILE" ]; then
+        echo "[obs] No contract collector found, starting local OTEL stack (fallback)"
+        _include_local_otel=1
       else
-        cat >&2 <<'OBSEOF'
-[obs] ⚠ No observability collector detected.
-[obs]   To use shared contract collector: ensure it's running with label dev.observability.contract=v1
-[obs]   To use local fallback: export SPOTTER_OTEL_LOCAL_FALLBACK=1
-[obs]   To disable this check: unset OBS_ENABLED
-[obs]   Continuing without observability...
-OBSEOF
+        echo "[obs] ERROR: No contract collector detected and local fallback unavailable." >&2
+        echo "[obs] Set OTEL_EXPORTER_OTLP_ENDPOINT to an external collector, or provide docker-compose.otel.yml fallback." >&2
+        exit 1
       fi
       ;;
     *)
       echo "[obs] WARNING: obs-dev-check.sh exited with unexpected code $_obs_check_exit, skipping observability" >&2
       ;;
   esac
+  fi
 else
   # OBS_ENABLED off — preserve current behavior: include local OTEL compose if it exists
   if [ -f "$OTEL_COMPOSE_FILE" ]; then

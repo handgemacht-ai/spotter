@@ -52,20 +52,25 @@ just reset     # Stop, wipe state, restart clean
 | Phoenix | `1100` | `0.0.0.0` (per-worktree via `config/dev.local.exs`) |
 | Dolt | `13307` | `0.0.0.0` (Docker host mapping) |
 
-### OpenTelemetry (opt-in)
+### OpenTelemetry (always on)
 
-OTEL is **not** started by `just up`. Enable separately:
+`just up` ensures the OTEL stack is available before starting Phoenix. Manual controls:
 
 ```
-just otel-up     # Start OTEL Collector + Jaeger
-just otel-down   # Stop OTEL stack
+just otel-up
+just otel-down
+just otel-restart
+just otel-status
 ```
 
 | Service | Port | Binding |
 |---------|------|---------|
-| OTEL Collector (gRPC) | `4317` | `127.0.0.1` |
-| OTEL Collector (HTTP) | `4318` | `127.0.0.1` |
-| Jaeger UI | `16686` | `127.0.0.1` |
+| OTEL Collector (gRPC) | `14317` | `127.0.0.1` |
+| OTEL Collector (HTTP) | `14318` | `127.0.0.1` |
+| OTEL Collector health | `14333` | `127.0.0.1` |
+| OTEL Collector metrics | `14389` | `127.0.0.1` |
+| Jaeger UI | `14686` | `127.0.0.1` |
+| Prometheus UI | `14090` | `127.0.0.1` |
 
 ### CLI UX Contract
 
@@ -278,12 +283,11 @@ This command:
 
 Spotter supports three observability flows controlled by environment variables in `scripts/start_spotter.sh`.
 
-### Shared contract collector (default when `OBS_ENABLED=1`)
+### Shared contract collector (default)
 
 When the shared dev observability stack is already running (detected by the `dev.observability.contract=v1` Docker label):
 
 ```bash
-export OBS_ENABLED=1
 scripts/start_spotter.sh
 # → Detects shared collector, skips local OTEL stack, exports to http://localhost:14318
 ```
@@ -293,7 +297,6 @@ scripts/start_spotter.sh
 When no shared stack is running and you want local observability:
 
 ```bash
-export OBS_ENABLED=1
 export SPOTTER_OTEL_LOCAL_FALLBACK=1
 scripts/start_spotter.sh
 # → Starts local collector + Jaeger from docker-compose.otel.yml
@@ -313,10 +316,10 @@ scripts/start_spotter.sh
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `OBS_ENABLED` | Enable contract-aware startup | unset (local OTEL if compose exists) |
+| `OBS_ENABLED` | Enable contract-aware startup | `true` |
 | `SPOTTER_OTEL_LOCAL_FALLBACK` | Allow local stack when no contract collector | unset (disabled) |
 | `SPOTTER_OTEL_ENABLED` | Elixir SDK instrumentation toggle | `true` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint URL | `http://localhost:14318` (contract) or `http://localhost:4318` (local) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint URL | `http://localhost:14318` |
 | `OTEL_RESOURCE_ATTRIBUTES` | Resource attributes (comma-separated key=value) | auto-filled with project/worktree defaults |
 
 > OTEL traces contain technical identifiers only (span names, durations, service metadata). Resource attributes are project and worktree names — no personally identifiable information (PII) is collected or exported.
@@ -361,26 +364,26 @@ scripts/otel/start.sh
 
 ```bash
 export OTEL_EXPORTER=otlp
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14318
 mix phx.server
 ```
 
 3. Inspect traces:
 
 - JSON trace file: `tail -f tmp/otel/spotter-traces.json`
-- Jaeger UI: `http://localhost:16686`
+- Jaeger UI: `http://localhost:14686`
 
 Query Jaeger programmatically:
 
 ```bash
 # List available services
-curl http://localhost:16686/api/services
+curl http://localhost:14686/api/services
 
 # Recent traces for the Spotter service
-curl "http://localhost:16686/api/traces?service=spotter&limit=20"
+curl "http://localhost:14686/api/traces?service=spotter&limit=20"
 
 # Lookup a specific trace by ID (from x-spotter-trace-id response header)
-curl "http://localhost:16686/api/traces?traceID=<trace_id>&limit=50"
+curl "http://localhost:14686/api/traces?traceID=<trace_id>&limit=50"
 ```
 
 4. Stop the stack when done:
@@ -405,7 +408,7 @@ Set these environment variables to send spans to an OTLP-compatible collector:
 
 ```bash
 export OTEL_EXPORTER=otlp
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14318
 ```
 
 ### Troubleshooting

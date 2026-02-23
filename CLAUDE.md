@@ -8,6 +8,19 @@ The prototype runs on localhost, and has no authentication.
 
 This project is greenfield. No legacy fallbacks, backwards compatability or similar is needed.
 
+# Local Runtime (just)
+
+Use `just` recipes from the repository root for day-to-day local runtime control:
+
+- `just up` - Ensure OTEL stack + start Dolt + Phoenix. Idempotent: keeps healthy services running; if Phoenix is unhealthy, tries graceful process restart first, then falls back to full Overmind recycle.
+- `just status` - Service health snapshot for Phoenix, Dolt, and Jaeger.
+- `just logs` - Stream Overmind output.
+- `just down` - Stop Phoenix/Overmind and Dolt.
+- `just reset` - `down` + wipe Dolt volumes + clean `up`.
+- `just otel-up` / `just otel-down` - Start/stop OTEL stack (delegates to shared workspace stack when available).
+- `just otel-restart` / `just otel-status` - Restart and inspect OTEL stack health.
+- `just test-smoke` - Run runtime smoke tests.
+
 # Worktrees
 
 ## Daily workflow
