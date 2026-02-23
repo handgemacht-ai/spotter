@@ -117,6 +117,7 @@ defmodule SpotterWeb.PaneListLive do
       |> assign(import_sort_by: "last_modified")
       |> assign(selected_transcripts: MapSet.new())
       |> assign(importing: false)
+      |> assign(import_errors: [])
       |> mount_computers()
       |> load_session_data()
       |> ensure_default_project_filter()
@@ -292,12 +293,12 @@ defmodule SpotterWeb.PaneListLive do
     {:noreply, socket}
   end
 
-  def handle_info({:import_complete, %{error_count: error_count, errors: _errors}}, socket) do
+  def handle_info({:import_complete, %{error_count: error_count, errors: errors}}, socket) do
     msg = "Import completed with #{error_count} error#{if error_count == 1, do: "", else: "s"}"
 
     socket =
       socket
-      |> assign(importing: false)
+      |> assign(importing: false, import_errors: errors)
       |> put_flash(:error, msg)
 
     {:noreply, socket}
@@ -889,6 +890,13 @@ defmodule SpotterWeb.PaneListLive do
                     <button data-testid={"page-#{page}"} phx-click="import_page" phx-value-page={page} aria-current={if page == @import_pagination.page, do: "page"}><%= page %></button>
                   <% end %>
                 </nav>
+              <% end %>
+              <%= if @import_errors != [] do %>
+                <div class="import-errors">
+                  <%= for err <- @import_errors do %>
+                    <div class="import-error-item"><%= err.reason %></div>
+                  <% end %>
+                </div>
               <% end %>
               <div class="import-modal-footer">
                 <%= if MapSet.size(@selected_transcripts) > 0 do %>

@@ -621,5 +621,35 @@ defmodule SpotterWeb.ImportModalTest do
       # Success flash
       assert html =~ "Successfully imported 1 transcript"
     end
+
+    test "partial failure keeps modal open and shows error details", %{view: view} do
+      view
+      |> element(~s([data-testid="import-action-button"]))
+      |> render_click()
+
+      # Simulate partial failure
+      send(
+        view.pid,
+        {:import_complete,
+         %{
+           success_count: 0,
+           error_count: 1,
+           errors: [
+             %{
+               file_path: "/tmp/import-proj/import-session-1.jsonl",
+               reason: "Invalid JSONL format"
+             }
+           ]
+         }}
+      )
+
+      html = render(view)
+
+      # Modal should stay open
+      assert html =~ ~s(data-testid="import-modal")
+
+      # Error details shown
+      assert html =~ "Invalid JSONL format"
+    end
   end
 end
