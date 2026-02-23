@@ -2,6 +2,7 @@ defmodule Spotter.Observability.ParallelLanesTelemetryTest do
   use ExUnit.Case, async: false
 
   alias Spotter.Observability.ParallelLanesTelemetry
+  alias Spotter.Test.OtelHelpers
 
   @compute_events [
     [:spotter, :parallel_lanes, :compute, :start],
@@ -20,6 +21,7 @@ defmodule Spotter.Observability.ParallelLanesTelemetryTest do
   setup do
     # Detach any leftover handlers from previous tests
     _ = :telemetry.detach("spotter.observability.parallel_lanes_telemetry")
+    OtelHelpers.setup_otel_test(%{})
     :ok
   end
 
@@ -47,7 +49,7 @@ defmodule Spotter.Observability.ParallelLanesTelemetryTest do
       :ok
     end
 
-    test "start then stop does not crash" do
+    test "emits a span named spotter.parallel_lanes.compute on start+stop" do
       :telemetry.execute(
         [:spotter, :parallel_lanes, :compute, :start],
         %{system_time: System.system_time()},
@@ -59,6 +61,28 @@ defmodule Spotter.Observability.ParallelLanesTelemetryTest do
         %{duration: 1_500_000},
         %{lane_count: 3, overlap_count: 1, team_id: "team-abc"}
       )
+
+      OtelHelpers.assert_span_recorded("spotter.parallel_lanes.compute")
+    end
+
+    test "compute span has correct attributes from metadata" do
+      :telemetry.execute(
+        [:spotter, :parallel_lanes, :compute, :start],
+        %{system_time: System.system_time()},
+        %{lane_count: 5, overlap_count: 2, team_id: "team-xyz"}
+      )
+
+      :telemetry.execute(
+        [:spotter, :parallel_lanes, :compute, :stop],
+        %{duration: 1_000_000},
+        %{lane_count: 5, overlap_count: 2, team_id: "team-xyz"}
+      )
+
+      OtelHelpers.assert_span_attributes("spotter.parallel_lanes.compute", %{
+        "spotter.parallel_lanes.lane_count" => 5,
+        "spotter.parallel_lanes.overlap_count" => 2,
+        "spotter.parallel_lanes.team_id" => "team-xyz"
+      })
     end
   end
 
@@ -68,7 +92,13 @@ defmodule Spotter.Observability.ParallelLanesTelemetryTest do
       :ok
     end
 
-    test "exception event does not crash" do
+    test "exception sets span status to :error" do
+      :telemetry.execute(
+        [:spotter, :parallel_lanes, :compute, :start],
+        %{system_time: System.system_time()},
+        %{lane_count: 2, overlap_count: 0, team_id: "team-err"}
+      )
+
       :telemetry.execute(
         [:spotter, :parallel_lanes, :compute, :exception],
         %{duration: 500_000},
@@ -78,9 +108,11 @@ defmodule Spotter.Observability.ParallelLanesTelemetryTest do
           stacktrace: [],
           lane_count: 2,
           overlap_count: 0,
-          team_id: "team-xyz"
+          team_id: "team-err"
         }
       )
+
+      OtelHelpers.assert_span_status("spotter.parallel_lanes.compute", :error)
     end
   end
 
@@ -90,7 +122,7 @@ defmodule Spotter.Observability.ParallelLanesTelemetryTest do
       :ok
     end
 
-    test "start then stop does not crash" do
+    test "emits a span named spotter.parallel_lanes.mode_switch on start+stop" do
       :telemetry.execute(
         [:spotter, :parallel_lanes, :mode_switch, :start],
         %{system_time: System.system_time()},
@@ -102,6 +134,58 @@ defmodule Spotter.Observability.ParallelLanesTelemetryTest do
         %{duration: 200_000},
         %{from_mode: :transcript, to_mode: :parallel_lanes, session_id: "sess-123"}
       )
+
+      OtelHelpers.assert_span_recorded("spotter.parallel_lanes.mode_switch")
+    end
+
+    test "mode_switch span has correct attributes from metadata" do
+      :telemetry.execute(
+        [:spotter, :parallel_lanes, :mode_switch, :start],
+        %{system_time: System.system_time()},
+        %{from_mode: :transcript, to_mode: :parallel_lanes, session_id: "sess-456"}
+      )
+
+      :telemetry.execute(
+        [:spotter, :parallel_lanes, :mode_switch, :stop],
+        %{duration: 100_000},
+        %{from_mode: :transcript, to_mode: :parallel_lanes, session_id: "sess-456"}
+      )
+
+      OtelHelpers.assert_span_attributes("spotter.parallel_lanes.mode_switch", %{
+        "spotter.parallel_lanes.from_mode" => "transcript",
+        "spotter.parallel_lanes.to_mode" => "parallel_lanes",
+        "spotter.parallel_lanes.session_id" => "sess-456"
+      })
+    end
+  end
+
+  describe "mode_switch exception handling" do
+    setup do
+      ParallelLanesTelemetry.setup()
+      :ok
+    end
+
+    test "exception sets span status to :error" do
+      :telemetry.execute(
+        [:spotter, :parallel_lanes, :mode_switch, :start],
+        %{system_time: System.system_time()},
+        %{from_mode: :transcript, to_mode: :parallel_lanes, session_id: "sess-err"}
+      )
+
+      :telemetry.execute(
+        [:spotter, :parallel_lanes, :mode_switch, :exception],
+        %{duration: 300_000},
+        %{
+          kind: :error,
+          reason: %RuntimeError{message: "mode switch failed"},
+          stacktrace: [],
+          from_mode: :transcript,
+          to_mode: :parallel_lanes,
+          session_id: "sess-err"
+        }
+      )
+
+      OtelHelpers.assert_span_status("spotter.parallel_lanes.mode_switch", :error)
     end
   end
 

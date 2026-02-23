@@ -44,13 +44,16 @@ defmodule Spotter.Observability.ParallelLanesTelemetry do
         metadata,
         _config
       ) do
-    Tracer.start_span("spotter.parallel_lanes.compute", %{
-      attributes: %{
-        "spotter.parallel_lanes.lane_count" => Map.get(metadata, :lane_count, 0),
-        "spotter.parallel_lanes.overlap_count" => Map.get(metadata, :overlap_count, 0),
-        "spotter.parallel_lanes.team_id" => to_string(Map.get(metadata, :team_id, ""))
-      }
-    })
+    span_ctx =
+      Tracer.start_span("spotter.parallel_lanes.compute", %{
+        attributes: %{
+          "spotter.parallel_lanes.lane_count" => Map.get(metadata, :lane_count, 0),
+          "spotter.parallel_lanes.overlap_count" => Map.get(metadata, :overlap_count, 0),
+          "spotter.parallel_lanes.team_id" => to_string(Map.get(metadata, :team_id, ""))
+        }
+      })
+
+    Tracer.set_current_span(span_ctx)
   rescue
     _error -> :ok
   end
@@ -94,13 +97,16 @@ defmodule Spotter.Observability.ParallelLanesTelemetry do
         metadata,
         _config
       ) do
-    Tracer.start_span("spotter.parallel_lanes.mode_switch", %{
-      attributes: %{
-        "spotter.parallel_lanes.from_mode" => to_string(Map.get(metadata, :from_mode, "")),
-        "spotter.parallel_lanes.to_mode" => to_string(Map.get(metadata, :to_mode, "")),
-        "spotter.parallel_lanes.session_id" => to_string(Map.get(metadata, :session_id, ""))
-      }
-    })
+    span_ctx =
+      Tracer.start_span("spotter.parallel_lanes.mode_switch", %{
+        attributes: %{
+          "spotter.parallel_lanes.from_mode" => to_string(Map.get(metadata, :from_mode, "")),
+          "spotter.parallel_lanes.to_mode" => to_string(Map.get(metadata, :to_mode, "")),
+          "spotter.parallel_lanes.session_id" => to_string(Map.get(metadata, :session_id, ""))
+        }
+      })
+
+    Tracer.set_current_span(span_ctx)
   rescue
     _error -> :ok
   end
