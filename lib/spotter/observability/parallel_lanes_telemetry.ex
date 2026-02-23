@@ -10,7 +10,7 @@ defmodule Spotter.Observability.ParallelLanesTelemetry do
 
   alias Spotter.Observability.ErrorReport
 
-  @handler_id __MODULE__
+  @handler_id "spotter.observability.parallel_lanes_telemetry"
 
   @events [
     [:spotter, :parallel_lanes, :compute, :start],
@@ -72,12 +72,15 @@ defmodule Spotter.Observability.ParallelLanesTelemetry do
         metadata,
         _config
       ) do
-    reason = Map.get(metadata, :kind, :error)
+    kind = Map.get(metadata, :kind, :error)
+    reason = Map.get(metadata, :reason)
+    message = if is_exception(reason), do: Exception.message(reason), else: inspect(reason)
 
     ErrorReport.set_trace_error(
       "parallel_lanes_compute_exception",
-      to_string(reason),
-      "telemetry.parallel_lanes"
+      message,
+      "telemetry.parallel_lanes",
+      %{"error.kind" => to_string(kind)}
     )
 
     Tracer.end_span()
@@ -119,12 +122,15 @@ defmodule Spotter.Observability.ParallelLanesTelemetry do
         metadata,
         _config
       ) do
-    reason = Map.get(metadata, :kind, :error)
+    kind = Map.get(metadata, :kind, :error)
+    reason = Map.get(metadata, :reason)
+    message = if is_exception(reason), do: Exception.message(reason), else: inspect(reason)
 
     ErrorReport.set_trace_error(
       "parallel_lanes_mode_switch_exception",
-      to_string(reason),
-      "telemetry.parallel_lanes"
+      message,
+      "telemetry.parallel_lanes",
+      %{"error.kind" => to_string(kind)}
     )
 
     Tracer.end_span()

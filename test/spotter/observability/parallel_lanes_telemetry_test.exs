@@ -19,7 +19,7 @@ defmodule Spotter.Observability.ParallelLanesTelemetryTest do
 
   setup do
     # Detach any leftover handlers from previous tests
-    _ = :telemetry.detach(ParallelLanesTelemetry)
+    _ = :telemetry.detach("spotter.observability.parallel_lanes_telemetry")
     :ok
   end
 
@@ -32,7 +32,7 @@ defmodule Spotter.Observability.ParallelLanesTelemetryTest do
 
         matching =
           Enum.filter(handlers, fn h ->
-            h.id == ParallelLanesTelemetry || h.id == Spotter.Observability.ParallelLanesTelemetry
+            h.id == "spotter.observability.parallel_lanes_telemetry"
           end)
 
         assert matching != [],
@@ -115,7 +115,7 @@ defmodule Spotter.Observability.ParallelLanesTelemetryTest do
 
       matching =
         Enum.filter(handlers, fn h ->
-          h.id == ParallelLanesTelemetry || h.id == Spotter.Observability.ParallelLanesTelemetry
+          h.id == "spotter.observability.parallel_lanes_telemetry"
         end)
 
       assert length(matching) == 1,
