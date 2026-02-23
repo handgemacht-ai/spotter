@@ -110,6 +110,7 @@ defmodule SpotterWeb.PaneListLive do
       |> assign(expanded_subagents: %{})
       |> assign(subagents_by_session: %{})
       |> assign(show_import_modal: false)
+      |> assign(import_transcripts: [])
       |> mount_computers()
       |> load_session_data()
       |> ensure_default_project_filter()
@@ -201,7 +202,7 @@ defmodule SpotterWeb.PaneListLive do
   def handle_event("open_import_modal", _params, socket) do
     Tracer.with_span "spotter.import_modal.open" do
       Tracer.set_attribute("source", "dashboard_header")
-      {:noreply, assign(socket, show_import_modal: true)}
+      {:noreply, assign(socket, show_import_modal: true, import_transcripts: [])}
     end
   end
 
@@ -736,6 +737,9 @@ defmodule SpotterWeb.PaneListLive do
               <button class="btn btn-ghost import-modal-close" phx-click="close_import_modal" data-testid="import-modal-close">&times;</button>
             </div>
             <div class="import-modal-body">
+              <%= if @import_transcripts == [] do %>
+                <div class="empty-state">No transcripts found</div>
+              <% end %>
             </div>
           </div>
         </div>
