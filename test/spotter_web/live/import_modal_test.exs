@@ -322,5 +322,73 @@ defmodule SpotterWeb.ImportModalTest do
       # The active page button should have an aria-current or active class
       assert has_element?(view, ~s([data-testid="page-2"][aria-current="page"]))
     end
+
+    test "pagination is hidden when results fit on one page" do
+      {:ok, view, _html} = live(build_conn(), "/")
+
+      view
+      |> element(~s([data-testid="import-button"]))
+      |> render_click()
+
+      # Only 5 results with per_page 20 — fits on one page
+      send(view.pid, {:update_import_pagination, %{total_count: 5, page: 1, per_page: 20}})
+      html = render(view)
+
+      refute html =~ ~s(data-testid="pagination")
+    end
+
+    test "changing sort order re-sorts displayed transcripts" do
+      {:ok, view, _html} = live(build_conn(), "/")
+
+      view
+      |> element(~s([data-testid="import-button"]))
+      |> render_click()
+
+      # Inject transcripts with different message counts
+      transcripts = [
+        %{
+          session_id: "session-few",
+          project_name: "proj-a",
+          project_dir: "/tmp/proj-a",
+          file_path: "/tmp/proj-a/session-few.jsonl",
+          message_count: 5,
+          is_team_session: false,
+          last_modified: ~U[2026-02-10 12:00:00Z],
+          file_size: 256,
+          custom_title: "Few messages",
+          summary: "Short session",
+          first_prompt: "hello",
+          already_imported: false
+        },
+        %{
+          session_id: "session-many",
+          project_name: "proj-b",
+          project_dir: "/tmp/proj-b",
+          file_path: "/tmp/proj-b/session-many.jsonl",
+          message_count: 200,
+          is_team_session: false,
+          last_modified: ~U[2026-02-01 12:00:00Z],
+          file_size: 4096,
+          custom_title: "Many messages",
+          summary: "Long session",
+          first_prompt: "hello",
+          already_imported: false
+        }
+      ]
+
+      send(view.pid, {:update_import_transcripts, transcripts})
+      render(view)
+
+      # Change sort to message_count
+      html =
+        view
+        |> element(~s(select[data-testid="sort-select"]))
+        |> render_change(%{"sort_by" => "message_count"})
+
+      # After sorting by message count, "200" should appear before "5"
+      pos_200 = :binary.match(html, "200") |> elem(0)
+      pos_5 = :binary.match(html, ">5<") |> elem(0)
+      assert pos_200 < pos_5
+    end
   end
 end

@@ -114,6 +114,7 @@ defmodule SpotterWeb.PaneListLive do
       |> assign(all_import_transcripts: [])
       |> assign(import_project_filter: nil)
       |> assign(import_pagination: %{total_count: 0, page: 1, per_page: 20})
+      |> assign(import_sort_by: "last_modified")
       |> mount_computers()
       |> load_session_data()
       |> ensure_default_project_filter()
@@ -217,6 +218,24 @@ defmodule SpotterWeb.PaneListLive do
     page = String.to_integer(page)
     pagination = Map.put(socket.assigns.import_pagination, :page, page)
     {:noreply, assign(socket, import_pagination: pagination)}
+  end
+
+  def handle_event("sort_import_transcripts", %{"sort_by" => sort_by}, socket) do
+    field = String.to_existing_atom(sort_by)
+
+    sorted =
+      case field do
+        :last_modified ->
+          Enum.sort_by(socket.assigns.import_transcripts, & &1.last_modified, {:desc, DateTime})
+
+        :project_name ->
+          Enum.sort_by(socket.assigns.import_transcripts, & &1.project_name, :desc)
+
+        _ ->
+          Enum.sort_by(socket.assigns.import_transcripts, &Map.get(&1, field), :desc)
+      end
+
+    {:noreply, assign(socket, import_transcripts: sorted, import_sort_by: sort_by)}
   end
 
   def handle_event("filter_import_project", %{"project_filter" => project}, socket) do
