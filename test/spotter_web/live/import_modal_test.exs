@@ -556,4 +556,53 @@ defmodule SpotterWeb.ImportModalTest do
       refute has_element?(view, ~s([data-testid="select-all"][checked]))
     end
   end
+
+  describe "import action" do
+    setup do
+      {:ok, view, _html} = live(build_conn(), "/")
+
+      view
+      |> element(~s([data-testid="import-button"]))
+      |> render_click()
+
+      transcripts = [
+        %{
+          session_id: "import-session-1",
+          project_name: "import-proj",
+          project_dir: "/tmp/import-proj",
+          file_path: "/tmp/import-proj/import-session-1.jsonl",
+          message_count: 15,
+          is_team_session: false,
+          last_modified: ~U[2026-02-10 12:00:00Z],
+          file_size: 512,
+          custom_title: "Import test session",
+          summary: "Testing import",
+          first_prompt: "hello",
+          already_imported: false
+        }
+      ]
+
+      send(view.pid, {:update_import_transcripts, transcripts})
+      render(view)
+
+      # Select the transcript
+      view
+      |> element(
+        ~s([data-testid="select-transcript"][value="/tmp/import-proj/import-session-1.jsonl"])
+      )
+      |> render_click()
+
+      %{view: view}
+    end
+
+    test "clicking import button shows importing progress", %{view: view} do
+      html =
+        view
+        |> element(~s([data-testid="import-action-button"]))
+        |> render_click()
+
+      assert html =~ ~s(data-testid="import-progress")
+      assert html =~ "Importing"
+    end
+  end
 end

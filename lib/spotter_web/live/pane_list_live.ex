@@ -116,6 +116,7 @@ defmodule SpotterWeb.PaneListLive do
       |> assign(import_pagination: %{total_count: 0, page: 1, per_page: 20})
       |> assign(import_sort_by: "last_modified")
       |> assign(selected_transcripts: MapSet.new())
+      |> assign(importing: false)
       |> mount_computers()
       |> load_session_data()
       |> ensure_default_project_filter()
@@ -219,6 +220,10 @@ defmodule SpotterWeb.PaneListLive do
     page = String.to_integer(page)
     pagination = Map.put(socket.assigns.import_pagination, :page, page)
     {:noreply, assign(socket, import_pagination: pagination)}
+  end
+
+  def handle_event("import_selected", _params, socket) do
+    {:noreply, assign(socket, importing: true)}
   end
 
   def handle_event("toggle_select_all", _params, socket) do
@@ -861,9 +866,12 @@ defmodule SpotterWeb.PaneListLive do
                 <%= if MapSet.size(@selected_transcripts) > 0 do %>
                   <div data-testid="selection-count"><%= MapSet.size(@selected_transcripts) %> selected</div>
                 <% end %>
-                <button data-testid="import-action-button" class={"btn#{if MapSet.size(@selected_transcripts) > 0, do: " btn-primary"}"} {if MapSet.size(@selected_transcripts) == 0, do: [disabled: "disabled"], else: []}>
+                <button data-testid="import-action-button" class={"btn#{if MapSet.size(@selected_transcripts) > 0, do: " btn-primary"}"} phx-click="import_selected" {if MapSet.size(@selected_transcripts) == 0, do: [disabled: "disabled"], else: []}>
                   <%= if MapSet.size(@selected_transcripts) > 0 do %>Import <%= MapSet.size(@selected_transcripts) %><% else %>Import<% end %>
                 </button>
+                <%= if @importing do %>
+                  <div data-testid="import-progress">Importing...</div>
+                <% end %>
               </div>
             </div>
           </div>
