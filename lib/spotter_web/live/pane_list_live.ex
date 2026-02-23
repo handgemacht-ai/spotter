@@ -428,6 +428,7 @@ defmodule SpotterWeb.PaneListLive do
       <div class="page-header">
         <h1>Dashboard</h1>
         <div class="page-header-actions">
+          <button class="btn" phx-click="open_import_modal" data-testid="import-button">Import</button>
           <button class="btn" phx-click="refresh">Refresh</button>
         </div>
       </div>
