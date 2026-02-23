@@ -756,7 +756,7 @@ defmodule SpotterWeb.PaneListLive do
                   </thead>
                   <tbody>
                     <%= for t <- @import_transcripts do %>
-                      <tr data-testid="transcript-row" data-first-prompt={t[:first_prompt]} class={if t.already_imported, do: "already-imported"}>
+                      <tr data-testid="transcript-row" data-first-prompt={t[:first_prompt]} class={if t.already_imported, do: "already-imported", else: ""}>
                         <td>
                           <input type="checkbox" {if t.already_imported, do: [disabled: "disabled"], else: []} />
                         </td>
