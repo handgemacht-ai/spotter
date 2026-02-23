@@ -111,6 +111,8 @@ defmodule SpotterWeb.PaneListLive do
       |> assign(subagents_by_session: %{})
       |> assign(show_import_modal: false)
       |> assign(import_transcripts: [])
+      |> assign(all_import_transcripts: [])
+      |> assign(import_project_filter: nil)
       |> mount_computers()
       |> load_session_data()
       |> ensure_default_project_filter()
@@ -210,9 +212,20 @@ defmodule SpotterWeb.PaneListLive do
     {:noreply, assign(socket, show_import_modal: false)}
   end
 
+  def handle_event("filter_import_project", %{"project_filter" => project}, socket) do
+    filtered =
+      case project do
+        "" -> socket.assigns.all_import_transcripts
+        name -> Enum.filter(socket.assigns.all_import_transcripts, &(&1.project_name == name))
+      end
+
+    {:noreply, assign(socket, import_transcripts: filtered, import_project_filter: project)}
+  end
+
   @impl true
   def handle_info({:update_import_transcripts, transcripts}, socket) do
-    {:noreply, assign(socket, import_transcripts: transcripts)}
+    {:noreply,
+     assign(socket, import_transcripts: transcripts, all_import_transcripts: transcripts)}
   end
 
   def handle_info({:session_activity, %{session_id: session_id, status: status}}, socket) do
@@ -744,6 +757,11 @@ defmodule SpotterWeb.PaneListLive do
               <div class="import-modal-controls">
                 <select data-testid="project-filter" phx-change="filter_import_project">
                   <option value="">All Projects</option>
+                </select>
+                <select data-testid="sort-select" phx-change="sort_import_transcripts">
+                  <option value="last_modified">Last Updated</option>
+                  <option value="message_count">Message Count</option>
+                  <option value="project_name">Project Name</option>
                 </select>
               </div>
               <%= if @import_transcripts == [] do %>

@@ -203,5 +203,84 @@ defmodule SpotterWeb.ImportModalTest do
       assert html =~ ~s(data-testid="project-filter")
       assert html =~ "All Projects"
     end
+
+    test "modal renders sort dropdown with Last Updated, Message Count, and Project Name options" do
+      {:ok, view, _html} = live(build_conn(), "/")
+
+      view
+      |> element(~s([data-testid="import-button"]))
+      |> render_click()
+
+      # Sort dropdown must be a <select> element with sort options
+      assert has_element?(view, ~s(select[data-testid="sort-select"]))
+
+      assert has_element?(
+               view,
+               ~s(select[data-testid="sort-select"] option[value="last_modified"])
+             )
+
+      assert has_element?(
+               view,
+               ~s(select[data-testid="sort-select"] option[value="message_count"])
+             )
+
+      assert has_element?(
+               view,
+               ~s(select[data-testid="sort-select"] option[value="project_name"])
+             )
+    end
+
+    test "selecting a project filter updates displayed transcripts" do
+      {:ok, view, _html} = live(build_conn(), "/")
+
+      view
+      |> element(~s([data-testid="import-button"]))
+      |> render_click()
+
+      # Inject transcripts from two projects
+      transcripts = [
+        %{
+          session_id: "session-alpha",
+          project_name: "alpha-proj",
+          project_dir: "/tmp/alpha-proj",
+          file_path: "/tmp/alpha-proj/session-alpha.jsonl",
+          message_count: 5,
+          is_team_session: false,
+          last_modified: ~U[2026-02-01 12:00:00Z],
+          file_size: 512,
+          custom_title: "Alpha session",
+          summary: "Alpha work",
+          first_prompt: "hello alpha",
+          already_imported: false
+        },
+        %{
+          session_id: "session-beta",
+          project_name: "beta-proj",
+          project_dir: "/tmp/beta-proj",
+          file_path: "/tmp/beta-proj/session-beta.jsonl",
+          message_count: 10,
+          is_team_session: false,
+          last_modified: ~U[2026-02-02 12:00:00Z],
+          file_size: 1024,
+          custom_title: "Beta session",
+          summary: "Beta work",
+          first_prompt: "hello beta",
+          already_imported: false
+        }
+      ]
+
+      send(view.pid, {:update_import_transcripts, transcripts})
+      render(view)
+
+      # Select "alpha-proj" in the project filter
+      html =
+        view
+        |> element(~s(select[data-testid="project-filter"]))
+        |> render_change(%{"project_filter" => "alpha-proj"})
+
+      # Should show only alpha-proj transcripts
+      assert html =~ "alpha-proj"
+      refute html =~ "beta-proj"
+    end
   end
 end
