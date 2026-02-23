@@ -4,6 +4,7 @@ defmodule Spotter.Application do
   use Application
 
   alias Spotter.Observability.ObanTelemetry
+  alias Spotter.Observability.ParallelLanesTelemetry
   alias Spotter.Telemetry.Otel
   alias SpotterWeb.Telemetry.LiveviewOtel
 
@@ -13,6 +14,7 @@ defmodule Spotter.Application do
     Otel.setup()
     LiveviewOtel.setup()
     ObanTelemetry.setup()
+    ParallelLanesTelemetry.setup()
 
     children =
       [
