@@ -1,6 +1,3 @@
-[hooks]
-	postCreate = bash scripts/setup_worktree.sh
-
 [copy]
 	include = .beads/**/*
 

@@ -7,8 +7,6 @@ project_root := justfile_directory()
 compose_dolt := project_root / "docker-compose.dolt.yml"
 compose_otel := project_root / "docker-compose.otel.yml"
 
-export COMPOSE_PROJECT_NAME := "spotter"
-
 # Private: check all prerequisites are installed
 [private]
 _check-prereqs:
@@ -18,6 +16,33 @@ _check-prereqs:
 up: _check-prereqs
     #!/usr/bin/env bash
     set -euo pipefail
+    worktree_env="{{project_root}}/.worktree.env"
+    if [ -f "$worktree_env" ]; then
+      set -a
+      # shellcheck source=/dev/null
+      source "$worktree_env"
+      set +a
+    fi
+
+    if [ -z "${SPOTTER_PHX_PORT:-}" ] && [ -n "${SPOTTER_PORT:-}" ]; then
+      SPOTTER_PHX_PORT="${SPOTTER_PORT}"
+    fi
+    if [ -z "${SPOTTER_PORT:-}" ] && [ -n "${SPOTTER_PHX_PORT:-}" ]; then
+      SPOTTER_PORT="${SPOTTER_PHX_PORT}"
+    fi
+    if [ -z "${SPOTTER_DOLT_HOST_PORT:-}" ] && [ -n "${SPOTTER_DOLT_PORT:-}" ]; then
+      SPOTTER_DOLT_HOST_PORT="${SPOTTER_DOLT_PORT}"
+    fi
+    if [ -z "${SPOTTER_DOLT_PORT:-}" ] && [ -n "${SPOTTER_DOLT_HOST_PORT:-}" ]; then
+      SPOTTER_DOLT_PORT="${SPOTTER_DOLT_HOST_PORT}"
+    fi
+
+    compose_project="spotter"
+    if [[ -n "${WORKTREE_INDEX:-}" && "${WORKTREE_INDEX}" != "0" ]]; then
+      compose_project="spotter-wt${WORKTREE_INDEX}"
+    fi
+    export COMPOSE_PROJECT_NAME="${SPOTTER_COMPOSE_PROJECT:-$compose_project}"
+
     workspace_obs="{{project_root}}/../../../.runtime/docker/obs-up.sh"
     if [[ -x "$workspace_obs" ]]; then
       "$workspace_obs" --quiet
@@ -70,6 +95,19 @@ up: _check-prereqs
 down:
     #!/usr/bin/env bash
     set +e
+    worktree_env="{{project_root}}/.worktree.env"
+    if [ -f "$worktree_env" ]; then
+      set -a
+      # shellcheck source=/dev/null
+      source "$worktree_env"
+      set +a
+    fi
+    compose_project="spotter"
+    if [[ -n "${WORKTREE_INDEX:-}" && "${WORKTREE_INDEX}" != "0" ]]; then
+      compose_project="spotter-wt${WORKTREE_INDEX}"
+    fi
+    export COMPOSE_PROJECT_NAME="${SPOTTER_COMPOSE_PROJECT:-$compose_project}"
+
     # Stop overmind-managed processes (Phoenix)
     overmind quit 2>/dev/null
     for i in $(seq 1 15); do
@@ -79,7 +117,7 @@ down:
     overmind kill 2>/dev/null
     rm -f "{{project_root}}/.overmind.sock" 2>/dev/null
     # Kill any remaining process on the Phoenix port
-    port="${SPOTTER_PORT:-1100}"
+    port="${SPOTTER_PHX_PORT:-${SPOTTER_PORT:-1100}}"
     pid=$(lsof -iTCP:"$port" -sTCP:LISTEN -n -P -t 2>/dev/null) || true
     if [ -n "$pid" ]; then
       kill "$pid" 2>/dev/null || true
@@ -103,6 +141,20 @@ logs:
 
 # Stop, wipe state, restart clean
 reset: down
+    #!/usr/bin/env bash
+    set +e
+    worktree_env="{{project_root}}/.worktree.env"
+    if [ -f "$worktree_env" ]; then
+      set -a
+      # shellcheck source=/dev/null
+      source "$worktree_env"
+      set +a
+    fi
+    compose_project="spotter"
+    if [[ -n "${WORKTREE_INDEX:-}" && "${WORKTREE_INDEX}" != "0" ]]; then
+      compose_project="spotter-wt${WORKTREE_INDEX}"
+    fi
+    export COMPOSE_PROJECT_NAME="${SPOTTER_COMPOSE_PROJECT:-$compose_project}"
     docker compose -f {{compose_dolt}} down -v 2>/dev/null || true
     just up
 

@@ -2,6 +2,17 @@
 # Wait for Phoenix to become reachable, with timeout.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+WORKTREE_ENV_FILE="${WORKTREE_ENV_FILE:-${PROJECT_ROOT}/.worktree.env}"
+
+if [ -f "$WORKTREE_ENV_FILE" ]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "$WORKTREE_ENV_FILE"
+  set +a
+fi
+
 PHX_HOST="${PHX_HOST:-${SPOTTER_PHX_HOST:-127.0.0.1}}"
 PHX_PORT="${PHX_PORT:-${SPOTTER_PHX_PORT:-1100}}"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-${SPOTTER_PHX_TIMEOUT:-30}}"

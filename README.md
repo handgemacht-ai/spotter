@@ -49,8 +49,8 @@ just reset     # Stop, wipe state, restart clean
 
 | Service | Port | Binding |
 |---------|------|---------|
-| Phoenix | `1100` | `0.0.0.0` (per-worktree via `config/dev.local.exs`) |
-| Dolt | `13307` | `0.0.0.0` (Docker host mapping) |
+| Phoenix | `1100` base | `0.0.0.0` (deterministic per-worktree via `.worktree-ports.json`) |
+| Dolt | `13307` base | `0.0.0.0` (deterministic per-worktree Docker host mapping) |
 
 ### OpenTelemetry (always on)
 
@@ -217,7 +217,7 @@ The Spotter MCP server is provided by the plugin via `spotter-plugin/.mcp.json`.
 
 The MCP server URL is controlled by the `SPOTTER_URL` environment variable (default `http://127.0.0.1:1100`). The plugin config uses `${SPOTTER_URL:-http://127.0.0.1:1100}/api/mcp`.
 
-`scripts/setup_worktree.sh` sets `SPOTTER_URL` automatically per worktree based on the assigned port and Tailscale IP, so each tmux-launched Claude session connects to the correct Spotter instance.
+Worktree hooks generate `.worktree.env`, `config/dev.local.exs`, `.port`, and `.mcp.json` from `.worktree-ports.json`, so each worktree gets deterministic ports and a matching `SPOTTER_URL` target.
 
 ### Troubleshooting
 

@@ -7,6 +7,21 @@ _startup_pwd="$PWD"
 COMPOSE_FILE="${COMPOSE_FILE:-${REPO_ROOT}/docker-compose.dolt.yml}"
 OTEL_COMPOSE_FILE="${OTEL_COMPOSE_FILE:-${REPO_ROOT}/docker-compose.otel.yml}"
 COMPOSE_WAIT_TIMEOUT_SECONDS="${COMPOSE_WAIT_TIMEOUT_SECONDS:-30}"
+WORKTREE_ENV_FILE="${WORKTREE_ENV_FILE:-${REPO_ROOT}/.worktree.env}"
+
+if [ -f "$WORKTREE_ENV_FILE" ]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "$WORKTREE_ENV_FILE"
+  set +a
+fi
+
+if [ -z "${SPOTTER_PHX_PORT:-}" ] && [ -n "${SPOTTER_PORT:-}" ]; then
+  export SPOTTER_PHX_PORT="$SPOTTER_PORT"
+fi
+if [ -z "${SPOTTER_PORT:-}" ] && [ -n "${SPOTTER_PHX_PORT:-}" ]; then
+  export SPOTTER_PORT="$SPOTTER_PHX_PORT"
+fi
 
 # Two-switch design:
 #   OBS_ENABLED          — startup behavior + OTLP endpoint default (always-on default)
@@ -82,7 +97,7 @@ parse_resource_attributes() {
 export OTEL_RESOURCE_ATTRIBUTES="$(parse_resource_attributes "${OTEL_RESOURCE_ATTRIBUTES:-}")"
 
 DOLT_HOST="${SPOTTER_DOLT_HOST:-127.0.0.1}"
-DOLT_HOST_PORT=13307
+DOLT_HOST_PORT="${SPOTTER_DOLT_HOST_PORT:-${SPOTTER_DOLT_PORT:-13307}}"
 DOLT_DATABASE="${SPOTTER_DOLT_DATABASE:-spotter_product}"
 TEST_SPEC_DOLT_DATABASE="${SPOTTER_TEST_SPEC_DOLT_DATABASE:-spotter_tests}"
 DOLT_USERNAME="${SPOTTER_DOLT_USERNAME:-spotter}"
@@ -146,13 +161,15 @@ esac
 
 if is_port_in_use "$DOLT_HOST_PORT"; then
   echo "Port ${DOLT_HOST_PORT} is already in use."
-  echo "Set a different port in scripts/start_spotter.sh or free 13307."
+  echo "Set SPOTTER_DOLT_HOST_PORT/ SPOTTER_DOLT_PORT or free that port."
   exit 1
 fi
 
 # Keep compose and runtime checks aligned on the host port.
 export SPOTTER_DOLT_HOST_PORT="$DOLT_HOST_PORT"
-export SPOTTER_DOLT_PORT="$DOLT_HOST_PORT"
+if [ -z "${SPOTTER_DOLT_PORT:-}" ]; then
+  export SPOTTER_DOLT_PORT="$DOLT_HOST_PORT"
+fi
 
 cd "$REPO_ROOT"
 

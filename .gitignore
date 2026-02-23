@@ -12,7 +12,8 @@ erl_crash.dump
 # Local direnv secrets (never commit)
 .envrc
 
-# Per-worktree generated files (from scripts/setup_worktree.sh)
+# Per-worktree generated files (from hooks + scripts/worktree_post_create.sh)
+.worktree.env
 config/dev.local.exs
 .port
 assets/node_modules

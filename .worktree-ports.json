@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "project_name": "spotter",
+  "step": 2,
+  "services": {
+    "SPOTTER_PORT": 1100,
+    "SPOTTER_PHX_PORT": 1100,
+    "SPOTTER_E2E_HOST_PORT": 1101,
+    "SPOTTER_DOLT_HOST_PORT": 13307,
+    "SPOTTER_DOLT_PORT": 13307
+  },
+  "post_create": {
+    "script": "scripts/worktree_post_create.sh",
+    "allow_skip_worktree": [
+      ".mcp.json"
+    ]
+  }
+}

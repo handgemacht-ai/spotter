@@ -5,6 +5,14 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+WORKTREE_ENV_FILE="${WORKTREE_ENV_FILE:-${PROJECT_ROOT}/.worktree.env}"
+
+if [ -f "$WORKTREE_ENV_FILE" ]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "$WORKTREE_ENV_FILE"
+  set +a
+fi
 
 # Disable ANSI colors when stdout is not a TTY
 if [[ -t 1 ]]; then
