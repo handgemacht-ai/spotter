@@ -115,6 +115,7 @@ defmodule SpotterWeb.PaneListLive do
       |> assign(import_project_filter: nil)
       |> assign(import_pagination: %{total_count: 0, page: 1, per_page: 20})
       |> assign(import_sort_by: "last_modified")
+      |> assign(selected_transcripts: MapSet.new())
       |> mount_computers()
       |> load_session_data()
       |> ensure_default_project_filter()
@@ -218,6 +219,17 @@ defmodule SpotterWeb.PaneListLive do
     page = String.to_integer(page)
     pagination = Map.put(socket.assigns.import_pagination, :page, page)
     {:noreply, assign(socket, import_pagination: pagination)}
+  end
+
+  def handle_event("toggle_select_transcript", %{"path" => path}, socket) do
+    selected = socket.assigns.selected_transcripts
+
+    selected =
+      if MapSet.member?(selected, path),
+        do: MapSet.delete(selected, path),
+        else: MapSet.put(selected, path)
+
+    {:noreply, assign(socket, selected_transcripts: selected)}
   end
 
   def handle_event("sort_import_transcripts", %{"sort_by" => sort_by}, socket) do
@@ -811,7 +823,7 @@ defmodule SpotterWeb.PaneListLive do
                     <%= for t <- @import_transcripts do %>
                       <tr data-testid="transcript-row" data-first-prompt={t[:first_prompt]} class={if t.already_imported, do: "already-imported", else: ""}>
                         <td>
-                          <input type="checkbox" {if t.already_imported, do: [disabled: "disabled"], else: []} />
+                          <input type="checkbox" data-testid="select-transcript" value={t.file_path} phx-click="toggle_select_transcript" phx-value-path={t.file_path} {if t.already_imported, do: [disabled: "disabled"], else: []} />
                         </td>
                         <td><%= t.project_name %></td>
                         <td><%= t.message_count %></td>
@@ -828,6 +840,9 @@ defmodule SpotterWeb.PaneListLive do
                     <button data-testid={"page-#{page}"} phx-click="import_page" phx-value-page={page} aria-current={if page == @import_pagination.page, do: "page"}><%= page %></button>
                   <% end %>
                 </nav>
+              <% end %>
+              <%= if MapSet.size(@selected_transcripts) > 0 do %>
+                <div data-testid="selection-count"><%= MapSet.size(@selected_transcripts) %> selected</div>
               <% end %>
             </div>
           </div>

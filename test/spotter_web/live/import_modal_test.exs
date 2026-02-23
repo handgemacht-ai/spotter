@@ -391,4 +391,64 @@ defmodule SpotterWeb.ImportModalTest do
       assert pos_200 < pos_5
     end
   end
+
+  describe "selection and select-all" do
+    setup do
+      {:ok, view, _html} = live(build_conn(), "/")
+
+      view
+      |> element(~s([data-testid="import-button"]))
+      |> render_click()
+
+      transcripts = [
+        %{
+          session_id: "sel-session-1",
+          project_name: "sel-proj",
+          project_dir: "/tmp/sel-proj",
+          file_path: "/tmp/sel-proj/sel-session-1.jsonl",
+          message_count: 10,
+          is_team_session: false,
+          last_modified: ~U[2026-02-01 12:00:00Z],
+          file_size: 512,
+          custom_title: "Selectable session",
+          summary: "Test selection",
+          first_prompt: "hello",
+          already_imported: false
+        },
+        %{
+          session_id: "sel-session-2",
+          project_name: "sel-proj",
+          project_dir: "/tmp/sel-proj",
+          file_path: "/tmp/sel-proj/sel-session-2.jsonl",
+          message_count: 20,
+          is_team_session: false,
+          last_modified: ~U[2026-02-02 12:00:00Z],
+          file_size: 1024,
+          custom_title: "Another session",
+          summary: "More testing",
+          first_prompt: "hi",
+          already_imported: false
+        }
+      ]
+
+      send(view.pid, {:update_import_transcripts, transcripts})
+      render(view)
+
+      %{view: view}
+    end
+
+    test "clicking a row checkbox toggles selection", %{view: view} do
+      # Click first transcript's checkbox
+      html =
+        view
+        |> element(
+          ~s([data-testid="select-transcript"][value="/tmp/sel-proj/sel-session-1.jsonl"])
+        )
+        |> render_click()
+
+      # Footer should show selection count
+      assert html =~ ~s(data-testid="selection-count")
+      assert html =~ "1 selected"
+    end
+  end
 end
