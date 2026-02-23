@@ -37,18 +37,24 @@ defmodule Spotter.Services.TranscriptDiscovery do
                                        "project_filter" => project_filter || "none"
                                      }
                                    } do
-      previews =
-        roots
-        |> Enum.flat_map(&scan_root/1)
-        |> maybe_filter_project(project_filter)
-        |> mark_already_imported()
-        |> Enum.sort_by(& &1.last_modified, {:desc, DateTime})
-        |> Enum.take(@max_results)
+      try do
+        previews =
+          roots
+          |> Enum.flat_map(&scan_root/1)
+          |> maybe_filter_project(project_filter)
+          |> mark_already_imported()
+          |> Enum.sort_by(& &1.last_modified, {:desc, DateTime})
+          |> Enum.take(@max_results)
 
-      OpenTelemetry.Tracer.set_attribute("transcripts_found", length(previews))
-      OpenTelemetry.Tracer.set_attribute("dirs_scanned", length(roots))
+        OpenTelemetry.Tracer.set_attribute("transcripts_found", length(previews))
+        OpenTelemetry.Tracer.set_attribute("dirs_scanned", length(roots))
 
-      previews
+        previews
+      rescue
+        e ->
+          OpenTelemetry.Tracer.set_status(:error, Exception.message(e))
+          reraise e, __STACKTRACE__
+      end
     end
   end
 
@@ -113,7 +119,7 @@ defmodule Spotter.Services.TranscriptDiscovery do
          session_id when is_binary(session_id) <- parsed["sessionId"],
          {:ok, stat} <- File.stat(file_path, time: :posix) do
       index_meta = Map.get(index, session_id, %{})
-      message_count = file_path |> File.stream!() |> Enum.count()
+      message_count = file_path |> File.stream!([], :line) |> Enum.count()
       is_team = detect_team(parsed, index_meta)
       last_modified = DateTime.from_unix!(stat.mtime)
 
@@ -139,20 +145,15 @@ defmodule Spotter.Services.TranscriptDiscovery do
   end
 
   defp read_first_line(path) do
-    case File.open(path, [:read, :utf8]) do
-      {:ok, device} ->
-        line = IO.read(device, :line)
-        File.close(device)
-
-        case line do
-          :eof -> :error
-          {:error, _} -> :error
-          data -> {:ok, String.trim(data)}
-        end
-
-      {:error, _} ->
-        :error
+    path
+    |> File.stream!([], :line)
+    |> Enum.take(1)
+    |> case do
+      [line] -> {:ok, String.trim(line)}
+      [] -> :error
     end
+  rescue
+    _ -> :error
   end
 
   defp detect_team(first_line_parsed, index_meta) do
