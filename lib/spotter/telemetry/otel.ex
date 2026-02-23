@@ -39,8 +39,10 @@ defmodule Spotter.Telemetry.Otel do
     # Setup Bandit instrumentation
     OpentelemetryBandit.setup([])
 
-    # Setup Phoenix instrumentation with Bandit adapter and LiveView support
-    OpentelemetryPhoenix.setup(adapter: :bandit, liveview: true)
+    # Setup Phoenix instrumentation with Bandit adapter.
+    # LiveView spans are managed by SpotterWeb.Telemetry.LiveviewOtel (custom handler
+    # with context-leak prevention), so disable OpentelemetryPhoenix's built-in LV handler.
+    OpentelemetryPhoenix.setup(adapter: :bandit, liveview: false)
 
     Logger.info("OpenTelemetry instrumentation initialized successfully")
     :ok
