@@ -59,6 +59,32 @@ defmodule Spotter.Services.TranscriptDiscoveryTest do
     end
   end
 
+  describe "discover/1 already_imported detection" do
+    test "marks already-imported sessions as already_imported: true", %{tmp_dir: tmp_dir} do
+      session_id = Ash.UUID.generate()
+      project_dir = Path.join(tmp_dir, "imported-project")
+      File.mkdir_p!(project_dir)
+      write_jsonl_file(project_dir, session_id)
+      write_sessions_index(project_dir, session_id)
+
+      # Insert matching Session into DB
+      project =
+        Ash.create!(Spotter.Transcripts.Project, %{
+          name: "imported-project",
+          pattern: "imported"
+        })
+
+      Ash.create!(Spotter.Transcripts.Session, %{
+        session_id: session_id,
+        project_id: project.id,
+        cwd: "/home/user/project"
+      })
+
+      [preview] = TranscriptDiscovery.discover(tmp_dir)
+      assert preview.already_imported == true
+    end
+  end
+
   describe "discover/1 empty and edge cases" do
     test "returns empty list for empty directory", %{tmp_dir: tmp_dir} do
       assert TranscriptDiscovery.discover(tmp_dir) == []

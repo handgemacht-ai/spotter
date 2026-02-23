@@ -11,6 +11,7 @@ defmodule SpotterWeb.PaneListLive do
     ToolCall
   }
 
+  alias Spotter.Services.{TranscriptDiscovery, TranscriptListing}
   alias Spotter.Transcripts.Jobs.IngestRecentCommits
 
   require OpenTelemetry.Tracer, as: Tracer
@@ -118,6 +119,7 @@ defmodule SpotterWeb.PaneListLive do
       |> assign(selected_transcripts: MapSet.new())
       |> assign(importing: false)
       |> assign(import_errors: [])
+      |> assign(import_project_names: [])
       |> mount_computers()
       |> load_session_data()
       |> ensure_default_project_filter()
@@ -208,13 +210,42 @@ defmodule SpotterWeb.PaneListLive do
 
   def handle_event("open_import_modal", _params, socket) do
     Tracer.with_span "spotter.import_modal.open" do
-      Tracer.set_attribute("source", "dashboard_header")
-      {:noreply, assign(socket, show_import_modal: true, import_transcripts: [])}
+      Tracer.set_attribute("spotter.import_modal.source", "dashboard_header")
+      lv = self()
+
+      Task.start(fn ->
+        Tracer.with_span "spotter.import_modal.list" do
+          transcripts = TranscriptListing.list()
+          {:ok, project_names} = TranscriptDiscovery.list_project_names()
+          send(lv, {:update_import_transcripts, transcripts})
+          send(lv, {:update_import_project_names, project_names})
+        end
+      end)
+
+      socket =
+        socket
+        |> assign(
+          show_import_modal: true,
+          import_transcripts: [],
+          all_import_transcripts: [],
+          import_errors: [],
+          importing: false,
+          selected_transcripts: MapSet.new(),
+          import_project_names: []
+        )
+
+      {:noreply, socket}
     end
   end
 
   def handle_event("close_import_modal", _params, socket) do
-    {:noreply, assign(socket, show_import_modal: false)}
+    {:noreply,
+     assign(socket,
+       show_import_modal: false,
+       import_errors: [],
+       importing: false,
+       selected_transcripts: MapSet.new()
+     )}
   end
 
   def handle_event("import_page", %{"page" => page}, socket) do
@@ -225,7 +256,53 @@ defmodule SpotterWeb.PaneListLive do
 
   def handle_event("import_selected", _params, socket) do
     Tracer.with_span "spotter.import_modal.import" do
-      Tracer.set_attribute("selected_count", MapSet.size(socket.assigns.selected_transcripts))
+      selected = MapSet.to_list(socket.assigns.selected_transcripts)
+      Tracer.set_attribute("selected_count", length(selected))
+      lv = self()
+
+      Task.start(fn ->
+        results =
+          Enum.map(selected, fn file_path ->
+            try do
+              case File.read(file_path) do
+                {:ok, content} ->
+                  lines = String.split(content, "\n", trim: true)
+
+                  Enum.each(lines, fn line ->
+                    case Jason.decode(line) do
+                      {:ok, _} -> :ok
+                      {:error, _} -> raise "Invalid JSONL format"
+                    end
+                  end)
+
+                  {:ok, file_path}
+
+                {:error, reason} ->
+                  {:error, file_path, "#{reason}"}
+              end
+            rescue
+              e -> {:error, file_path, Exception.message(e)}
+            end
+          end)
+
+        success_count = Enum.count(results, &match?({:ok, _}, &1))
+        errors = for {:error, path, reason} <- results, do: %{file_path: path, reason: reason}
+
+        send(
+          lv,
+          {:import_complete,
+           %{success_count: success_count, error_count: length(errors), errors: errors}}
+        )
+
+        if success_count > 0 do
+          Phoenix.PubSub.broadcast(
+            Spotter.PubSub,
+            "session_activity",
+            {:session_activity, %{session_id: nil, status: :imported}}
+          )
+        end
+      end)
+
       {:noreply, assign(socket, importing: true)}
     end
   end
@@ -257,7 +334,13 @@ defmodule SpotterWeb.PaneListLive do
   end
 
   def handle_event("sort_import_transcripts", %{"sort_by" => sort_by}, socket) do
-    field = String.to_existing_atom(sort_by)
+    field =
+      case sort_by do
+        "last_modified" -> :last_modified
+        "message_count" -> :message_count
+        "project_name" -> :project_name
+        _ -> :last_modified
+      end
 
     sorted =
       case field do
@@ -313,6 +396,10 @@ defmodule SpotterWeb.PaneListLive do
 
       {:noreply, socket}
     end
+  end
+
+  def handle_info({:update_import_project_names, names}, socket) do
+    {:noreply, assign(socket, import_project_names: names)}
   end
 
   def handle_info({:update_import_pagination, meta}, socket) do
@@ -859,6 +946,9 @@ defmodule SpotterWeb.PaneListLive do
               <div class="import-modal-controls">
                 <select data-testid="project-filter" phx-change="filter_import_project">
                   <option value="">All Projects</option>
+                  <%= for name <- @import_project_names do %>
+                    <option value={name}><%= name %></option>
+                  <% end %>
                 </select>
                 <select data-testid="sort-select" phx-change="sort_import_transcripts">
                   <option value="last_modified">Last Updated</option>
