@@ -1,7 +1,12 @@
 import Config
 
-# Disable trace exporting during tests to avoid noise
-config :opentelemetry, traces_exporter: :none
+# Use simple processor in tests so individual tests can capture spans via
+# :otel_simple_processor.set_exporter(:otel_exporter_pid, self())
+config :opentelemetry,
+  traces_exporter: :none,
+  processors: [
+    {:otel_simple_processor, %{exporter: {:otel_exporter_pid, :undefined}}}
+  ]
 
 # Use simple (synchronous) processor so spans can be routed to test processes
 config :opentelemetry, :processors, [{:otel_simple_processor, %{}}]
