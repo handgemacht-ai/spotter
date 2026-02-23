@@ -651,5 +651,84 @@ defmodule SpotterWeb.ImportModalTest do
       # Error details shown
       assert html =~ "Invalid JSONL format"
     end
+
+    test "after successful import, re-opening modal marks transcripts as already-imported", %{
+      view: view
+    } do
+      # Trigger import
+      view
+      |> element(~s([data-testid="import-action-button"]))
+      |> render_click()
+
+      # Complete successfully
+      send(view.pid, {:import_complete, %{success_count: 1, error_count: 0, errors: []}})
+      render(view)
+
+      # Re-open modal
+      view
+      |> element(~s([data-testid="import-button"]))
+      |> render_click()
+
+      # Push the same transcript back but now marked as already-imported
+      transcripts = [
+        %{
+          session_id: "import-session-1",
+          project_name: "import-proj",
+          project_dir: "/tmp/import-proj",
+          file_path: "/tmp/import-proj/import-session-1.jsonl",
+          message_count: 15,
+          is_team_session: false,
+          last_modified: ~U[2026-02-10 12:00:00Z],
+          file_size: 512,
+          custom_title: "Import test session",
+          summary: "Testing import",
+          first_prompt: "hello",
+          already_imported: true
+        }
+      ]
+
+      send(view.pid, {:update_import_transcripts, transcripts})
+      html = render(view)
+
+      # The transcript should now show as already-imported
+      assert html =~ "already-imported"
+      assert has_element?(view, ~s([data-testid="select-transcript"][disabled]))
+      # Import button should be disabled (nothing selectable)
+      assert has_element?(view, ~s([data-testid="import-action-button"][disabled]))
+    end
+
+    test "import emits telemetry spans with correct attributes", %{view: view} do
+      # Set up OTel span capture
+      :otel_simple_processor.set_exporter(:otel_exporter_pid, self())
+
+      # Trigger import
+      view
+      |> element(~s([data-testid="import-action-button"]))
+      |> render_click()
+
+      # Complete successfully
+      send(view.pid, {:import_complete, %{success_count: 1, error_count: 0, errors: []}})
+      render(view)
+
+      # Collect spans
+      Process.sleep(100)
+      spans = collect_spans([])
+
+      span_names = Enum.map(spans, &to_string(elem(&1, 6)))
+
+      assert "spotter.import_modal.import" in span_names,
+             "Expected import span, got: #{inspect(span_names)}"
+
+      assert "spotter.import_modal.import_complete" in span_names,
+             "Expected import_complete span, got: #{inspect(span_names)}"
+    end
+  end
+
+  defp collect_spans(acc) do
+    receive do
+      {:span, span} -> collect_spans([span | acc])
+    after
+      0 -> Enum.reverse(acc)
+    end
   end
 end

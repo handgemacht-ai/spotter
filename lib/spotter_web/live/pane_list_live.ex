@@ -224,7 +224,10 @@ defmodule SpotterWeb.PaneListLive do
   end
 
   def handle_event("import_selected", _params, socket) do
-    {:noreply, assign(socket, importing: true)}
+    Tracer.with_span "spotter.import_modal.import" do
+      Tracer.set_attribute("selected_count", MapSet.size(socket.assigns.selected_transcripts))
+      {:noreply, assign(socket, importing: true)}
+    end
   end
 
   def handle_event("toggle_select_all", _params, socket) do
@@ -283,25 +286,33 @@ defmodule SpotterWeb.PaneListLive do
 
   @impl true
   def handle_info({:import_complete, %{error_count: 0, success_count: count}}, socket) do
-    label = if count == 1, do: "transcript", else: "transcripts"
+    Tracer.with_span "spotter.import_modal.import_complete" do
+      Tracer.set_attribute("success_count", count)
+      Tracer.set_attribute("error_count", 0)
+      label = if count == 1, do: "transcript", else: "transcripts"
 
-    socket =
-      socket
-      |> assign(show_import_modal: false, importing: false, selected_transcripts: MapSet.new())
-      |> put_flash(:info, "Successfully imported #{count} #{label}")
+      socket =
+        socket
+        |> assign(show_import_modal: false, importing: false, selected_transcripts: MapSet.new())
+        |> put_flash(:info, "Successfully imported #{count} #{label}")
 
-    {:noreply, socket}
+      {:noreply, socket}
+    end
   end
 
   def handle_info({:import_complete, %{error_count: error_count, errors: errors}}, socket) do
-    msg = "Import completed with #{error_count} error#{if error_count == 1, do: "", else: "s"}"
+    Tracer.with_span "spotter.import_modal.import_complete" do
+      Tracer.set_attribute("success_count", 0)
+      Tracer.set_attribute("error_count", error_count)
+      msg = "Import completed with #{error_count} error#{if error_count == 1, do: "", else: "s"}"
 
-    socket =
-      socket
-      |> assign(importing: false, import_errors: errors)
-      |> put_flash(:error, msg)
+      socket =
+        socket
+        |> assign(importing: false, import_errors: errors)
+        |> put_flash(:error, msg)
 
-    {:noreply, socket}
+      {:noreply, socket}
+    end
   end
 
   def handle_info({:update_import_pagination, meta}, socket) do
