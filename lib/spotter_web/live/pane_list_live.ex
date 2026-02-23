@@ -741,6 +741,11 @@ defmodule SpotterWeb.PaneListLive do
               <button class="btn btn-ghost import-modal-close" phx-click="close_import_modal" data-testid="import-modal-close">&times;</button>
             </div>
             <div class="import-modal-body">
+              <div class="import-modal-controls">
+                <select data-testid="project-filter" phx-change="filter_import_project">
+                  <option value="">All Projects</option>
+                </select>
+              </div>
               <%= if @import_transcripts == [] do %>
                 <div class="empty-state">No transcripts found</div>
               <% else %>

@@ -189,4 +189,19 @@ defmodule SpotterWeb.ImportModalTest do
       assert html =~ "●"
     end
   end
+
+  describe "filter, sort, and pagination controls" do
+    test "modal renders project filter dropdown with All Projects default" do
+      {:ok, view, _html} = live(build_conn(), "/")
+
+      html =
+        view
+        |> element(~s([data-testid="import-button"]))
+        |> render_click()
+
+      # Project filter select should be present with default "All Projects"
+      assert html =~ ~s(data-testid="project-filter")
+      assert html =~ "All Projects"
+    end
+  end
 end
