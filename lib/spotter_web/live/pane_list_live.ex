@@ -213,6 +213,12 @@ defmodule SpotterWeb.PaneListLive do
     {:noreply, assign(socket, show_import_modal: false)}
   end
 
+  def handle_event("import_page", %{"page" => page}, socket) do
+    page = String.to_integer(page)
+    pagination = Map.put(socket.assigns.import_pagination, :page, page)
+    {:noreply, assign(socket, import_pagination: pagination)}
+  end
+
   def handle_event("filter_import_project", %{"project_filter" => project}, socket) do
     filtered =
       case project do
@@ -800,7 +806,7 @@ defmodule SpotterWeb.PaneListLive do
               <%= if @import_pagination.total_count > @import_pagination.per_page do %>
                 <nav data-testid="pagination">
                   <%= for page <- 1..ceil(@import_pagination.total_count / @import_pagination.per_page) do %>
-                    <button data-testid={"page-#{page}"} phx-click="import_page" phx-value-page={page}><%= page %></button>
+                    <button data-testid={"page-#{page}"} phx-click="import_page" phx-value-page={page} aria-current={if page == @import_pagination.page, do: "page"}><%= page %></button>
                   <% end %>
                 </nav>
               <% end %>

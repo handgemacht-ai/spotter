@@ -299,5 +299,28 @@ defmodule SpotterWeb.ImportModalTest do
       assert html =~ ~s(data-testid="page-2")
       assert html =~ ~s(data-testid="page-3")
     end
+
+    test "clicking page 2 updates the active page" do
+      {:ok, view, _html} = live(build_conn(), "/")
+
+      view
+      |> element(~s([data-testid="import-button"]))
+      |> render_click()
+
+      # Set up pagination state
+      send(view.pid, {:update_import_pagination, %{total_count: 45, page: 1, per_page: 20}})
+      render(view)
+
+      # Click page 2
+      html =
+        view
+        |> element(~s([data-testid="page-2"]))
+        |> render_click()
+
+      # Page 2 button should now be the active/current page
+      assert html =~ ~s(data-testid="pagination")
+      # The active page button should have an aria-current or active class
+      assert has_element?(view, ~s([data-testid="page-2"][aria-current="page"]))
+    end
   end
 end
