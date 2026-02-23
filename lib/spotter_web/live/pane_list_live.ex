@@ -221,6 +221,21 @@ defmodule SpotterWeb.PaneListLive do
     {:noreply, assign(socket, import_pagination: pagination)}
   end
 
+  def handle_event("toggle_select_all", _params, socket) do
+    non_imported =
+      socket.assigns.import_transcripts
+      |> Enum.reject(& &1.already_imported)
+      |> Enum.map(& &1.file_path)
+      |> MapSet.new()
+
+    selected =
+      if MapSet.equal?(socket.assigns.selected_transcripts, non_imported),
+        do: MapSet.new(),
+        else: non_imported
+
+    {:noreply, assign(socket, selected_transcripts: selected)}
+  end
+
   def handle_event("toggle_select_transcript", %{"path" => path}, socket) do
     selected = socket.assigns.selected_transcripts
 
@@ -812,7 +827,7 @@ defmodule SpotterWeb.PaneListLive do
                 <table class="import-transcript-table">
                   <thead>
                     <tr>
-                      <th></th>
+                      <th><input type="checkbox" data-testid="select-all" phx-click="toggle_select_all" /></th>
                       <th>Project</th>
                       <th>Messages</th>
                       <th>Team</th>

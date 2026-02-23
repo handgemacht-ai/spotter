@@ -450,5 +450,65 @@ defmodule SpotterWeb.ImportModalTest do
       assert html =~ ~s(data-testid="selection-count")
       assert html =~ "1 selected"
     end
+
+    test "select-all selects all non-imported transcripts", %{view: view} do
+      # Add an already-imported transcript to the mix
+      transcripts = [
+        %{
+          session_id: "sel-session-1",
+          project_name: "sel-proj",
+          project_dir: "/tmp/sel-proj",
+          file_path: "/tmp/sel-proj/sel-session-1.jsonl",
+          message_count: 10,
+          is_team_session: false,
+          last_modified: ~U[2026-02-01 12:00:00Z],
+          file_size: 512,
+          custom_title: "Selectable",
+          summary: "Test",
+          first_prompt: "hello",
+          already_imported: false
+        },
+        %{
+          session_id: "sel-session-2",
+          project_name: "sel-proj",
+          project_dir: "/tmp/sel-proj",
+          file_path: "/tmp/sel-proj/sel-session-2.jsonl",
+          message_count: 20,
+          is_team_session: false,
+          last_modified: ~U[2026-02-02 12:00:00Z],
+          file_size: 1024,
+          custom_title: "Also selectable",
+          summary: "More",
+          first_prompt: "hi",
+          already_imported: false
+        },
+        %{
+          session_id: "sel-imported",
+          project_name: "sel-proj",
+          project_dir: "/tmp/sel-proj",
+          file_path: "/tmp/sel-proj/sel-imported.jsonl",
+          message_count: 5,
+          is_team_session: false,
+          last_modified: ~U[2026-01-15 12:00:00Z],
+          file_size: 256,
+          custom_title: "Already imported",
+          summary: "Old",
+          first_prompt: "hey",
+          already_imported: true
+        }
+      ]
+
+      send(view.pid, {:update_import_transcripts, transcripts})
+      render(view)
+
+      # Click select-all
+      html =
+        view
+        |> element(~s([data-testid="select-all"]))
+        |> render_click()
+
+      # Should select only the 2 non-imported transcripts
+      assert html =~ "2 selected"
+    end
   end
 end
