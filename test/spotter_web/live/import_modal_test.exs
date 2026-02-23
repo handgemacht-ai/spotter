@@ -531,5 +531,29 @@ defmodule SpotterWeb.ImportModalTest do
       assert html =~ "Import 1"
       assert has_element?(view, ~s([data-testid="import-action-button"].btn-primary))
     end
+
+    test "select-all checkbox reflects selection state", %{view: view} do
+      # Select all first
+      view
+      |> element(~s([data-testid="select-all"]))
+      |> render_click()
+
+      # Both should be selected and select-all should be checked
+      html = render(view)
+      assert html =~ "2 selected"
+      assert has_element?(view, ~s([data-testid="select-all"][checked]))
+
+      # Deselect one row
+      view
+      |> element(~s([data-testid="select-transcript"][value="/tmp/sel-proj/sel-session-1.jsonl"]))
+      |> render_click()
+
+      html = render(view)
+
+      # Count should drop to 1
+      assert html =~ "1 selected"
+      # Select-all checkbox should no longer be checked
+      refute has_element?(view, ~s([data-testid="select-all"][checked]))
+    end
   end
 end

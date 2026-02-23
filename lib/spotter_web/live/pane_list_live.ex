@@ -827,7 +827,8 @@ defmodule SpotterWeb.PaneListLive do
                 <table class="import-transcript-table">
                   <thead>
                     <tr>
-                      <th><input type="checkbox" data-testid="select-all" phx-click="toggle_select_all" /></th>
+                      <% non_imported_paths = @import_transcripts |> Enum.reject(& &1.already_imported) |> Enum.map(& &1.file_path) |> MapSet.new() %>
+                      <th><input type="checkbox" data-testid="select-all" phx-click="toggle_select_all" checked={MapSet.size(non_imported_paths) > 0 and MapSet.subset?(non_imported_paths, @selected_transcripts)} /></th>
                       <th>Project</th>
                       <th>Messages</th>
                       <th>Team</th>
