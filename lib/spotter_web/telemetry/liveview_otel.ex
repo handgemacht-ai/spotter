@@ -2,16 +2,16 @@ defmodule SpotterWeb.Telemetry.LiveviewOtel do
   @moduledoc """
   Telemetry handler that creates OpenTelemetry spans for LiveView lifecycle events.
 
-  Manages span context via the process dictionary with explicit parent context
-  save/restore to prevent context leaks between sequential LiveView callbacks.
+  Uses `OpentelemetryTelemetry` to manage span context via a tracer stack,
+  preventing context leaks between sequential LiveView callbacks.
   """
 
   require Logger
-  require OpenTelemetry.Tracer, as: Tracer
 
   alias Spotter.Observability.ErrorReport
 
   @handler_id "spotter.telemetry.liveview_otel"
+  @tracer_id @handler_id
 
   @events [
     [:phoenix, :live_view, :mount, :start],
@@ -54,13 +54,9 @@ defmodule SpotterWeb.Telemetry.LiveviewOtel do
     span_name = "spotter.liveview.#{action}"
     attrs = build_attributes(action, metadata)
 
-    # Save parent context before starting new span.
-    # Wrap in tuple because Elixir Process.put converts :undefined to nil.
-    parent_ctx = Tracer.current_span_ctx()
-    Process.put({__MODULE__, :parent_ctx}, {:saved, parent_ctx})
-
-    span_ctx = Tracer.start_span(span_name, %{attributes: attrs})
-    Tracer.set_current_span(span_ctx)
+    OpentelemetryTelemetry.start_telemetry_span(@tracer_id, span_name, metadata, %{
+      attributes: attrs
+    })
   rescue
     _error -> :ok
   end
@@ -68,11 +64,10 @@ defmodule SpotterWeb.Telemetry.LiveviewOtel do
   def handle_event(
         [:phoenix, :live_view, _action, :stop],
         _measurements,
-        _metadata,
+        metadata,
         _config
       ) do
-    Tracer.end_span()
-    restore_parent_context()
+    OpentelemetryTelemetry.end_telemetry_span(@tracer_id, metadata)
   rescue
     _error -> :ok
   end
@@ -96,17 +91,9 @@ defmodule SpotterWeb.Telemetry.LiveviewOtel do
       "telemetry.liveview_otel"
     )
 
-    Tracer.end_span()
-    restore_parent_context()
+    OpentelemetryTelemetry.end_telemetry_span(@tracer_id, metadata)
   rescue
     _error -> :ok
-  end
-
-  defp restore_parent_context do
-    case Process.delete({__MODULE__, :parent_ctx}) do
-      {:saved, parent_ctx} -> Tracer.set_current_span(parent_ctx)
-      _ -> :ok
-    end
   end
 
   defp build_attributes(action, metadata) do
