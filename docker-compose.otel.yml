@@ -1,6 +1,9 @@
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: otel/opentelemetry-collector-contrib:0.146.1
+    labels:
+      dev.observability.contract: "v1"
+      dev.observability.role: "collector"
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     # The upstream image runs as 10001:10001, which can't write to our bind-mounted ./tmp/otel.
     # Run as the host user so the file exporter can write spotter-traces.json locally.
@@ -9,15 +12,32 @@ services:
       - jaeger
     ports:
       # Local-only by default (no auth). Use docker-compose.otel.tailscale.yml to expose on Tailscale.
-      - "127.0.0.1:4317:4317"
-      - "127.0.0.1:4318:4318"
+      - "127.0.0.1:14317:4317"
+      - "127.0.0.1:14318:4318"
+      - "127.0.0.1:14333:13133"
+      - "127.0.0.1:14389:8889"
     volumes:
       - ./priv/otel/collector.yaml:/etc/otelcol-contrib/config.yaml:ro
       - ./tmp/otel:/var/lib/spotter-otel
 
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: jaegertracing/all-in-one:1.66.0
+    labels:
+      dev.observability.contract: "v1"
+      dev.observability.role: "jaeger"
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
     ports:
-      - "127.0.0.1:16686:16686"
+      - "127.0.0.1:14686:16686"
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    labels:
+      dev.observability.contract: "v1"
+      dev.observability.role: "prometheus"
+    volumes:
+      - ./priv/otel/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:14090:9090"
+    depends_on:
+      - otel-collector
