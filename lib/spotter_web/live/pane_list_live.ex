@@ -109,6 +109,7 @@ defmodule SpotterWeb.PaneListLive do
       |> assign(hidden_expanded: %{})
       |> assign(expanded_subagents: %{})
       |> assign(subagents_by_session: %{})
+      |> assign(show_import_modal: false)
       |> mount_computers()
       |> load_session_data()
       |> ensure_default_project_filter()
@@ -195,6 +196,17 @@ defmodule SpotterWeb.PaneListLive do
         {:noreply,
          assign(socket, timezone_errors: Map.put(socket.assigns.timezone_errors, id, msg))}
     end
+  end
+
+  def handle_event("open_import_modal", _params, socket) do
+    Tracer.with_span "spotter.import_modal.open" do
+      Tracer.set_attribute("source", "dashboard_header")
+      {:noreply, assign(socket, show_import_modal: true)}
+    end
+  end
+
+  def handle_event("close_import_modal", _params, socket) do
+    {:noreply, assign(socket, show_import_modal: false)}
   end
 
   @impl true
@@ -716,6 +728,18 @@ defmodule SpotterWeb.PaneListLive do
         <% end %>
       </div>
 
+      <%= if @show_import_modal do %>
+        <div class="import-modal-overlay" data-testid="import-modal" phx-click-away="close_import_modal" phx-window-keydown="close_import_modal" phx-key="Escape">
+          <div class="import-modal-dialog">
+            <div class="import-modal-header">
+              <h2>Import Transcripts</h2>
+              <button class="btn btn-ghost import-modal-close" phx-click="close_import_modal" data-testid="import-modal-close">&times;</button>
+            </div>
+            <div class="import-modal-body">
+            </div>
+          </div>
+        </div>
+      <% end %>
     </div>
     """
   end
