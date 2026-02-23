@@ -604,5 +604,22 @@ defmodule SpotterWeb.ImportModalTest do
       assert html =~ ~s(data-testid="import-progress")
       assert html =~ "Importing"
     end
+
+    test "successful import closes modal and shows success flash", %{view: view} do
+      # Trigger import
+      view
+      |> element(~s([data-testid="import-action-button"]))
+      |> render_click()
+
+      # Simulate successful import completion
+      send(view.pid, {:import_complete, %{success_count: 1, error_count: 0, errors: []}})
+      html = render(view)
+
+      # Modal should be closed
+      refute html =~ ~s(data-testid="import-modal")
+
+      # Success flash
+      assert html =~ "Successfully imported 1 transcript"
+    end
   end
 end

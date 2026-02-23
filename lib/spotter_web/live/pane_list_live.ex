@@ -281,6 +281,28 @@ defmodule SpotterWeb.PaneListLive do
   end
 
   @impl true
+  def handle_info({:import_complete, %{error_count: 0, success_count: count}}, socket) do
+    label = if count == 1, do: "transcript", else: "transcripts"
+
+    socket =
+      socket
+      |> assign(show_import_modal: false, importing: false, selected_transcripts: MapSet.new())
+      |> put_flash(:info, "Successfully imported #{count} #{label}")
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:import_complete, %{error_count: error_count, errors: _errors}}, socket) do
+    msg = "Import completed with #{error_count} error#{if error_count == 1, do: "", else: "s"}"
+
+    socket =
+      socket
+      |> assign(importing: false)
+      |> put_flash(:error, msg)
+
+    {:noreply, socket}
+  end
+
   def handle_info({:update_import_pagination, meta}, socket) do
     {:noreply, assign(socket, import_pagination: meta)}
   end
@@ -517,6 +539,12 @@ defmodule SpotterWeb.PaneListLive do
   def render(assigns) do
     ~H"""
     <div class="container" data-testid="dashboard-root" id="dashboard-root">
+      <%= if info = Phoenix.Flash.get(@flash, :info) do %>
+        <div class="flash flash-info" role="alert"><%= info %></div>
+      <% end %>
+      <%= if error = Phoenix.Flash.get(@flash, :error) do %>
+        <div class="flash flash-error" role="alert"><%= error %></div>
+      <% end %>
       <div class="page-header">
         <h1>Dashboard</h1>
         <div class="page-header-actions">
