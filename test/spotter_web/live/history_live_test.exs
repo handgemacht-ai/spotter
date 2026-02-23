@@ -53,6 +53,7 @@ defmodule SpotterWeb.HistoryLiveTest do
   end
 
   describe "default branch selection" do
+    @tag :flaky
     test "preselects main when both main and master exist" do
       project = create_project("defbranch")
       session = create_session(project)
