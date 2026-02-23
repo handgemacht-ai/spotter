@@ -406,7 +406,16 @@ defmodule SpotterWeb.PaneListLive do
     {:noreply, assign(socket, import_pagination: meta)}
   end
 
-  def handle_info({:update_import_transcripts, transcripts}, socket) do
+  def handle_info({:update_import_transcripts, %{entries: entries} = meta}, socket) do
+    {:noreply,
+     assign(socket,
+       import_transcripts: entries,
+       all_import_transcripts: entries,
+       import_pagination: Map.take(meta, [:total_count, :page, :per_page])
+     )}
+  end
+
+  def handle_info({:update_import_transcripts, transcripts}, socket) when is_list(transcripts) do
     {:noreply,
      assign(socket, import_transcripts: transcripts, all_import_transcripts: transcripts)}
   end

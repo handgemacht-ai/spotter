@@ -126,6 +126,55 @@ defmodule SpotterWeb.ImportModalTest do
       assert html =~ "42"
     end
 
+    @tag :import_bug
+    test "handle_info destructures TranscriptListing map into entries and pagination" do
+      {:ok, view, _html} = live(build_conn(), "/")
+
+      view
+      |> element(~s([data-testid="import-button"]))
+      |> render_click()
+
+      # This is the exact format TranscriptListing.list() returns.
+      # The handle_info MUST extract .entries for @import_transcripts
+      # and pagination metadata for @import_pagination.
+      listing_result = %{
+        entries: [
+          %{
+            session_id: "test-listing-format",
+            project_name: "listing-project",
+            project_dir: "/tmp/listing-project",
+            file_path: "/tmp/listing-project/test-listing-format.jsonl",
+            message_count: 7,
+            is_team_session: false,
+            last_modified: ~U[2026-02-20 10:00:00Z],
+            file_size: 512,
+            custom_title: "Listing format test",
+            summary: "Testing the map format",
+            first_prompt: "hello",
+            already_imported: false
+          }
+        ],
+        total_count: 1,
+        page: 1,
+        per_page: 20
+      }
+
+      send(view.pid, {:update_import_transcripts, listing_result})
+
+      # Force the process to flush its mailbox by doing a synchronous call
+      _ = :sys.get_state(view.pid)
+
+      # Now render — if handle_info didn't extract entries, the template
+      # will iterate map keys as tuples and crash on t.project_name
+      html = render(view)
+
+      # The entries must render as transcript rows
+      assert html =~ ~s(data-testid="transcript-row"),
+             "Expected transcript rows. handle_info must extract entries from the map"
+
+      assert html =~ "listing-project"
+    end
+
     test "already-imported rows have distinct styling and disabled checkbox" do
       {:ok, view, _html} = live(build_conn(), "/")
 
