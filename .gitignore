@@ -32,3 +32,4 @@ site/dist/
 .runtime/
 .claude/commands/
 .logs/
+.claude/worktrees
