@@ -1,6 +1,8 @@
 services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
+    labels:
+      dev.observability.contract: "v1"
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     # The upstream image runs as 10001:10001, which can't write to our bind-mounted ./tmp/otel.
     # Run as the host user so the file exporter can write spotter-traces.json locally.

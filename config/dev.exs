@@ -8,7 +8,7 @@ config :opentelemetry,
 
 config :opentelemetry_exporter,
   otlp_protocol: :http_protobuf,
-  otlp_endpoint: System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT") || "http://localhost:4318"
+  otlp_endpoint: System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT") || "http://localhost:14318"
 
 config :spotter, Spotter.Repo,
   database: System.get_env("SPOTTER_SQLITE_DB") || Path.expand("~/projects/todo.db"),

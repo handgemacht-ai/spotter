@@ -274,6 +274,53 @@ This command:
 - Snapshot assertions use full-page captures with tolerance `0.001`
 - If recurring flakiness appears, report artifacts first. Do not switch to component snapshots without an explicit user decision.
 
+## Observability
+
+Spotter supports three observability flows controlled by environment variables in `scripts/start_spotter.sh`.
+
+### Shared contract collector (default when `OBS_ENABLED=1`)
+
+When the shared dev observability stack is already running (detected by the `dev.observability.contract=v1` Docker label):
+
+```bash
+export OBS_ENABLED=1
+scripts/start_spotter.sh
+# → Detects shared collector, skips local OTEL stack, exports to http://localhost:14318
+```
+
+### Local fallback
+
+When no shared stack is running and you want local observability:
+
+```bash
+export OBS_ENABLED=1
+export SPOTTER_OTEL_LOCAL_FALLBACK=1
+scripts/start_spotter.sh
+# → Starts local collector + Jaeger from docker-compose.otel.yml
+```
+
+### External endpoint override
+
+For custom or remote collectors:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://my-collector.example.com:4318
+scripts/start_spotter.sh
+# → Uses explicit endpoint, no local stack started
+```
+
+### Observability environment variables
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `OBS_ENABLED` | Enable contract-aware startup | unset (local OTEL if compose exists) |
+| `SPOTTER_OTEL_LOCAL_FALLBACK` | Allow local stack when no contract collector | unset (disabled) |
+| `SPOTTER_OTEL_ENABLED` | Elixir SDK instrumentation toggle | `true` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint URL | `http://localhost:14318` (contract) or `http://localhost:4318` (local) |
+| `OTEL_RESOURCE_ATTRIBUTES` | Resource attributes (comma-separated key=value) | auto-filled with project/worktree defaults |
+
+> OTEL traces contain technical identifiers only (span names, durations, service metadata). Resource attributes are project and worktree names — no personally identifiable information (PII) is collected or exported.
+
 ## OpenTelemetry Tracing
 
 Spotter includes end-to-end OpenTelemetry instrumentation across the full request path:

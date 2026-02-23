@@ -3,9 +3,81 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+_startup_pwd="$PWD"
 COMPOSE_FILE="${COMPOSE_FILE:-${REPO_ROOT}/docker-compose.dolt.yml}"
 OTEL_COMPOSE_FILE="${OTEL_COMPOSE_FILE:-${REPO_ROOT}/docker-compose.otel.yml}"
 COMPOSE_WAIT_TIMEOUT_SECONDS="${COMPOSE_WAIT_TIMEOUT_SECONDS:-30}"
+
+# Two-switch design:
+#   OBS_ENABLED        — controls startup script: docker compose decisions + OTLP endpoint default
+#   SPOTTER_OTEL_ENABLED — controls Elixir SDK instrumentation at runtime (not managed here)
+_obs_enabled=0
+case "${OBS_ENABLED:-}" in
+  1|true|yes|TRUE|YES) _obs_enabled=1 ;;
+esac
+
+_obs_fallback=0
+case "${SPOTTER_OTEL_LOCAL_FALLBACK:-}" in
+  1|true|yes|TRUE|YES) _obs_fallback=1 ;;
+esac
+
+# ---------------------------------------------------------------------------
+# OTEL_RESOURCE_ATTRIBUTES parsing
+# ---------------------------------------------------------------------------
+# Format: comma-separated key=value pairs
+# Contract attributes with defaults:
+#   dev.project.name       → defaults to "spotter"
+#   dev.worktree.name      → defaults to basename of $PWD
+#   service.instance.id    → defaults to "${dev.project.name}-${dev.worktree.name}"
+# ---------------------------------------------------------------------------
+parse_resource_attributes() {
+  local raw="$1"
+  # Associative array to hold parsed attributes
+  declare -A attrs
+
+  if [ -n "$raw" ]; then
+    local _saved_set="$-"
+    set -f
+    IFS=',' read -ra _pairs <<< "$raw"
+    [[ "$_saved_set" == *f* ]] || set +f
+    for pair in "${_pairs[@]}"; do
+      # Skip empty segments (e.g. trailing comma)
+      [ -z "$pair" ] && continue
+
+      # Split on first '=' only
+      local key="${pair%%=*}"
+      if [ "$key" = "$pair" ]; then
+        echo "[obs] WARNING: malformed resource attribute (no '='): $pair" >&2
+        continue
+      fi
+      local value="${pair#*=}"
+      attrs["$key"]="$value"
+    done
+  fi
+
+  # Fill contract defaults for missing keys
+  if [ -z "${attrs[dev.project.name]+set}" ]; then
+    attrs[dev.project.name]="spotter"
+  fi
+  if [ -z "${attrs[dev.worktree.name]+set}" ]; then
+    attrs[dev.worktree.name]="$(basename "$_startup_pwd")"
+  fi
+  if [ -z "${attrs[service.instance.id]+set}" ]; then
+    attrs[service.instance.id]="${attrs[dev.project.name]}-${attrs[dev.worktree.name]}"
+  fi
+
+  # Reassemble into comma-separated key=value string
+  local result=""
+  for key in $(printf '%s\n' "${!attrs[@]}" | sort); do
+    if [ -n "$result" ]; then
+      result="${result},"
+    fi
+    result="${result}${key}=${attrs[$key]}"
+  done
+  echo "$result"
+}
+
+export OTEL_RESOURCE_ATTRIBUTES="$(parse_resource_attributes "${OTEL_RESOURCE_ATTRIBUTES:-}")"
 
 DOLT_HOST="${SPOTTER_DOLT_HOST:-127.0.0.1}"
 DOLT_HOST_PORT=13307
@@ -53,7 +125,12 @@ if [ -z "${OTEL_EXPORTER:-}" ]; then
 fi
 
 if [ -z "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-  export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+  if [ "$_obs_enabled" -eq 1 ]; then
+    # OBS_ENABLED: point at shared contract port (external collector)
+    export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:14318"
+  else
+    export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+  fi
 fi
 
 if is_port_in_use "$DOLT_HOST_PORT"; then
@@ -72,7 +149,73 @@ compose_args=(
   -f "$COMPOSE_FILE"
 )
 
-if [ -f "$OTEL_COMPOSE_FILE" ]; then
+# ---------------------------------------------------------------------------
+# Observability stack decision
+# ---------------------------------------------------------------------------
+# _include_local_otel tracks whether to merge docker-compose.otel.yml
+_include_local_otel=0
+
+if [ "$_obs_enabled" -eq 1 ]; then
+  # Resolve path to workspace obs-dev-check.sh
+  _workspace_root="$(cd -- "${REPO_ROOT}/.." 2>/dev/null && pwd)"
+  OBS_CHECK="${OBS_CHECK:-${_workspace_root}/.runtime/docker/obs-dev-check.sh}"
+
+  _obs_check_args=()
+  if [ ! -t 1 ]; then
+    _obs_check_args+=(--quiet)
+  fi
+
+  if [ ! -f "$OBS_CHECK" ]; then
+    echo "[obs] WARNING: workspace obs-dev-check.sh not found at $OBS_CHECK" >&2
+    echo "[obs] Treating as: no contract collector available" >&2
+    _obs_check_exit=1
+  else
+    # Run the check; capture exit code without letting set -e kill us
+    _obs_check_exit=0
+    "$OBS_CHECK" "${_obs_check_args[@]}" || _obs_check_exit=$?
+  fi
+
+  case "$_obs_check_exit" in
+    0)
+      # Contract collector running and healthy — skip local stack
+      echo "[obs] Contract collector detected, skipping local OTEL stack"
+      ;;
+    2)
+      # Port conflict with non-contract services — script already printed remediation
+      echo "[obs] Port conflict detected (see above). Continuing without observability..." >&2
+      export OTEL_EXPORTER=none
+      ;;
+    1)
+      # Expected: no contract collector available
+      if [ "$_obs_fallback" -eq 1 ]; then
+        if [ -f "$OTEL_COMPOSE_FILE" ]; then
+          echo "[obs] No contract collector found, starting local OTEL stack (fallback)"
+          _include_local_otel=1
+        else
+          echo "[obs] WARNING: Fallback requested but docker-compose.otel.yml not found, skipping local OTEL" >&2
+        fi
+      else
+        cat >&2 <<'OBSEOF'
+[obs] ⚠ No observability collector detected.
+[obs]   To use shared contract collector: ensure it's running with label dev.observability.contract=v1
+[obs]   To use local fallback: export SPOTTER_OTEL_LOCAL_FALLBACK=1
+[obs]   To disable this check: unset OBS_ENABLED
+[obs]   Continuing without observability...
+OBSEOF
+      fi
+      ;;
+    *)
+      echo "[obs] WARNING: obs-dev-check.sh exited with unexpected code $_obs_check_exit, skipping observability" >&2
+      ;;
+  esac
+else
+  # OBS_ENABLED off — preserve current behavior: include local OTEL compose if it exists
+  if [ -f "$OTEL_COMPOSE_FILE" ]; then
+    _include_local_otel=1
+  fi
+fi
+
+if [ "$_include_local_otel" -eq 1 ]; then
   compose_args+=(-f "$OTEL_COMPOSE_FILE")
 fi
 
