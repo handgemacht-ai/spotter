@@ -8,6 +8,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- Team-aware auto-import of sister sessions (spotter-s0p.1)
+  - `TranscriptDiscovery.build_preview/3` now extracts `team_name` and `agent_name` from JSONL first line
+  - `TranscriptDiscovery.group_by_team/1` clusters previews by team name
+  - "Import Team" bulk action in `ImportModalComponents` imports all team members in one click
+  - OTel span: `spotter.import.team_bulk` with `team_name`, `member_count` attributes
+  - Files: `lib/spotter/services/transcript_discovery.ex`, `lib/spotter_web/components/import_modal_components.ex`, `lib/spotter_web/live/pane_list_live.ex`
+- Full-fidelity lane rendering through TranscriptRenderer pipeline (spotter-s0p.2)
+  - Each lane calls `TranscriptRenderer.render/2` producing rendered_lines with tool blocks, code blocks, and markdown
+  - `ParallelLanes.compute/1` now includes `rendered_lines` per lane
+  - Lane columns use `transcript_panel`/`transcript_row` components matching the main list view
+  - OTel span: `spotter.lanes.render_lane` with `session_id`, `lane_agent_name`, `message_count`
+  - Files: `lib/spotter_web/components/lanes_components.ex`, `lib/spotter/transcripts/parallel_lanes.ex`, `lib/spotter/services/transcript_renderer.ex`, `lib/spotter_web/live/session_live.ex`
+- SortableJS drag-and-drop reorder on lane tab bar (spotter-s0p.4)
+  - `LaneDrag` LiveView JS hook initializes SortableJS on tab bar container
+  - `reorder_lanes` event stores order in socket assigns (session-scoped, no DB persistence)
+  - Lane columns and tabs re-render in new order with drag animation
+  - Files: `assets/js/hooks/lane_drag.js`, `lib/spotter_web/components/lanes_components.ex`, `lib/spotter_web/live/session_live.ex`, `assets/package.json`
+
+### Changed
+
+- Replaced time_axis overlay with independent scrollable lane panels (spotter-s0p.3)
+  - Removed `time_axis/1` component and overlap bar rendering from lanes view
+  - Each lane column is now an independently scrollable panel
+  - Simplified `SessionLive` lane data passing
+  - Files: `lib/spotter_web/components/lanes_components.ex`, `lib/spotter_web/live/session_live.ex`
+
+### Fixed
+
+- Duplicate HTML element IDs in transcript rows when rendering lanes (spotter-s0p.4)
+
 - `--scenario` and `--cleanup` flags for e2e seed mix task (`mix spotter.e2e.seed`) (bd-e8f.1)
   - `--scenario=team_overlap` creates deterministic test data with fixed timestamps and agent names
   - `--cleanup` removes scenario-specific seed data via FK-safe cascading deletes (annotation refs → annotations → tool_calls → file_snapshots → session_commit_links → session_reworks → subagents → messages → team_members → sessions → orphaned teams)

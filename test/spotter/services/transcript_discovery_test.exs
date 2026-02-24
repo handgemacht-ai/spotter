@@ -187,6 +187,200 @@ defmodule Spotter.Services.TranscriptDiscoveryTest do
     end
   end
 
+  describe "discover/1 team session detection (bug #3)" do
+    @tag :import_bug
+    test "team lead session (team_name only) is marked is_team_session: true", %{
+      tmp_dir: tmp_dir
+    } do
+      project_dir = Path.join(tmp_dir, "team-project")
+      File.mkdir_p!(project_dir)
+
+      lead_id = Ash.UUID.generate()
+      write_team_jsonl_file(project_dir, lead_id, team_name: "my-team")
+      write_sessions_index(project_dir, lead_id)
+
+      [preview] = TranscriptDiscovery.discover(tmp_dir)
+      assert preview.is_team_session == true
+    end
+
+    @tag :import_bug
+    test "team member session (team_name + agent_name) is distinguishable from lead", %{
+      tmp_dir: tmp_dir
+    } do
+      project_dir = Path.join(tmp_dir, "team-project")
+      File.mkdir_p!(project_dir)
+
+      lead_id = Ash.UUID.generate()
+      member_id = Ash.UUID.generate()
+
+      write_team_jsonl_file(project_dir, lead_id, team_name: "my-team")
+      write_team_jsonl_file(project_dir, member_id, team_name: "my-team", agent_name: "navigator")
+
+      write_sessions_index_multi(project_dir, [
+        {lead_id, "2026-02-01T00:00:00Z"},
+        {member_id, "2026-02-01T01:00:00Z"}
+      ])
+
+      results = TranscriptDiscovery.discover(tmp_dir)
+      assert length(results) == 2
+
+      lead = Enum.find(results, &(&1.session_id == lead_id))
+      member = Enum.find(results, &(&1.session_id == member_id))
+
+      # Both should be marked as team sessions
+      assert lead.is_team_session == true
+      assert member.is_team_session == true
+
+      # BUG #3: There is no way to distinguish team lead from team member.
+      # The preview map should include team role information so the UI can
+      # filter or label member sessions differently from lead sessions.
+      # This assertion will fail until the preview map includes team role data.
+      assert Map.has_key?(member, :is_team_member),
+             "Expected preview to include :is_team_member field to distinguish " <>
+               "team lead sessions from team member sessions (bug #3)"
+    end
+  end
+
+  describe "discover/1 team_name extraction (s0p.1)" do
+    test "build_preview includes team_name extracted from first JSONL line teamName field", %{
+      tmp_dir: tmp_dir
+    } do
+      project_dir = Path.join(tmp_dir, "team-name-project")
+      File.mkdir_p!(project_dir)
+
+      session_id = Ash.UUID.generate()
+
+      write_team_jsonl_file(project_dir, session_id, team_name: "impl-s0p")
+      write_sessions_index(project_dir, session_id)
+
+      [preview] = TranscriptDiscovery.discover(tmp_dir)
+
+      assert preview.team_name == "impl-s0p",
+             "Expected preview to include team_name field extracted from JSONL teamName. " <>
+               "Got: #{inspect(Map.get(preview, :team_name, :missing_key))}"
+    end
+
+    test "team_name is nil for non-team sessions", %{tmp_dir: tmp_dir} do
+      project_dir = Path.join(tmp_dir, "solo-project")
+      File.mkdir_p!(project_dir)
+
+      session_id = Ash.UUID.generate()
+
+      write_jsonl_file(project_dir, session_id)
+      write_sessions_index(project_dir, session_id)
+
+      [preview] = TranscriptDiscovery.discover(tmp_dir)
+
+      assert Map.has_key?(preview, :team_name),
+             "Expected preview map to always include :team_name key"
+
+      assert preview.team_name == nil,
+             "Expected team_name to be nil for non-team sessions, got: #{inspect(preview.team_name)}"
+    end
+  end
+
+  describe "group_by_team/1 (s0p.1)" do
+    test "groups previews by team_name", %{tmp_dir: tmp_dir} do
+      project_dir = Path.join(tmp_dir, "team-group-project")
+      File.mkdir_p!(project_dir)
+
+      lead_id = Ash.UUID.generate()
+      member_id = Ash.UUID.generate()
+
+      write_team_jsonl_file(project_dir, lead_id, team_name: "impl-abc")
+
+      write_team_jsonl_file(project_dir, member_id,
+        team_name: "impl-abc",
+        agent_name: "navigator"
+      )
+
+      write_sessions_index_multi(project_dir, [
+        {lead_id, "2026-02-01T00:00:00Z"},
+        {member_id, "2026-02-01T01:00:00Z"}
+      ])
+
+      previews = TranscriptDiscovery.discover(tmp_dir)
+      grouped = TranscriptDiscovery.group_by_team(previews)
+
+      assert Map.has_key?(grouped, "impl-abc")
+      assert length(grouped["impl-abc"]) == 2
+    end
+
+    test "non-team sessions (team_name: nil) are excluded from grouping", %{tmp_dir: tmp_dir} do
+      project_dir = Path.join(tmp_dir, "mixed-project")
+      File.mkdir_p!(project_dir)
+
+      solo_id = Ash.UUID.generate()
+      team_id = Ash.UUID.generate()
+
+      write_jsonl_file(project_dir, solo_id)
+      write_team_jsonl_file(project_dir, team_id, team_name: "my-team")
+
+      write_sessions_index_multi(project_dir, [
+        {solo_id, "2026-02-01T00:00:00Z"},
+        {team_id, "2026-02-01T01:00:00Z"}
+      ])
+
+      previews = TranscriptDiscovery.discover(tmp_dir)
+      grouped = TranscriptDiscovery.group_by_team(previews)
+
+      # Only the team session should be grouped
+      assert Map.keys(grouped) == ["my-team"]
+      assert length(grouped["my-team"]) == 1
+
+      # nil key should not exist
+      refute Map.has_key?(grouped, nil)
+    end
+  end
+
+  describe "discover/1 team detection with real camelCase JSONL keys (bug #2)" do
+    @tag :import_bug
+    test "detects team session when JSONL uses teamName (camelCase) like real Claude Code files",
+         %{tmp_dir: tmp_dir} do
+      project_dir = Path.join(tmp_dir, "real-team-project")
+      File.mkdir_p!(project_dir)
+
+      session_id = Ash.UUID.generate()
+
+      # Real Claude Code JSONL files use camelCase: "teamName", "agentName"
+      # NOT snake_case "team_name", "agent_name"
+      write_real_team_jsonl_file(project_dir, session_id,
+        team_name: "debug-team-sessions",
+        agent_name: nil
+      )
+
+      write_sessions_index(project_dir, session_id)
+
+      [preview] = TranscriptDiscovery.discover(tmp_dir)
+
+      assert preview.is_team_session == true,
+             ~s(Expected is_team_session to be true when JSONL first line contains "teamName" [camelCase]. detect_team/2 likely checks "team_name" [snake_case] which never matches real JSONL files.)
+    end
+
+    @tag :import_bug
+    test "detects team member when JSONL uses agentName (camelCase) like real Claude Code files",
+         %{tmp_dir: tmp_dir} do
+      project_dir = Path.join(tmp_dir, "real-team-project")
+      File.mkdir_p!(project_dir)
+
+      session_id = Ash.UUID.generate()
+
+      write_real_team_jsonl_file(project_dir, session_id,
+        team_name: "debug-team-sessions",
+        agent_name: "navigator-core"
+      )
+
+      write_sessions_index(project_dir, session_id)
+
+      [preview] = TranscriptDiscovery.discover(tmp_dir)
+
+      assert preview.is_team_session == true
+
+      assert preview.is_team_member == true,
+             ~s(Expected is_team_member to be true when JSONL first line contains "agentName" [camelCase]. build_preview reads parsed["agentName"] but detect_team must first recognize the session as a team session.)
+    end
+  end
+
   # --- Fixture helpers ---
 
   defp write_jsonl_file(dir, session_id) do
@@ -247,6 +441,71 @@ defmodule Spotter.Services.TranscriptDiscoveryTest do
 
     path = Path.join(dir, "sessions-index.json")
     File.write!(path, Jason.encode!(index))
+    path
+  end
+
+  defp write_team_jsonl_file(dir, session_id, opts) do
+    team_name = Keyword.fetch!(opts, :team_name)
+    agent_name = Keyword.get(opts, :agent_name)
+
+    first_line =
+      %{
+        "type" => "system",
+        "sessionId" => session_id,
+        "cwd" => "/home/user/project",
+        "version" => "1.0",
+        "teamName" => team_name
+      }
+      |> then(fn m ->
+        if agent_name, do: Map.put(m, "agentName", agent_name), else: m
+      end)
+
+    lines = [
+      first_line,
+      %{
+        "type" => "human",
+        "role" => "user",
+        "sessionId" => session_id,
+        "content" => [%{"type" => "text", "text" => "hello team"}],
+        "timestamp" => "2026-02-01T12:00:01Z"
+      }
+    ]
+
+    path = Path.join(dir, "#{session_id}.jsonl")
+    File.write!(path, Enum.map_join(lines, "\n", &Jason.encode!/1))
+    path
+  end
+
+  defp write_real_team_jsonl_file(dir, session_id, opts) do
+    team_name = Keyword.fetch!(opts, :team_name)
+    agent_name = Keyword.get(opts, :agent_name)
+
+    # Use camelCase keys matching real Claude Code JSONL output
+    first_line =
+      %{
+        "type" => "system",
+        "sessionId" => session_id,
+        "cwd" => "/home/user/project",
+        "version" => "1.0",
+        "teamName" => team_name
+      }
+      |> then(fn m ->
+        if agent_name, do: Map.put(m, "agentName", agent_name), else: m
+      end)
+
+    lines = [
+      first_line,
+      %{
+        "type" => "human",
+        "role" => "user",
+        "sessionId" => session_id,
+        "content" => [%{"type" => "text", "text" => "hello team"}],
+        "timestamp" => "2026-02-01T12:00:01Z"
+      }
+    ]
+
+    path = Path.join(dir, "#{session_id}.jsonl")
+    File.write!(path, Enum.map_join(lines, "\n", &Jason.encode!/1))
     path
   end
 

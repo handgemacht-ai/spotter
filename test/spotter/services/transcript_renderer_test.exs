@@ -3241,6 +3241,43 @@ defmodule Spotter.Services.TranscriptRendererTest do
     end
   end
 
+  describe "team message rendering" do
+    @tag :team_rendering
+    test "render/2 marks teammate-message user content with :teammate_message kind" do
+      # Real team session: user messages contain <teammate-message> XML tags
+      # The renderer should recognize these and classify them as :teammate_message
+      # so the UI can style them as team communication (sender badge, etc.)
+      messages = [
+        %{
+          type: :user,
+          content: %{
+            "text" =>
+              ~s(<teammate-message teammate_id="navigator-core" color="blue" summary="Found the bug">
+The issue is in detect_team/2 — it uses snake_case keys.
+</teammate-message>)
+          },
+          uuid: "msg-team-1",
+          team_name: "debug-team-sessions",
+          agent_name: "backend-architect"
+        }
+      ]
+
+      result = TranscriptRenderer.render(messages)
+
+      assert result != [],
+             "Expected teammate-message user content to produce rendered lines"
+
+      # The renderer should recognize teammate-message content and classify it
+      # with a :teammate_message kind so the UI can style it differently
+      teammate_lines = Enum.filter(result, &(&1.kind == :teammate_message))
+
+      assert teammate_lines != [],
+             "Expected at least one line with kind: :teammate_message for user messages " <>
+               "containing <teammate-message> XML tags. Currently rendered as plain :text " <>
+               "with raw XML tags visible to the user."
+    end
+  end
+
   defp load_fixture(name) do
     path = Path.join(@fixtures_dir, name)
     {:ok, %{messages: messages}} = JsonlParser.parse_session_file(path)
