@@ -2,8 +2,8 @@ defmodule SpotterWeb.LanesComponents do
   @moduledoc """
   HEEx components for parallel transcript lanes view.
 
-  Renders agent transcripts as side-by-side vertical columns on a shared
-  time axis, showing when agents worked in parallel vs sequentially.
+  Renders agent transcripts as side-by-side independently scrollable columns,
+  each piped through the TranscriptRenderer pipeline for full-fidelity display.
   """
   use Phoenix.Component
 
@@ -13,28 +13,32 @@ defmodule SpotterWeb.LanesComponents do
   def lane_color(index), do: Enum.at(@lane_colors, index, "--lane-agent-6")
 
   @doc """
-  Renders the parallel lanes panel with time axis and lane columns.
+  Renders the parallel lanes panel with independently scrollable lane columns.
 
   ## Assigns
 
     * `:lanes` (required) - list of lane maps with agent_name, session, messages, started_at, ended_at
-    * `:overlaps` (required) - list of overlap region maps
-    * `:timeline` (required) - map with :earliest and :latest DateTime
     * `:active_lane_index` - index of the active lane for responsive tab view (default 0)
   """
   attr(:lanes, :list, required: true)
-  attr(:overlaps, :list, required: true)
-  attr(:timeline, :map, required: true)
   attr(:active_lane_index, :integer, default: 0)
 
   def lanes_panel(assigns) do
     ~H"""
-    <div id="lanes-scroll" class="lanes-container" data-testid="lanes-panel" phx-hook="LaneScroll">
-      <div :if={@lanes != []} class="lanes-tab-bar" role="tablist">
+    <div id="lanes-scroll" class="lanes-container" data-testid="lanes-panel">
+      <div
+        :if={@lanes != []}
+        id="lane-tab-bar"
+        class="lanes-tab-bar"
+        role="tablist"
+        phx-hook="LaneDrag"
+        phx-update="replace"
+      >
         <button
           :for={{lane, idx} <- Enum.with_index(@lanes)}
           class={"lanes-tab#{if idx == @active_lane_index, do: " is-active", else: ""}"}
           data-testid={"lane-tab-#{sanitize_agent_name(lane.agent_name)}"}
+          data-lane-session-id={lane.session && lane.session.session_id}
           phx-click="switch_lane"
           phx-value-index={idx}
           role="tab"
@@ -44,14 +48,15 @@ defmodule SpotterWeb.LanesComponents do
           <%= lane.agent_name %>
         </button>
       </div>
-      <.time_axis :if={@lanes != []} timeline={@timeline} overlaps={@overlaps} />
-      <.lane_column
-        :for={{lane, idx} <- Enum.with_index(@lanes)}
-        lane={lane}
-        color={lane_color(idx)}
-        active={idx == @active_lane_index}
-        role="tabpanel"
-      />
+      <div class="lanes-columns-row">
+        <.lane_column
+          :for={{lane, idx} <- Enum.with_index(@lanes)}
+          lane={lane}
+          color={lane_color(idx)}
+          active={idx == @active_lane_index}
+          role="tabpanel"
+        />
+      </div>
     </div>
     """
   end
@@ -99,67 +104,34 @@ defmodule SpotterWeb.LanesComponents do
   attr(:role, :string, default: nil)
 
   def lane_column(assigns) do
+    rendered = Map.get(assigns.lane, :rendered_lines, [])
+    panel_id = "lane-transcript-#{sanitize_agent_name(assigns.lane.agent_name)}"
+
+    assigns =
+      assigns
+      |> assign(:rendered_lines, rendered)
+      |> assign(:panel_id, panel_id)
+
     ~H"""
     <div
       class={"lanes-column#{if @active, do: " is-active", else: ""}"}
       data-testid={"lane-column-#{sanitize_agent_name(@lane.agent_name)}"}
-      style={"border-left: 3px solid var(#{@color})"}
+      style={"border-left: 3px solid var(#{@color}); overflow-y: auto;"}
       role={@role}
     >
       <.lane_header lane={@lane} color={@color} />
-      <div :for={msg <- @lane.messages} class="lanes-entry">
-        <span style="font-size: var(--text-xs); color: var(--text-secondary);"><%= msg.role %></span>
-        <div><%= summarize_content(msg.content) %></div>
-      </div>
+      <%= if @rendered_lines != [] do %>
+        <SpotterWeb.TranscriptComponents.transcript_panel
+          rendered_lines={@rendered_lines}
+          panel_id={@panel_id}
+          empty_message="No messages."
+        />
+      <% else %>
+        <p class="transcript-empty" data-testid="transcript-empty">No messages.</p>
+      <% end %>
     </div>
     """
   end
-
-  @doc """
-  Renders the time axis gutter with timestamps and parallel region indicators.
-
-  ## Assigns
-
-    * `:timeline` (required) - map with :earliest and :latest DateTime
-    * `:overlaps` (required) - list of overlap region maps with :start, :end, :type (:full/:partial)
-  """
-  attr(:timeline, :map, required: true)
-  attr(:overlaps, :list, required: true)
-
-  def time_axis(assigns) do
-    ~H"""
-    <div class="lanes-time-axis" data-testid="lanes-time-axis">
-      <div class="lanes-header">
-        <span style="font-size: var(--text-xs); color: var(--text-tertiary);">TIME</span>
-      </div>
-      <div
-        :for={overlap <- @overlaps}
-        class={"lanes-gutter-bar#{if overlap.type == :partial, do: " partial", else: ""}"}
-        data-testid={"overlap-bar-#{format_time(overlap.start)}"}
-      >
-        <span data-testid={"overlap-time-#{format_time(overlap.start)}"} style="font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-tertiary);">
-          <%= format_time(overlap.start) %>
-        </span>
-      </div>
-    </div>
-    """
-  end
-
-  defp summarize_content(content) when is_binary(content), do: content
-
-  defp summarize_content(%{"blocks" => blocks}) when is_list(blocks) do
-    blocks
-    |> Enum.filter(&(&1["type"] == "text"))
-    |> Enum.map_join("\n", & &1["text"])
-  end
-
-  defp summarize_content(_), do: ""
-
-  defp format_time(%DateTime{} = dt) do
-    Calendar.strftime(dt, "%H:%M")
-  end
-
-  defp format_time(_), do: ""
 
   defp format_duration(started_at, ended_at)
        when not is_nil(started_at) and not is_nil(ended_at) do

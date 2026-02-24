@@ -4,19 +4,16 @@ import { waitForLiveViewReady } from "../liveview";
 /**
  * Page Object Model for the session-lanes view.
  *
- * Encapsulates all data-testid selectors from the design spec
- * (docs/design/session-lanes-test-selectors.md) and provides
+ * Encapsulates all data-testid selectors and provides
  * helpers for common assertions and interactions.
  */
 export class LanesPage {
   readonly page: Page;
   readonly panel: Locator;
-  readonly timeAxis: Locator;
 
   constructor(page: Page) {
     this.page = page;
     this.panel = page.getByTestId("lanes-panel");
-    this.timeAxis = page.getByTestId("lanes-time-axis");
   }
 
   /** Navigate to a session and wait for LiveView to connect. */
@@ -72,23 +69,6 @@ export class LanesPage {
     return this.column(agentName).getByTestId("lane-duration");
   }
 
-  // --- Overlap selectors ---
-
-  /** Locator for all overlap bars. */
-  allOverlapBars(): Locator {
-    return this.page.locator('[data-testid^="overlap-bar-"]');
-  }
-
-  /** Locator for a specific overlap bar by time (HH:MM format). */
-  overlapBar(time: string): Locator {
-    return this.page.getByTestId(`overlap-bar-${time}`);
-  }
-
-  /** Locator for a specific overlap time label by time (HH:MM format). */
-  overlapTime(time: string): Locator {
-    return this.page.getByTestId(`overlap-time-${time}`);
-  }
-
   // --- Assertion helpers ---
 
   /** Assert the lanes panel is visible. */
@@ -121,18 +101,20 @@ export class LanesPage {
     await expect(this.laneDuration(agentName)).toHaveText(pattern);
   }
 
-  /** Assert at least one overlap bar is present. */
-  async expectOverlapsPresent() {
-    await expect(this.allOverlapBars().first()).toBeVisible();
-  }
-
-  /** Assert the expected number of overlap bars. */
-  async expectOverlapCount(count: number) {
-    await expect(this.allOverlapBars()).toHaveCount(count);
-  }
-
   /** Assert a tab has the is-active class. */
   async expectTabActive(agentName: string) {
     await expect(this.tab(agentName)).toHaveClass(/is-active/);
+  }
+
+  /** Assert each lane column is independently scrollable (has overflow-y: auto). */
+  async expectColumnsIndependentlyScrollable() {
+    const columns = this.allColumns();
+    const count = await columns.count();
+    for (let i = 0; i < count; i++) {
+      const overflowY = await columns.nth(i).evaluate(
+        (el) => getComputedStyle(el).overflowY,
+      );
+      expect(overflowY).toBe("auto");
+    }
   }
 }

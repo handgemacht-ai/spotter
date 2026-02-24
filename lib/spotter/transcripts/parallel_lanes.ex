@@ -4,6 +4,7 @@ defmodule Spotter.Transcripts.ParallelLanes do
   require OpenTelemetry.Tracer, as: Tracer
   require Ash.Query
 
+  alias Spotter.Services.TranscriptRenderer
   alias Spotter.Transcripts.{Message, Team}
 
   # tool_use is embedded within :assistant content blocks, not stored as top-level rows.
@@ -177,14 +178,42 @@ defmodule Spotter.Transcripts.ParallelLanes do
     session = team_member.session
     first = List.first(messages)
     last = List.last(messages)
+    render_messages = Enum.map(messages, &message_to_map/1)
+
+    rendered_lines =
+      Tracer.with_span "spotter.lanes.render_lane",
+                       %{
+                         attributes: %{
+                           "session_id" => session.id,
+                           "lane_agent_name" => team_member.agent_name,
+                           "message_count" => length(messages)
+                         }
+                       } do
+        opts = if session.cwd, do: [session_cwd: session.cwd], else: []
+        TranscriptRenderer.render(render_messages, opts)
+      end
 
     %{
       agent_name: team_member.agent_name,
       session: session,
       team_member: team_member,
       messages: messages,
+      rendered_lines: rendered_lines,
       started_at: truncate_dt(session.started_at) || (first && first.timestamp),
       ended_at: truncate_dt(session.ended_at) || (last && last.timestamp)
+    }
+  end
+
+  defp message_to_map(%Message{} = msg) do
+    %{
+      id: msg.id,
+      uuid: msg.uuid,
+      type: msg.type,
+      role: msg.role,
+      content: msg.content,
+      raw_payload: msg.raw_payload,
+      timestamp: msg.timestamp,
+      agent_id: msg.agent_id
     }
   end
 

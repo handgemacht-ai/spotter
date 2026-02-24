@@ -841,7 +841,8 @@ defmodule Spotter.Services.TranscriptRenderer do
          _session_cwd,
          _tool_use_index
        ) do
-    classify_text_lines(String.split(text, "\n"), :text)
+    base_kind = if String.contains?(text, "<teammate-message"), do: :teammate_message, else: :text
+    classify_text_lines(String.split(text, "\n"), base_kind)
   end
 
   defp render_user_content_enriched(_msg, _session_cwd, _tool_use_index), do: []
@@ -868,7 +869,8 @@ defmodule Spotter.Services.TranscriptRenderer do
          _session_cwd,
          _tool_use_index
        ) do
-    classify_text_lines(String.split(text, "\n"), :text)
+    base_kind = if String.contains?(text, "<teammate-message"), do: :teammate_message, else: :text
+    classify_text_lines(String.split(text, "\n"), base_kind)
   end
 
   defp render_user_block_enriched(_block, _msg, _session_cwd, _tool_use_index), do: []

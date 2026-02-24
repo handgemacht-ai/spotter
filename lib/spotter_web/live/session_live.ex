@@ -69,8 +69,6 @@ defmodule SpotterWeb.SessionLive do
         transcript_link_fileset: link_fileset,
         view_mode: :list,
         lanes: [],
-        overlaps: [],
-        lanes_timeline: %{earliest: nil, latest: nil},
         active_lane_index: 0
       )
       |> mount_computers(%{
@@ -258,21 +256,51 @@ defmodule SpotterWeb.SessionLive do
     end
   end
 
+  def handle_event("reorder_lanes", %{"order" => order}, socket) when is_list(order) do
+    lanes = socket.assigns.lanes
+
+    # Build a lookup from session_id to lane
+    lane_by_session_id =
+      Map.new(lanes, fn lane ->
+        sid = lane.session && lane.session.session_id
+        {sid, lane}
+      end)
+
+    # Reorder lanes according to the new order, skipping unknown session_ids
+    reordered =
+      order
+      |> Enum.flat_map(fn sid ->
+        case Map.get(lane_by_session_id, sid) do
+          nil -> []
+          lane -> [lane]
+        end
+      end)
+
+    # If reordering produced a valid list with the same count, apply it
+    if length(reordered) == length(lanes) do
+      {:noreply, assign(socket, lanes: reordered, active_lane_index: 0)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("reorder_lanes", _params, socket), do: {:noreply, socket}
+
   defp load_lanes_data(socket) do
     team_name = socket.assigns.session_record && socket.assigns.session_record.team_name
 
     case team_name && Team |> Ash.Query.filter(name == ^team_name) |> Ash.read_one() do
       {:ok, %Team{} = team} ->
         case ParallelLanes.compute(team.id) do
-          {:ok, %{lanes: lanes, timeline: timeline, overlaps: overlaps}} ->
-            assign(socket, lanes: lanes, overlaps: overlaps, lanes_timeline: timeline)
+          {:ok, %{lanes: lanes}} ->
+            assign(socket, lanes: lanes)
 
           _ ->
-            assign(socket, lanes: [], overlaps: [], lanes_timeline: %{earliest: nil, latest: nil})
+            assign(socket, lanes: [])
         end
 
       _ ->
-        assign(socket, lanes: [], overlaps: [], lanes_timeline: %{earliest: nil, latest: nil})
+        assign(socket, lanes: [])
     end
   end
 
@@ -489,7 +517,7 @@ defmodule SpotterWeb.SessionLive do
       <.distilled_summary_section session_record={@session_record} />
       <div class="session-layout">
         <%= if @view_mode == :lanes do %>
-          <.lanes_panel lanes={@lanes} overlaps={@overlaps} timeline={@lanes_timeline} active_lane_index={@active_lane_index} />
+          <.lanes_panel lanes={@lanes} active_lane_index={@active_lane_index} />
         <% else %>
           <div id="transcript-panel" class="session-transcript" data-testid="transcript-container">
             <div class="transcript-header">

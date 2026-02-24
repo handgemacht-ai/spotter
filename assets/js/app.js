@@ -12,6 +12,7 @@ import { marked } from "marked"
 import DOMPurify from "dompurify"
 import { createFlowGraphHook } from "./flow_graph"
 import { initGlobalSearchPalette } from "./global_search_palette"
+import LaneDrag from "./hooks/lane_drag"
 
 hljs.registerLanguage("elixir", elixir)
 hljs.registerLanguage("javascript", javascript)
@@ -529,78 +530,7 @@ Hooks.SnippetHighlighter = {
   },
 }
 
-Hooks.LaneScroll = {
-  mounted() {
-    this._reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    this._highlightEl = null
-    this._rafId = null
-
-    this._highlightContent()
-    this._setupHover()
-  },
-
-  updated() {
-    this._highlightContent()
-  },
-
-  destroyed() {
-    this._removeHighlight()
-    if (this._rafId) cancelAnimationFrame(this._rafId)
-  },
-
-  _highlightContent() {
-    renderTranscriptMarkdown(this.el)
-    highlightTranscriptCode(this.el)
-  },
-
-  _setupHover() {
-    this.el.addEventListener("mousemove", (e) => {
-      if (this._rafId) return
-      this._rafId = requestAnimationFrame(() => {
-        this._rafId = null
-        this._handleHover(e)
-      })
-    })
-
-    this.el.addEventListener("mouseleave", () => {
-      this._removeHighlight()
-    })
-  },
-
-  _handleHover(e) {
-    const entry = e.target.closest(".lanes-entry")
-    if (!entry) {
-      this._removeHighlight()
-      return
-    }
-
-    const containerRect = this.el.getBoundingClientRect()
-    const entryRect = entry.getBoundingClientRect()
-    const top = entryRect.top - containerRect.top + this.el.scrollTop
-    const height = entryRect.height
-
-    if (!this._highlightEl) {
-      this._highlightEl = document.createElement("div")
-      this._highlightEl.className = "lanes-time-highlight"
-      this.el.appendChild(this._highlightEl)
-    }
-
-    this._highlightEl.style.top = `${top}px`
-    this._highlightEl.style.height = `${height}px`
-
-    if (this._reducedMotion) {
-      this._highlightEl.style.opacity = "1"
-      this._highlightEl.style.transition = "none"
-    }
-  },
-
-  _removeHighlight() {
-    if (this._highlightEl) {
-      this._highlightEl.remove()
-      this._highlightEl = null
-    }
-  },
-}
+Hooks.LaneDrag = LaneDrag
 
 const csrfToken = document.querySelector("meta[name='csrf-token']")?.getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {

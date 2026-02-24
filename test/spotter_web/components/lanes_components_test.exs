@@ -25,17 +25,22 @@ defmodule SpotterWeb.LanesComponentsTest do
         }
       end
 
+    rendered_lines =
+      Enum.with_index(messages, 1)
+      |> Enum.map(fn {msg, idx} -> Map.put(msg, :line_number, idx) end)
+
     %{
       agent_name: agent_name,
       session: %{session_id: "session-#{agent_name}", cwd: "/tmp/test"},
       messages: messages,
+      rendered_lines: rendered_lines,
       started_at: started_at,
       ended_at: ended_at
     }
   end
 
   describe "lanes_panel/1" do
-    test "renders container with time axis and lane columns for 3 lanes" do
+    test "renders container and lane columns for 3 lanes" do
       lanes = [
         build_lane("team-lead", ~U[2026-02-01 10:00:00Z], ~U[2026-02-01 10:30:00Z]),
         build_lane("qa-tester", ~U[2026-02-01 10:05:00Z], ~U[2026-02-01 10:20:00Z]),
@@ -44,14 +49,29 @@ defmodule SpotterWeb.LanesComponentsTest do
 
       html =
         render_component(&LanesComponents.lanes_panel/1,
-          lanes: lanes,
-          overlaps: [],
-          timeline: %{earliest: ~U[2026-02-01 10:00:00Z], latest: ~U[2026-02-01 10:30:00Z]}
+          lanes: lanes
         )
 
       assert html =~ "lanes-container"
-      assert html =~ "lanes-time-axis"
+      assert html =~ "lanes-columns-row"
       assert html =~ "lanes-column"
+      refute html =~ "lanes-time-axis"
+    end
+
+    test "tab bar has LaneDrag phx-hook for drag-and-drop" do
+      lanes = [
+        build_lane("team-lead", ~U[2026-02-01 10:00:00Z], ~U[2026-02-01 10:30:00Z]),
+        build_lane("qa-tester", ~U[2026-02-01 10:05:00Z], ~U[2026-02-01 10:20:00Z])
+      ]
+
+      html =
+        render_component(&LanesComponents.lanes_panel/1,
+          lanes: lanes
+        )
+
+      assert html =~ ~s(phx-hook="LaneDrag")
+      assert html =~ ~s(data-lane-session-id="session-team-lead")
+      assert html =~ ~s(data-lane-session-id="session-qa-tester")
     end
 
     test "renders data-testid='lanes-panel' on container" do
@@ -61,9 +81,7 @@ defmodule SpotterWeb.LanesComponentsTest do
 
       html =
         render_component(&LanesComponents.lanes_panel/1,
-          lanes: lanes,
-          overlaps: [],
-          timeline: %{earliest: ~U[2026-02-01 10:00:00Z], latest: ~U[2026-02-01 10:30:00Z]}
+          lanes: lanes
         )
 
       assert html =~ ~s(data-testid="lanes-panel")
@@ -77,9 +95,7 @@ defmodule SpotterWeb.LanesComponentsTest do
 
       html =
         render_component(&LanesComponents.lanes_panel/1,
-          lanes: lanes,
-          overlaps: [],
-          timeline: %{earliest: ~U[2026-02-01 10:00:00Z], latest: ~U[2026-02-01 10:30:00Z]}
+          lanes: lanes
         )
 
       assert html =~ ~s(data-testid="lane-tab-team-lead")
@@ -94,9 +110,7 @@ defmodule SpotterWeb.LanesComponentsTest do
 
       html =
         render_component(&LanesComponents.lanes_panel/1,
-          lanes: lanes,
-          overlaps: [],
-          timeline: %{earliest: ~U[2026-02-01 10:00:00Z], latest: ~U[2026-02-01 10:30:00Z]}
+          lanes: lanes
         )
 
       assert html =~ ~s(data-testid="lane-column-team-lead")
@@ -110,9 +124,7 @@ defmodule SpotterWeb.LanesComponentsTest do
 
       html =
         render_component(&LanesComponents.lanes_panel/1,
-          lanes: lanes,
-          overlaps: [],
-          timeline: %{earliest: ~U[2026-02-01 10:00:00Z], latest: ~U[2026-02-01 10:30:00Z]}
+          lanes: lanes
         )
 
       assert html =~ ~s(data-testid="lane-tab-agent-1")
@@ -122,13 +134,24 @@ defmodule SpotterWeb.LanesComponentsTest do
     test "renders empty message when lanes list is empty" do
       html =
         render_component(&LanesComponents.lanes_panel/1,
-          lanes: [],
-          overlaps: [],
-          timeline: %{earliest: nil, latest: nil}
+          lanes: []
         )
 
       assert html =~ "lanes-container"
-      refute html =~ "lanes-column"
+      refute html =~ ~s(data-testid="lane-column-)
+    end
+
+    test "each lane column has independent scroll via overflow-y style" do
+      lanes = [
+        build_lane("team-lead", ~U[2026-02-01 10:00:00Z], ~U[2026-02-01 10:30:00Z])
+      ]
+
+      html =
+        render_component(&LanesComponents.lanes_panel/1,
+          lanes: lanes
+        )
+
+      assert html =~ "overflow-y: auto"
     end
   end
 
@@ -175,7 +198,7 @@ defmodule SpotterWeb.LanesComponentsTest do
   end
 
   describe "lane_column/1" do
-    test "renders messages wrapped in .lanes-entry elements" do
+    test "renders messages using transcript_panel component" do
       lane = build_lane("implementer", ~U[2026-02-01 10:10:00Z], ~U[2026-02-01 10:30:00Z], 3)
 
       html =
@@ -185,93 +208,28 @@ defmodule SpotterWeb.LanesComponentsTest do
         )
 
       assert html =~ "lanes-column"
-      assert html =~ "lanes-entry"
+      assert html =~ "transcript-row"
       assert html =~ "implementer"
     end
-  end
 
-  describe "time_axis/1" do
-    test "renders time labels and gutter bars for full overlaps" do
-      overlaps = [
-        %{
-          start: ~U[2026-02-01 10:10:00Z],
-          end: ~U[2026-02-01 10:20:00Z],
-          agents: ["team-lead", "qa-tester", "implementer"],
-          agent_count: 3,
-          type: :full
-        }
-      ]
+    test "renders empty state when lane has no rendered_lines" do
+      lane = %{
+        agent_name: "empty-agent",
+        session: %{session_id: "session-empty", cwd: "/tmp/test"},
+        messages: [],
+        rendered_lines: [],
+        started_at: ~U[2026-02-01 10:00:00Z],
+        ended_at: ~U[2026-02-01 10:30:00Z]
+      }
 
       html =
-        render_component(&LanesComponents.time_axis/1,
-          timeline: %{earliest: ~U[2026-02-01 10:00:00Z], latest: ~U[2026-02-01 10:30:00Z]},
-          overlaps: overlaps
+        render_component(&LanesComponents.lane_column/1,
+          lane: lane,
+          color: "#60a5fa"
         )
 
-      assert html =~ "lanes-time-axis"
-      assert html =~ "lanes-gutter-bar"
-    end
-
-    test "renders data-testid='lanes-time-axis' on container" do
-      html =
-        render_component(&LanesComponents.time_axis/1,
-          timeline: %{earliest: ~U[2026-02-01 10:00:00Z], latest: ~U[2026-02-01 10:30:00Z]},
-          overlaps: []
-        )
-
-      assert html =~ ~s(data-testid="lanes-time-axis")
-    end
-
-    test "renders overlap-bar-{HH:MM} and overlap-time-{HH:MM} data-testids" do
-      overlaps = [
-        %{
-          start: ~U[2026-02-01 10:10:00Z],
-          end: ~U[2026-02-01 10:20:00Z],
-          agents: ["team-lead", "qa-tester"],
-          agent_count: 2,
-          type: :full
-        },
-        %{
-          start: ~U[2026-02-01 14:30:00Z],
-          end: ~U[2026-02-01 15:00:00Z],
-          agents: ["team-lead", "implementer"],
-          agent_count: 2,
-          type: :partial
-        }
-      ]
-
-      html =
-        render_component(&LanesComponents.time_axis/1,
-          timeline: %{earliest: ~U[2026-02-01 10:00:00Z], latest: ~U[2026-02-01 15:00:00Z]},
-          overlaps: overlaps
-        )
-
-      assert html =~ ~s(data-testid="overlap-bar-10:10")
-      assert html =~ ~s(data-testid="overlap-time-10:10")
-      assert html =~ ~s(data-testid="overlap-bar-14:30")
-      assert html =~ ~s(data-testid="overlap-time-14:30")
-    end
-
-    test "renders partial gutter bar for partial overlaps" do
-      overlaps = [
-        %{
-          start: ~U[2026-02-01 10:05:00Z],
-          end: ~U[2026-02-01 10:15:00Z],
-          agents: ["team-lead", "qa-tester"],
-          agent_count: 2,
-          type: :partial
-        }
-      ]
-
-      html =
-        render_component(&LanesComponents.time_axis/1,
-          timeline: %{earliest: ~U[2026-02-01 10:00:00Z], latest: ~U[2026-02-01 10:30:00Z]},
-          overlaps: overlaps
-        )
-
-      assert html =~ "lanes-time-axis"
-      assert html =~ "lanes-gutter-bar"
-      assert html =~ "partial"
+      assert html =~ "No messages."
+      assert html =~ ~s(data-testid="transcript-empty")
     end
   end
 end

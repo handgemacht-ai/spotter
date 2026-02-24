@@ -3885,21 +3885,16 @@ span.commit-detail-cochange-member {
 
 .lanes-container {
   display: flex;
-  flex-direction: row;
-  overflow-x: auto;
+  flex-direction: column;
   position: relative;
 }
 
-.lanes-time-axis {
-  width: 64px;
-  min-width: 64px;
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  background: var(--surface-1);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
+.lanes-columns-row {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
 }
 
 .lanes-column {
@@ -3907,6 +3902,8 @@ span.commit-detail-cochange-member {
   flex: 1;
   border-right: 1px solid var(--border-subtle);
   padding: var(--space-3);
+  overflow-y: auto;
+  max-height: 80vh;
   transition: min-width 200ms ease-out, flex 200ms ease-out;
 }
 
@@ -3934,46 +3931,6 @@ span.commit-detail-cochange-member {
   background: var(--surface-3);
 }
 
-/* --- Lane Entries --- */
-
-.lanes-entry {
-  margin-bottom: var(--space-2);
-  padding: var(--space-3);
-  border-left: 3px solid transparent;
-  border-radius: var(--radius-sm);
-  transition: background 0.15s, border-left-color 0.15s;
-}
-
-.lanes-entry:hover {
-  background: var(--surface-3);
-}
-
-.lanes-entry.is-selected {
-  border-left-style: solid;
-}
-
-/* --- Parallel Regions --- */
-
-.lanes-parallel-region {
-  background: var(--parallel-full);
-}
-
-.lanes-parallel-region.is-partial {
-  background: var(--parallel-partial);
-}
-
-/* --- Gutter Bars --- */
-
-.lanes-gutter-bar {
-  height: 4px;
-  margin: var(--space-1) 0;
-  background: var(--parallel-gutter-bar);
-  border-radius: var(--radius-sm);
-}
-
-.lanes-gutter-bar.partial {
-  background: var(--parallel-gutter-partial);
-}
 
 /* --- Tab Bar (responsive) --- */
 
@@ -4006,15 +3963,22 @@ span.commit-detail-cochange-member {
   border-bottom-color: var(--accent-cyan);
 }
 
-/* --- Time Highlight --- */
+/* --- Drag & Drop --- */
 
-.lanes-time-highlight {
-  position: absolute;
-  left: 0;
-  right: 0;
-  background: rgba(255, 255, 255, 0.03);
-  pointer-events: none;
-  transition: opacity 0.1s;
+.lanes-tab-ghost {
+  opacity: 0.4;
+  background: var(--surface-3);
+}
+
+.lanes-tab-chosen {
+  cursor: grabbing;
+}
+
+.lanes-tab-drag {
+  opacity: 0.9;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 /* --- Animations --- */
@@ -4028,10 +3992,8 @@ span.commit-detail-cochange-member {
 /* --- Reduced Motion --- */
 
 @media (prefers-reduced-motion: reduce) {
-  .lanes-entry,
   .lanes-header,
   .lanes-tab,
-  .lanes-time-highlight,
   .lanes-column {
     transition: none;
   }
@@ -4264,17 +4226,14 @@ span.commit-detail-cochange-member {
 /* --- Responsive: Mobile (<768px) --- */
 
 @media (max-width: 767px) {
-  .lanes-container {
+  .lanes-columns-row {
     flex-direction: column;
     overflow-x: visible;
   }
 
-  .lanes-time-axis {
-    display: none;
-  }
-
   .lanes-column {
     min-width: unset;
+    max-height: unset;
     border-right: none;
   }
 

@@ -72,6 +72,20 @@ defmodule Spotter.Services.TranscriptDiscovery do
     {:ok, names}
   end
 
+  @doc """
+  Groups discovered transcripts by team_name.
+
+  Returns a map where keys are team names (strings) and values are lists of
+  preview maps belonging to that team. Non-team sessions (team_name: nil)
+  are excluded from the result.
+  """
+  @spec group_by_team([map()]) :: %{String.t() => [map()]}
+  def group_by_team(previews) do
+    previews
+    |> Enum.filter(fn p -> is_binary(p.team_name) end)
+    |> Enum.group_by(& &1.team_name)
+  end
+
   # --- Private ---
 
   defp scan_root(root) do
@@ -120,7 +134,9 @@ defmodule Spotter.Services.TranscriptDiscovery do
          {:ok, stat} <- File.stat(file_path, time: :posix) do
       index_meta = Map.get(index, session_id, %{})
       message_count = file_path |> File.stream!([], :line) |> Enum.count()
+      team_name = parsed["teamName"] || Map.get(index_meta, :team_name)
       is_team = detect_team(parsed, index_meta)
+      agent_name = parsed["agentName"] || Map.get(index_meta, :agent_name)
       last_modified = DateTime.from_unix!(stat.mtime)
 
       [
@@ -131,6 +147,9 @@ defmodule Spotter.Services.TranscriptDiscovery do
           file_path: file_path,
           message_count: message_count,
           is_team_session: is_team,
+          is_team_member: is_team and is_binary(agent_name),
+          team_name: team_name,
+          agent_name: agent_name,
           last_modified: last_modified,
           file_size: stat.size,
           custom_title: Map.get(index_meta, :custom_title),
@@ -159,7 +178,7 @@ defmodule Spotter.Services.TranscriptDiscovery do
   defp detect_team(first_line_parsed, index_meta) do
     cond do
       is_binary(Map.get(index_meta, :team_name)) -> true
-      is_binary(first_line_parsed["team_name"]) -> true
+      is_binary(first_line_parsed["teamName"]) -> true
       true -> false
     end
   end

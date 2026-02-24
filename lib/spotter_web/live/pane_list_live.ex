@@ -256,36 +256,39 @@ defmodule SpotterWeb.PaneListLive do
 
   def handle_event("import_selected", _params, socket) do
     Tracer.with_span "spotter.import_modal.import" do
-      selected = MapSet.to_list(socket.assigns.selected_transcripts)
-      Tracer.set_attribute("selected_count", length(selected))
+      selected_paths = MapSet.to_list(socket.assigns.selected_transcripts)
+      Tracer.set_attribute("selected_count", length(selected_paths))
+
+      # Build lookup from file_path to transcript metadata for project creation
+      transcript_lookup =
+        socket.assigns.import_transcripts
+        |> Enum.map(&{&1.file_path, &1})
+        |> Map.new()
+
       lv = self()
 
       Task.start(fn ->
+        alias Spotter.Transcripts.Jobs.SyncTranscripts
+
         results =
-          Enum.map(selected, fn file_path ->
+          Enum.map(selected_paths, fn file_path ->
             try do
-              case File.read(file_path) do
-                {:ok, content} ->
-                  lines = String.split(content, "\n", trim: true)
+              meta = Map.get(transcript_lookup, file_path, %{})
+              ensure_project_for_import!(meta)
 
-                  Enum.each(lines, fn line ->
-                    case Jason.decode(line) do
-                      {:ok, _} -> :ok
-                      {:error, _} -> raise "Invalid JSONL format"
-                    end
-                  end)
+              case SyncTranscripts.sync_session_file(file_path) do
+                %{status: :ok} = result ->
+                  {:ok, file_path, result}
 
-                  {:ok, file_path}
-
-                {:error, reason} ->
-                  {:error, file_path, "#{reason}"}
+                %{status: status} ->
+                  {:error, file_path, "Sync failed: #{status}"}
               end
             rescue
               e -> {:error, file_path, Exception.message(e)}
             end
           end)
 
-        success_count = Enum.count(results, &match?({:ok, _}, &1))
+        success_count = Enum.count(results, &match?({:ok, _, _}, &1))
         errors = for {:error, path, reason} <- results, do: %{file_path: path, reason: reason}
 
         send(
@@ -304,6 +307,22 @@ defmodule SpotterWeb.PaneListLive do
       end)
 
       {:noreply, assign(socket, importing: true)}
+    end
+  end
+
+  def handle_event("import_team", %{"team-name" => team_name}, socket) do
+    Tracer.with_span "spotter.import.team_bulk",
+                     %{attributes: %{"team_name" => team_name}} do
+      team_paths =
+        socket.assigns.all_import_transcripts
+        |> Enum.filter(fn t -> t[:team_name] == team_name and not t.already_imported end)
+        |> Enum.map(& &1.file_path)
+        |> MapSet.new()
+
+      Tracer.set_attribute("member_count", MapSet.size(team_paths))
+
+      selected = MapSet.union(socket.assigns.selected_transcripts, team_paths)
+      {:noreply, assign(socket, selected_transcripts: selected)}
     end
   end
 
@@ -378,6 +397,7 @@ defmodule SpotterWeb.PaneListLive do
         socket
         |> assign(show_import_modal: false, importing: false, selected_transcripts: MapSet.new())
         |> put_flash(:info, "Successfully imported #{count} #{label}")
+        |> load_session_data()
 
       {:noreply, socket}
     end
@@ -612,6 +632,42 @@ defmodule SpotterWeb.PaneListLive do
 
     meta = %{has_more: page.more?, next_cursor: page.after}
     {sorted, meta}
+  end
+
+  # Ensures a project record exists for an imported transcript.
+  # The transcript directory name (e.g., "-home-marco-projects-handgemacht-spotter")
+  # becomes the project name and pattern so sync_session_file can match it.
+  # Worktree dir names are normalized to the parent project root first.
+  defp ensure_project_for_import!(%{project_name: project_name}) when is_binary(project_name) do
+    normalized = normalize_project_dir_name(project_name)
+
+    case Spotter.Transcripts.Project
+         |> Ash.Query.filter(name == ^normalized)
+         |> Ash.read!() do
+      [_project] ->
+        :ok
+
+      [] ->
+        # Use the dir name as a prefix pattern so worktree cwds also match
+        pattern = "^" <> Regex.escape(normalized)
+
+        Ash.create!(Spotter.Transcripts.Project, %{
+          name: normalized,
+          pattern: pattern
+        })
+
+        :ok
+    end
+  end
+
+  defp ensure_project_for_import!(_), do: :ok
+
+  # Strip .claude/worktrees/<name> suffix from transcript directory names.
+  # "-home-marco-projects-handgemacht-levio-.claude-worktrees-keycloak"
+  # becomes "-home-marco-projects-handgemacht-levio"
+  defp normalize_project_dir_name(name) do
+    name
+    |> String.replace(~r/-.claude-worktrees-[^-].*$/, "")
   end
 
   defp extract_session_ids(projects) do

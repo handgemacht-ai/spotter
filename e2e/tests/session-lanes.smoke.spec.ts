@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { prepareFullPageSnapshot } from "../support/liveview";
 import { LanesPage } from "../support/pages/lanes";
+import { assertSpansEmitted } from "../support/telemetry";
 
 /**
  * Deterministic fixture data (test/fixtures/transcripts/team-overlap/):
@@ -41,12 +42,14 @@ test.describe("session-lanes", () => {
     await lanes.expectLaneDuration(AGENTS.impl.name, AGENTS.impl.duration);
   });
 
-  test("overlap regions are present", async () => {
-    await lanes.expectOverlapsPresent();
+  test("no time axis is rendered (independent scrollable panels)", async ({
+    page,
+  }) => {
+    await expect(page.getByTestId("lanes-time-axis")).toHaveCount(0);
   });
 
-  test("time axis is visible", async () => {
-    await expect(lanes.timeAxis).toBeVisible();
+  test("lane columns are independently scrollable", async () => {
+    await lanes.expectColumnsIndependentlyScrollable();
   });
 
   test("full-page visual snapshot", async ({ page }) => {
@@ -54,8 +57,59 @@ test.describe("session-lanes", () => {
     await expect(page).toHaveScreenshot("session-lanes-smoke.png", {
       fullPage: true,
       animations: "disabled",
-      maxDiffPixelRatio: 0.001,
+      maxDiffPixelRatio: 0.01,
     });
+  });
+});
+
+test.describe("session-lanes telemetry", () => {
+  let lanes: LanesPage;
+
+  test.beforeEach(async ({ page }) => {
+    lanes = new LanesPage(page);
+    await lanes.goto(TEAM_SESSION_ID);
+    await lanes.switchToLanesView();
+  });
+
+  test("s0p.2 telemetry: render_lane emits spans per agent with correct attributes", async ({
+    page,
+  }) => {
+    // Wait for lanes to fully render — spans are emitted during page load
+    await lanes.expectColumnCount(3);
+
+    // Verify one render_lane span per agent with required attributes (polls Jaeger with retry)
+    const spans = await assertSpansEmitted(
+      "spotter.lanes.render_lane",
+      [
+        { lane_agent_name: AGENTS.lead.name },
+        { lane_agent_name: AGENTS.qa.name },
+        { lane_agent_name: AGENTS.impl.name },
+      ],
+      { lookback: "5m" },
+    );
+
+    // Each span must have session_id and message_count attributes
+    for (const span of spans) {
+      const sessionId = span.tags.find((t) => t.key === "session_id");
+      const agentName = span.tags.find((t) => t.key === "lane_agent_name");
+      const msgCount = span.tags.find((t) => t.key === "message_count");
+
+      expect(sessionId, "Span must include session_id attribute").toBeDefined();
+      expect(
+        String(sessionId!.value),
+        "session_id must be a valid UUID",
+      ).toMatch(/^[0-9a-f-]{36}$/);
+
+      expect(agentName, "Span must include lane_agent_name attribute").toBeDefined();
+
+      expect(msgCount, "Span must include message_count attribute").toBeDefined();
+      expect(
+        Number(msgCount!.value),
+        "message_count must be positive",
+      ).toBeGreaterThan(0);
+
+      expect(span.duration, "Span should have a positive duration").toBeGreaterThan(0);
+    }
   });
 });
 

@@ -190,4 +190,135 @@ defmodule SpotterWeb.SessionLiveLanesTest do
       assert html =~ "lanes-column"
     end
   end
+
+  describe "reorder_lanes" do
+    test "reorder_lanes event reorders lanes by session_id", %{
+      project: project,
+      session: session,
+      session_id: session_id
+    } do
+      {_session, team} = setup_team_session(project, session)
+
+      second_session_id = Ash.UUID.generate()
+
+      second_session =
+        Ash.create!(Session, %{
+          session_id: second_session_id,
+          transcript_dir: "/tmp/test-sessions",
+          cwd: "/home/user/project",
+          project_id: project.id,
+          team_name: "test-team",
+          agent_name: "qa-tester",
+          message_count: 1
+        })
+
+      Ash.create!(TeamMember, %{
+        agent_name: "qa-tester",
+        team_id: team.id,
+        session_id: second_session.id
+      })
+
+      create_message(session, %{
+        content: %{"blocks" => [%{"type" => "text", "text" => "Lead message"}]},
+        timestamp: ~U[2026-02-20 10:00:00Z]
+      })
+
+      create_message(second_session, %{
+        content: %{"blocks" => [%{"type" => "text", "text" => "QA message"}]},
+        timestamp: ~U[2026-02-20 10:05:00Z]
+      })
+
+      {:ok, view, _html} = live(build_conn(), "/sessions/#{session_id}")
+      render_click(view, "switch_view_mode", %{"mode" => "lanes"})
+
+      # Reorder: put qa-tester first
+      html =
+        render_click(view, "reorder_lanes", %{
+          "order" => [second_session_id, session_id]
+        })
+
+      # After reorder, qa-tester should appear first in the HTML
+      qa_pos = :binary.match(html, "qa-tester") |> elem(0)
+      lead_pos = :binary.match(html, "team-lead") |> elem(0)
+      assert qa_pos < lead_pos
+    end
+
+    test "reorder_lanes with invalid session_ids is a no-op", %{
+      project: project,
+      session: session,
+      session_id: session_id
+    } do
+      {_session, _team} = setup_team_session(project, session)
+
+      create_message(session, %{
+        content: %{"blocks" => [%{"type" => "text", "text" => "Hello"}]},
+        timestamp: ~U[2026-02-20 10:00:00Z]
+      })
+
+      {:ok, view, _html} = live(build_conn(), "/sessions/#{session_id}")
+      render_click(view, "switch_view_mode", %{"mode" => "lanes"})
+
+      # Send bogus order — should not crash
+      html =
+        render_click(view, "reorder_lanes", %{
+          "order" => ["bogus-id-1", "bogus-id-2"]
+        })
+
+      # Original lane should still be present
+      assert html =~ "team-lead"
+    end
+
+    test "reorder_lanes resets active_lane_index to 0", %{
+      project: project,
+      session: session,
+      session_id: session_id
+    } do
+      {_session, team} = setup_team_session(project, session)
+
+      second_session_id = Ash.UUID.generate()
+
+      second_session =
+        Ash.create!(Session, %{
+          session_id: second_session_id,
+          transcript_dir: "/tmp/test-sessions",
+          cwd: "/home/user/project",
+          project_id: project.id,
+          team_name: "test-team",
+          agent_name: "qa-tester",
+          message_count: 1
+        })
+
+      Ash.create!(TeamMember, %{
+        agent_name: "qa-tester",
+        team_id: team.id,
+        session_id: second_session.id
+      })
+
+      create_message(session, %{
+        content: %{"blocks" => [%{"type" => "text", "text" => "Lead msg"}]},
+        timestamp: ~U[2026-02-20 10:00:00Z]
+      })
+
+      create_message(second_session, %{
+        content: %{"blocks" => [%{"type" => "text", "text" => "QA msg"}]},
+        timestamp: ~U[2026-02-20 10:05:00Z]
+      })
+
+      {:ok, view, _html} = live(build_conn(), "/sessions/#{session_id}")
+      render_click(view, "switch_view_mode", %{"mode" => "lanes"})
+
+      # Switch to second tab
+      render_click(view, "switch_lane", %{"index" => "1"})
+
+      # Reorder — should reset active_lane_index to 0
+      html =
+        render_click(view, "reorder_lanes", %{
+          "order" => [second_session_id, session_id]
+        })
+
+      # First tab should be active (is-active class on first tab)
+      # After reorder, qa-tester is first and should be active
+      assert html =~ ~s(data-testid="lane-tab-qa-tester")
+    end
+  end
 end

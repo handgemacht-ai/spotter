@@ -61,6 +61,7 @@ defmodule SpotterWeb.TranscriptComponents do
         <%= for line <- @rendered_lines do %>
           <.transcript_row
             line={line}
+            panel_id={@panel_id}
             current_message_id={@current_message_id}
             clicked_subagent={@clicked_subagent}
             session_id={@session_id}
@@ -92,6 +93,7 @@ defmodule SpotterWeb.TranscriptComponents do
   Renders a single transcript row.
   """
   attr(:line, :map, required: true)
+  attr(:panel_id, :string, default: "transcript-messages")
   attr(:current_message_id, :any, default: nil)
   attr(:clicked_subagent, :string, default: nil)
   attr(:session_id, :string, default: nil)
@@ -105,7 +107,7 @@ defmodule SpotterWeb.TranscriptComponents do
   def transcript_row(assigns) do
     ~H"""
     <div
-      id={"msg-" <> Integer.to_string(@line.line_number)}
+      id={@panel_id <> "-msg-" <> Integer.to_string(@line.line_number)}
       data-testid="transcript-row"
       data-message-id={@line.message_id}
       data-line-number={@line.line_number}
