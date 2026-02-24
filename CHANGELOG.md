@@ -8,6 +8,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- Table-based lanes layout with CSS Grid, sticky time column, and wall clock + offset display (spotter-4iv.1, spotter-4iv.4, spotter-4iv.5)
+  - Rewrote `lanes_components.ex` from flex columns to CSS Grid table layout
+  - Sticky time column with wall clock and offset display
+  - Collapsed/expanded message cells with tool badges
+  - Expand all / collapse all / collapse idle toolbar actions
+  - Row normalization with 1-second grouping for time-aligned display
+  - Files: `lib/spotter_web/components/lanes_components.ex`, `lib/spotter/transcripts/parallel_lanes.ex`, `lib/spotter_web/live/session_live.ex`, `priv/static/assets/spotter.css`
+- Idle period detection with labeled idle rows for gaps >60 seconds (spotter-4iv.2)
+  - `ParallelLanes.compute/1` detects gaps between messages and inserts idle period markers
+  - Hatched-row CSS styling for idle periods with duration labels
+  - Files: `lib/spotter/transcripts/parallel_lanes.ex`, `lib/spotter_web/components/lanes_components.ex`
+- Inter-agent SendMessage cross-lane link badges on message headers (spotter-4iv.3)
+  - Link badges with `data-link-direction`, `data-link-peer`, `data-link-preview` attributes
+  - `data-msg-uuid` and `data-agent-name` on message cells for receiver lookup
+  - Files: `lib/spotter_web/components/lanes_components.ex`
+- SortableJS drag-and-drop column reordering on desktop (spotter-4iv.6)
+  - `SortableColumns` JS hook for desktop grid header drag-and-drop
+  - Persist column order to localStorage keyed by session ID
+  - Drag handle (grip icon) on column header hover with ghost/chosen/drag CSS feedback
+  - "Reset order" toolbar button resets to `started_at` sort
+  - Files: `assets/js/hooks/sortable_columns.js`, `assets/js/app.js`, `lib/spotter_web/components/lanes_components.ex`, `lib/spotter_web/live/session_live.ex`
+- SVG hover connectors and click drawer for inter-agent message links (spotter-4iv.7)
+  - `ConnectorOverlay` JS hook draws dashed SVG connector line with arrowhead on badge hover (100ms debounce)
+  - Highlight receiver cell with accent outline during hover
+  - Click badge to open message drawer with content preview and peer info
+  - "Jump to response" scrolls to and highlights the receiver cell
+  - SVG overlay is `pointer-events:none`, positioned absolute over grid
+  - Files: `assets/js/hooks/connector_overlay.js`, `assets/js/app.js`, `lib/spotter_web/components/lanes_components.ex`
+
+### Fixed
+
+- CSS layout: `.main-content` overflow-x clipping and `.lanes-container` flex sizing (spotter-4iv.1)
+- `sanitize_agent_name` nil guard and `format_offset` negative diff guard (spotter-4iv.5)
+- Pre-existing test isolation: timezone filter, broadcast pattern match (spotter-4iv)
+
+### Added
+
 - Team-aware auto-import of sister sessions (spotter-s0p.1)
   - `TranscriptDiscovery.build_preview/3` now extracts `team_name` and `agent_name` from JSONL first line
   - `TranscriptDiscovery.group_by_team/1` clusters previews by team name

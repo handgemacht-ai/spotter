@@ -2,6 +2,11 @@
 
 ## 2026-02-24
 
+- Team session timelines now show a structured table view with a sticky time column, making it easy to follow what each agent did and when.
+- Idle periods (gaps longer than 60 seconds) are clearly marked so you can see when agents were waiting.
+- Messages sent between agents are linked — hover over a link badge to see a connector line to the recipient, and click to open a detail drawer with a preview and jump-to-response button.
+- Lane columns can be reordered by dragging their headers, and your preferred order is remembered per session.
+- Long messages are collapsed by default with expand/collapse controls, including a toolbar to expand all, collapse all, or collapse only idle rows.
 - Team sessions can now be imported in one click and display each team member's conversation side-by-side in reorderable, fully-rendered columns.
 
 ## 2026-02-23
