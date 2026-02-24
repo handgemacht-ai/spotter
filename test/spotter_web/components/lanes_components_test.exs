@@ -371,6 +371,75 @@ defmodule SpotterWeb.LanesComponentsTest do
       assert html =~ "Bash"
       assert html =~ "Read"
     end
+
+    test "SVG connector overlay and message drawer are rendered" do
+      lanes = [
+        build_lane("agent-a", ~U[2026-02-01 10:00:00Z], ~U[2026-02-01 10:30:00Z], 1)
+      ]
+
+      rows = build_rows(lanes)
+
+      html =
+        render_component(&LanesComponents.lanes_panel/1,
+          lanes: lanes,
+          rows: rows
+        )
+
+      assert html =~ ~s(data-testid="lanes-connector-overlay")
+      assert html =~ ~s(phx-hook="ConnectorOverlay")
+      assert html =~ ~s(data-testid="lanes-message-drawer")
+      assert html =~ "lanes-drawer-close"
+      assert html =~ "Jump to response"
+    end
+
+    test "message cells carry data-msg-uuid and data-agent-name" do
+      lanes = [
+        build_lane("agent-a", ~U[2026-02-01 10:00:00Z], ~U[2026-02-01 10:30:00Z], 1)
+      ]
+
+      rows = build_rows(lanes)
+
+      html =
+        render_component(&LanesComponents.lanes_panel/1,
+          lanes: lanes,
+          rows: rows
+        )
+
+      assert html =~ ~s(data-msg-uuid="uuid-agent-a-1")
+      assert html =~ ~s(data-agent-name="agent-a")
+    end
+
+    test "link badges carry data attributes for connector hooks" do
+      lanes = [
+        build_lane("sender", ~U[2026-02-01 10:00:00Z], ~U[2026-02-01 10:30:00Z], 1),
+        build_lane("receiver", ~U[2026-02-01 10:00:00Z], ~U[2026-02-01 10:30:00Z], 1)
+      ]
+
+      # Build a message_link from sender to receiver
+      message_links = [
+        %{
+          sender: "sender",
+          recipient: "receiver",
+          timestamp: ~U[2026-02-01 10:00:00Z],
+          sender_message_uuid: "uuid-sender-1",
+          content_preview: "Hello receiver"
+        }
+      ]
+
+      rows = build_rows(lanes)
+
+      html =
+        render_component(&LanesComponents.lanes_panel/1,
+          lanes: lanes,
+          rows: rows,
+          message_links: message_links
+        )
+
+      assert html =~ ~s(data-link-direction="sent")
+      assert html =~ ~s(data-link-peer="receiver")
+      assert html =~ ~s(data-link-preview="Hello receiver")
+      assert html =~ "-&gt; receiver"
+    end
   end
 
   describe "format_duration/2" do

@@ -4274,6 +4274,115 @@ span.commit-detail-cochange-member {
   color: var(--text-primary);
 }
 
+/* --- Inter-agent connector overlay --- */
+
+.lanes-connector-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 20;
+  overflow: visible;
+}
+
+.lanes-connector-line {
+  stroke: var(--accent, #6366f1);
+  stroke-width: 2;
+  stroke-dasharray: 6 3;
+  opacity: 0.7;
+  transition: opacity 150ms ease;
+}
+
+.lanes-cell-highlighted {
+  outline: 2px solid var(--accent, #6366f1);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--accent, #6366f1) 8%, transparent);
+  transition: outline 150ms ease, background 150ms ease;
+}
+
+/* --- Message link drawer --- */
+
+.lanes-message-drawer {
+  position: absolute;
+  z-index: 30;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: var(--space-3);
+  min-width: 240px;
+  max-width: 360px;
+}
+
+.lanes-drawer-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.lanes-drawer-direction {
+  color: var(--text-secondary);
+}
+
+.lanes-drawer-peer {
+  color: var(--text-primary);
+}
+
+.lanes-drawer-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  color: var(--text-tertiary);
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.lanes-drawer-close:hover {
+  color: var(--text-primary);
+}
+
+.lanes-drawer-preview {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+  white-space: pre-wrap;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.lanes-drawer-jump {
+  display: block;
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--accent, #6366f1);
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.lanes-drawer-jump:hover {
+  background: var(--surface-3);
+}
+
+/* --- Link badge hover interactivity --- */
+
+.lanes-msg-link-badge {
+  cursor: pointer;
+  transition: background 150ms ease, transform 150ms ease;
+}
+
+.lanes-msg-link-badge:hover {
+  transform: scale(1.05);
+  filter: brightness(1.15);
+}
+
 /* --- Drag-and-drop column reordering --- */
 
 .lanes-drag-handle {

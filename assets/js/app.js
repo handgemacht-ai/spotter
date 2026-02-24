@@ -14,6 +14,7 @@ import { createFlowGraphHook } from "./flow_graph"
 import { initGlobalSearchPalette } from "./global_search_palette"
 import LaneDrag from "./hooks/lane_drag"
 import SortableColumns from "./hooks/sortable_columns"
+import ConnectorOverlay from "./hooks/connector_overlay"
 
 hljs.registerLanguage("elixir", elixir)
 hljs.registerLanguage("javascript", javascript)
@@ -533,6 +534,7 @@ Hooks.SnippetHighlighter = {
 
 Hooks.LaneDrag = LaneDrag
 Hooks.SortableColumns = SortableColumns
+Hooks.ConnectorOverlay = ConnectorOverlay
 
 const csrfToken = document.querySelector("meta[name='csrf-token']")?.getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {

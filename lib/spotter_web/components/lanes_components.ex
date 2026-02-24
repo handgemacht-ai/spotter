@@ -105,6 +105,25 @@ defmodule SpotterWeb.LanesComponents do
         </div>
       </div>
 
+      <%!-- SVG connector overlay --%>
+      <svg
+        id="lanes-connector-overlay"
+        class="lanes-connector-overlay"
+        data-testid="lanes-connector-overlay"
+        phx-hook="ConnectorOverlay"
+      ></svg>
+
+      <%!-- Message link drawer --%>
+      <div id="lanes-message-drawer" class="lanes-message-drawer" data-testid="lanes-message-drawer" style="display: none;">
+        <div class="lanes-drawer-header">
+          <span class="lanes-drawer-direction" data-drawer-direction></span>
+          <span class="lanes-drawer-peer" data-drawer-peer></span>
+          <button class="lanes-drawer-close" data-drawer-close>&times;</button>
+        </div>
+        <div class="lanes-drawer-preview" data-drawer-preview></div>
+        <button class="lanes-drawer-jump" data-drawer-jump>Jump to response</button>
+      </div>
+
       <%!-- Toolbar --%>
       <div :if={@rows != []} class="lanes-toolbar" data-testid="lanes-toolbar">
         <button phx-click="expand_all" class="lanes-toolbar-btn">Expand all</button>
@@ -209,6 +228,8 @@ defmodule SpotterWeb.LanesComponents do
     <div
       class={"lanes-cell#{if @is_expanded, do: " lanes-msg-expanded", else: " lanes-msg-collapsed"}"}
       data-testid={"lanes-cell-#{sanitize_agent_name(@agent_name)}"}
+      data-msg-uuid={is_map(@msg) && (Map.get(@msg, :uuid) || Map.get(@msg, :id))}
+      data-agent-name={@agent_name}
       phx-click="toggle_message_expand"
       phx-value-message-id={@msg_id}
     >
@@ -220,7 +241,13 @@ defmodule SpotterWeb.LanesComponents do
           <span class="lanes-tool-badge"><%= tool %></span>
         <% end %>
         <%= for link <- @links_for_msg do %>
-          <span class={"lanes-msg-link-badge lanes-link-#{link.direction}"}>
+          <span
+            class={"lanes-msg-link-badge lanes-link-#{link.direction}"}
+            data-link-direction={link.direction}
+            data-link-peer={link.peer}
+            data-link-preview={link.content_preview}
+            data-link-sender-uuid={link[:sender_message_uuid]}
+          >
             <%= link.label %>
           </span>
         <% end %>
@@ -306,12 +333,29 @@ defmodule SpotterWeb.LanesComponents do
     sent =
       links
       |> Enum.filter(&(&1.sender == agent_name && &1.sender_message_uuid == msg_uuid))
-      |> Enum.map(&%{direction: :sent, label: "-> #{&1.recipient}"})
+      |> Enum.map(
+        &%{
+          direction: :sent,
+          label: "-> #{&1.recipient}",
+          peer: &1.recipient,
+          content_preview: Map.get(&1, :content_preview, ""),
+          timestamp: &1.timestamp
+        }
+      )
 
     received =
       links
       |> Enum.filter(&(&1.recipient == agent_name))
-      |> Enum.map(&%{direction: :received, label: "<- #{&1.sender}"})
+      |> Enum.map(
+        &%{
+          direction: :received,
+          label: "<- #{&1.sender}",
+          peer: &1.sender,
+          sender_message_uuid: &1.sender_message_uuid,
+          content_preview: Map.get(&1, :content_preview, ""),
+          timestamp: &1.timestamp
+        }
+      )
 
     sent ++ received
   end
