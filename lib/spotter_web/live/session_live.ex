@@ -69,7 +69,12 @@ defmodule SpotterWeb.SessionLive do
         transcript_link_fileset: link_fileset,
         view_mode: :list,
         lanes: [],
-        active_lane_index: 0
+        active_lane_index: 0,
+        timeline: nil,
+        overlaps: [],
+        message_links: [],
+        rows: [],
+        expanded_messages: %{}
       )
       |> mount_computers(%{
         transcript_view: %{messages: messages, session_cwd: session_cwd}
@@ -286,21 +291,63 @@ defmodule SpotterWeb.SessionLive do
 
   def handle_event("reorder_lanes", _params, socket), do: {:noreply, socket}
 
+  def handle_event("toggle_message_expand", %{"message-id" => msg_id}, socket)
+      when is_binary(msg_id) and byte_size(msg_id) < 256 do
+    expanded = socket.assigns.expanded_messages
+    new_expanded = Map.update(expanded, msg_id, true, &(!&1))
+    {:noreply, assign(socket, expanded_messages: new_expanded)}
+  end
+
+  def handle_event("toggle_message_expand", _params, socket), do: {:noreply, socket}
+
+  def handle_event("expand_all", _params, socket) do
+    all_ids = collect_message_ids(socket.assigns.rows)
+    expanded = Map.new(all_ids, &{&1, true})
+    {:noreply, assign(socket, expanded_messages: expanded)}
+  end
+
+  def handle_event("collapse_all", _params, socket) do
+    {:noreply, assign(socket, expanded_messages: %{})}
+  end
+
+  def handle_event("collapse_idle", _params, socket) do
+    {:noreply, socket}
+  end
+
+  defp collect_message_ids(rows) do
+    rows
+    |> Enum.flat_map(fn row ->
+      row.cells
+      |> Map.values()
+      |> Enum.flat_map(fn
+        %{id: id} when not is_nil(id) -> [id]
+        %{uuid: uuid} when not is_nil(uuid) -> [uuid]
+        _ -> []
+      end)
+    end)
+  end
+
   defp load_lanes_data(socket) do
     team_name = socket.assigns.session_record && socket.assigns.session_record.team_name
 
     case team_name && Team |> Ash.Query.filter(name == ^team_name) |> Ash.read_one() do
       {:ok, %Team{} = team} ->
         case ParallelLanes.compute(team.id) do
-          {:ok, %{lanes: lanes}} ->
-            assign(socket, lanes: lanes)
+          {:ok, %{lanes: lanes} = result} ->
+            assign(socket,
+              lanes: lanes,
+              timeline: result.timeline,
+              overlaps: result.overlaps,
+              message_links: Map.get(result, :message_links, []),
+              rows: Map.get(result, :rows, [])
+            )
 
           _ ->
-            assign(socket, lanes: [])
+            assign(socket, lanes: [], timeline: nil, overlaps: [], message_links: [], rows: [])
         end
 
       _ ->
-        assign(socket, lanes: [])
+        assign(socket, lanes: [], timeline: nil, overlaps: [], message_links: [], rows: [])
     end
   end
 
@@ -517,7 +564,14 @@ defmodule SpotterWeb.SessionLive do
       <.distilled_summary_section session_record={@session_record} />
       <div class="session-layout">
         <%= if @view_mode == :lanes do %>
-          <.lanes_panel lanes={@lanes} active_lane_index={@active_lane_index} />
+          <.lanes_panel
+            lanes={@lanes}
+            rows={@rows}
+            timeline={@timeline}
+            message_links={@message_links}
+            active_lane_index={@active_lane_index}
+            expanded_messages={@expanded_messages}
+          />
         <% else %>
           <div id="transcript-panel" class="session-transcript" data-testid="transcript-container">
             <div class="transcript-header">

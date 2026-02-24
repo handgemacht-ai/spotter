@@ -411,6 +411,213 @@ defmodule Spotter.Transcripts.ParallelLanesTest do
     end
   end
 
+  describe "idle period detection" do
+    test "lane includes idle_periods for gaps between consecutive messages", %{
+      team: team,
+      project: project
+    } do
+      # Three messages with a 10-minute gap between msg2 and msg3
+      create_member_with_messages(team, project, "idle-agent", [
+        {:user, :user, ~U[2026-02-01 12:00:00Z]},
+        {:assistant, :assistant, ~U[2026-02-01 12:01:00Z]},
+        # 10-minute gap here
+        {:user, :user, ~U[2026-02-01 12:11:00Z]},
+        {:assistant, :assistant, ~U[2026-02-01 12:12:00Z]}
+      ])
+
+      {:ok, result} = ParallelLanes.compute(team.id)
+
+      lane = hd(result.lanes)
+      assert Map.has_key?(lane, :idle_periods), "lane should include :idle_periods key"
+      assert is_list(lane.idle_periods)
+
+      # Should detect at least one idle period (the 10-minute gap)
+      assert lane.idle_periods != []
+
+      idle = hd(lane.idle_periods)
+      assert %{start: _, end: _, duration_seconds: _} = idle
+      assert idle.duration_seconds >= 600
+    end
+
+    test "no idle periods when messages are closely spaced", %{team: team, project: project} do
+      # Messages only 1 second apart — no significant idle gap
+      create_member_with_messages(team, project, "busy-agent", [
+        {:user, :user, ~U[2026-02-01 12:00:00Z]},
+        {:assistant, :assistant, ~U[2026-02-01 12:00:01Z]},
+        {:user, :user, ~U[2026-02-01 12:00:02Z]},
+        {:assistant, :assistant, ~U[2026-02-01 12:00:03Z]}
+      ])
+
+      {:ok, result} = ParallelLanes.compute(team.id)
+
+      lane = hd(result.lanes)
+      assert Map.has_key?(lane, :idle_periods)
+      # With default threshold (e.g. 60s), no idle periods expected
+      assert lane.idle_periods == []
+    end
+  end
+
+  describe "inter-agent message linking" do
+    test "compute/1 result includes message_links between lanes", %{
+      team: team,
+      project: project
+    } do
+      # Agent A sends a message to Agent B via SendMessage tool
+      _session_a =
+        create_member_with_messages(team, project, "agent-a", [
+          {:user, :user, ~U[2026-02-01 12:00:00Z]},
+          {:assistant, :assistant, ~U[2026-02-01 12:00:01Z]}
+        ])
+
+      _session_b =
+        create_member_with_messages(team, project, "agent-b", [
+          {:user, :user, ~U[2026-02-01 12:00:02Z]},
+          {:assistant, :assistant, ~U[2026-02-01 12:00:03Z]}
+        ])
+
+      # Create a SendMessage tool call linking agent-a → agent-b
+      create_send_message_tool_call(team, "agent-a", "agent-b", ~U[2026-02-01 12:00:01Z])
+
+      {:ok, result} = ParallelLanes.compute(team.id)
+
+      assert Map.has_key?(result, :message_links),
+             "compute/1 result should include :message_links"
+
+      assert is_list(result.message_links)
+      assert result.message_links != []
+
+      link = hd(result.message_links)
+      assert link.sender == "agent-a"
+      assert link.recipient == "agent-b"
+      assert %DateTime{} = link.timestamp
+    end
+
+    test "no message_links when no SendMessage tool calls exist", %{
+      team: team,
+      project: project
+    } do
+      create_member_with_messages(team, project, "solo-a", [
+        {:user, :user, ~U[2026-02-01 12:00:00Z]},
+        {:assistant, :assistant, ~U[2026-02-01 12:00:01Z]}
+      ])
+
+      create_member_with_messages(team, project, "solo-b", [
+        {:user, :user, ~U[2026-02-01 12:00:02Z]},
+        {:assistant, :assistant, ~U[2026-02-01 12:00:03Z]}
+      ])
+
+      {:ok, result} = ParallelLanes.compute(team.id)
+
+      assert Map.has_key?(result, :message_links)
+      assert result.message_links == []
+    end
+  end
+
+  describe "row alignment" do
+    test "align_rows/1 normalizes turns across lanes into time-ordered rows", %{
+      team: team,
+      project: project
+    } do
+      # Agent A: messages at :00, :02
+      # Agent B: messages at :01, :03
+      # Expected row order: A(:00), B(:01), A(:02), B(:03)
+      create_member_with_messages(team, project, "row-agent-a", [
+        {:user, :user, ~U[2026-02-01 12:00:00Z]},
+        {:assistant, :assistant, ~U[2026-02-01 12:00:02Z]}
+      ])
+
+      create_member_with_messages(team, project, "row-agent-b", [
+        {:user, :user, ~U[2026-02-01 12:00:01Z]},
+        {:assistant, :assistant, ~U[2026-02-01 12:00:03Z]}
+      ])
+
+      {:ok, result} = ParallelLanes.compute(team.id)
+
+      assert Map.has_key?(result, :rows),
+             "compute/1 result should include :rows for table alignment"
+
+      assert is_list(result.rows)
+      assert result.rows != []
+
+      # Each row should have a timestamp and a map of lane_name => message (or nil)
+      first_row = hd(result.rows)
+      assert %{timestamp: %DateTime{}, cells: cells} = first_row
+      assert is_map(cells)
+
+      # Rows should be sorted by timestamp
+      timestamps = Enum.map(result.rows, & &1.timestamp)
+      assert timestamps == Enum.sort(timestamps, DateTime)
+    end
+
+    test "align_rows/1 fills nil cells for lanes with no message at that timestamp", %{
+      team: team,
+      project: project
+    } do
+      # Agent A has a message at :00, Agent B does not
+      create_member_with_messages(team, project, "fill-agent-a", [
+        {:user, :user, ~U[2026-02-01 12:00:00Z]}
+      ])
+
+      create_member_with_messages(team, project, "fill-agent-b", [
+        {:user, :user, ~U[2026-02-01 12:00:05Z]}
+      ])
+
+      {:ok, result} = ParallelLanes.compute(team.id)
+
+      assert result.rows != []
+
+      # First row (at :00) should have fill-agent-a present, fill-agent-b nil
+      first_row = hd(result.rows)
+      assert first_row.cells["fill-agent-a"] != nil
+      assert first_row.cells["fill-agent-b"] == nil
+
+      # Last row (at :05) should have fill-agent-b present, fill-agent-a nil
+      last_row = List.last(result.rows)
+      assert last_row.cells["fill-agent-b"] != nil
+      assert last_row.cells["fill-agent-a"] == nil
+    end
+  end
+
+  defp create_send_message_tool_call(team, sender_agent, recipient_agent, timestamp) do
+    # Find the sender's session via team member
+    team = Ash.load!(team, team_members: [:session])
+    sender_member = Enum.find(team.team_members, &(&1.agent_name == sender_agent))
+
+    # Create a SendMessage tool call on the sender's session
+    tool_use_id = Ash.UUID.generate()
+
+    Ash.create!(Spotter.Transcripts.ToolCall, %{
+      tool_use_id: tool_use_id,
+      tool_name: "SendMessage",
+      session_id: sender_member.session_id
+    })
+
+    # Create the assistant message with SendMessage content block
+    Ash.create!(Spotter.Transcripts.Message, %{
+      uuid: Ash.UUID.generate(),
+      type: :assistant,
+      role: :assistant,
+      content: %{
+        "blocks" => [
+          %{
+            "type" => "tool_use",
+            "id" => tool_use_id,
+            "name" => "SendMessage",
+            "input" => %{
+              "type" => "message",
+              "recipient" => recipient_agent,
+              "content" => "test inter-agent message"
+            }
+          }
+        ]
+      },
+      timestamp: timestamp,
+      is_sidechain: false,
+      tool_use_id: tool_use_id,
+      session_id: sender_member.session_id
+    })
+  end
+
   defp create_member_with_messages(team, project, agent_name, messages_data) do
     session =
       Ash.create!(Spotter.Transcripts.Session, %{

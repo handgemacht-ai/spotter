@@ -1,9 +1,9 @@
 defmodule SpotterWeb.LanesComponents do
   @moduledoc """
-  HEEx components for parallel transcript lanes view.
+  HEEx components for the time-normalized table lanes view.
 
-  Renders agent transcripts as side-by-side independently scrollable columns,
-  each piped through the TranscriptRenderer pipeline for full-fidelity display.
+  Renders agent transcripts as a CSS Grid table with a sticky time column,
+  agent header row, and collapsed/expandable message cells.
   """
   use Phoenix.Component
 
@@ -12,18 +12,19 @@ defmodule SpotterWeb.LanesComponents do
   @doc "Returns the CSS variable name for a given lane index."
   def lane_color(index), do: Enum.at(@lane_colors, index, "--lane-agent-6")
 
-  @doc """
-  Renders the parallel lanes panel with independently scrollable lane columns.
-
-  ## Assigns
-
-    * `:lanes` (required) - list of lane maps with agent_name, session, messages, started_at, ended_at
-    * `:active_lane_index` - index of the active lane for responsive tab view (default 0)
-  """
   attr(:lanes, :list, required: true)
+  attr(:rows, :list, default: [])
+  attr(:timeline, :map, default: nil)
+  attr(:message_links, :list, default: [])
   attr(:active_lane_index, :integer, default: 0)
+  attr(:expanded_messages, :map, default: %{})
 
   def lanes_panel(assigns) do
+    lane_index =
+      Map.new(Enum.with_index(assigns.lanes), fn {lane, idx} -> {lane.agent_name, idx} end)
+
+    assigns = assign(assigns, :lane_index, lane_index)
+
     ~H"""
     <div id="lanes-scroll" class="lanes-container" data-testid="lanes-panel">
       <div
@@ -48,93 +49,284 @@ defmodule SpotterWeb.LanesComponents do
           <%= lane.agent_name %>
         </button>
       </div>
-      <div class="lanes-columns-row">
-        <.lane_column
+
+      <%!-- Desktop: table grid layout --%>
+      <div class="lanes-grid" data-testid="lanes-grid" style={"grid-template-columns: 100px repeat(#{length(@lanes)}, minmax(280px, 420px))"}>
+        <%!-- Header row: time + agent headers --%>
+        <div class="lanes-grid-header lanes-time-col" data-testid="lanes-time-header">
+          Time
+        </div>
+        <div
           :for={{lane, idx} <- Enum.with_index(@lanes)}
-          lane={lane}
-          color={lane_color(idx)}
-          active={idx == @active_lane_index}
-          role="tabpanel"
-        />
+          class="lanes-grid-header lanes-agent-header"
+          data-testid={"lanes-agent-header-#{sanitize_agent_name(lane.agent_name)}"}
+          style={"border-bottom: 3px solid var(#{lane_color(idx)})"}
+        >
+          <span style={"width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(#{lane_color(idx)})"}></span>
+          <span data-testid="lane-name" style="font-weight: 600;"><%= lane.agent_name %></span>
+          <span style="font-size: var(--text-xs); color: var(--text-secondary);">
+            <%= format_duration(lane.started_at, lane.ended_at) %>
+          </span>
+          <span style="font-size: var(--text-xs); color: var(--text-secondary);">
+            <%= length(lane.messages) %>
+          </span>
+        </div>
+
+        <%!-- Data rows --%>
+        <%= for row <- @rows do %>
+          <.table_row
+            row={row}
+            lanes={@lanes}
+            lane_index={@lane_index}
+            timeline={@timeline}
+            message_links={@message_links}
+            expanded_messages={@expanded_messages}
+          />
+        <% end %>
+
+        <%!-- Empty state --%>
+        <div :if={@rows == [] && @lanes != []} class="lanes-grid-empty" style={"grid-column: 1 / -1; padding: var(--space-4); color: var(--text-secondary); text-align: center;"}>
+          No messages to display.
+        </div>
+      </div>
+
+      <%!-- Toolbar --%>
+      <div :if={@rows != []} class="lanes-toolbar" data-testid="lanes-toolbar">
+        <button phx-click="expand_all" class="lanes-toolbar-btn">Expand all</button>
+        <button phx-click="collapse_all" class="lanes-toolbar-btn">Collapse all</button>
+        <button phx-click="collapse_idle" class="lanes-toolbar-btn">Hide idle</button>
       </div>
     </div>
     """
   end
 
-  @doc """
-  Renders a sticky lane header with agent name, colored dot, duration, and message count.
+  attr(:row, :map, required: true)
+  attr(:lanes, :list, required: true)
+  attr(:lane_index, :map, required: true)
+  attr(:timeline, :map, default: nil)
+  attr(:message_links, :list, default: [])
+  attr(:expanded_messages, :map, default: %{})
 
-  ## Assigns
-
-    * `:lane` (required) - lane map with agent_name, started_at, ended_at, messages
-    * `:color` (required) - CSS variable name (e.g. "--lane-lead")
-  """
-  attr(:lane, :map, required: true)
-  attr(:color, :string, required: true)
-
-  def lane_header(assigns) do
-    assigns =
-      assign(assigns, :duration, format_duration(assigns.lane.started_at, assigns.lane.ended_at))
-
-    assigns = assign(assigns, :msg_count, length(assigns.lane.messages))
+  defp table_row(assigns) do
+    offset = format_offset(assigns.row.timestamp, assigns.timeline)
+    wall_clock = format_wall_clock(assigns.row.timestamp)
+    is_idle = Map.get(assigns.row, :type) == :idle
+    assigns = assign(assigns, offset: offset, wall_clock: wall_clock, is_idle: is_idle)
 
     ~H"""
-    <div class="lanes-header" data-testid="lane-header">
-      <span style={"width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(#{@color})"}></span>
-      <span data-testid="lane-name" style="font-weight: 600;"><%= @lane.agent_name %></span>
-      <span data-testid="lane-duration" style="font-size: var(--text-xs); color: var(--text-secondary);"><%= @duration %></span>
-      <span style="font-size: var(--text-xs); color: var(--text-secondary);"><%= @msg_count %></span>
+    <div class={"lanes-time-col lanes-row-time#{if @is_idle, do: " lanes-idle-time", else: ""}"} data-testid="lanes-row">
+      <span class="lanes-wall-clock"><%= @wall_clock %></span>
+      <span class="lanes-offset"><%= @offset %></span>
     </div>
+    <%= for lane <- @lanes do %>
+      <.table_cell
+        cell={Map.get(@row.cells, lane.agent_name)}
+        agent_name={lane.agent_name}
+        lane_idx={Map.get(@lane_index, lane.agent_name, 0)}
+        is_idle={@is_idle}
+        message_links={@message_links}
+        expanded_messages={@expanded_messages}
+      />
+    <% end %>
     """
   end
 
-  @doc """
-  Renders a single lane column with header and message entries.
+  attr(:cell, :any, default: nil)
+  attr(:agent_name, :string, required: true)
+  attr(:lane_idx, :integer, required: true)
+  attr(:is_idle, :boolean, default: false)
+  attr(:message_links, :list, default: [])
+  attr(:expanded_messages, :map, default: %{})
 
-  ## Assigns
+  defp table_cell(%{cell: nil, is_idle: false} = assigns) do
+    ~H"""
+    <div class="lanes-cell lanes-cell-empty" data-testid={"lanes-cell-#{sanitize_agent_name(@agent_name)}"}></div>
+    """
+  end
 
-    * `:lane` (required) - lane map with agent_name, messages, started_at, ended_at
-    * `:color` (required) - CSS variable name (e.g. "--lane-agent-1")
-    * `:active` - whether this lane is the active tab (default false)
-    * `:role` - ARIA role for the container (default nil)
-  """
-  attr(:lane, :map, required: true)
-  attr(:color, :string, required: true)
-  attr(:active, :boolean, default: false)
-  attr(:role, :string, default: nil)
-
-  def lane_column(assigns) do
-    rendered = Map.get(assigns.lane, :rendered_lines, [])
-    panel_id = "lane-transcript-#{sanitize_agent_name(assigns.lane.agent_name)}"
-
-    assigns =
-      assigns
-      |> assign(:rendered_lines, rendered)
-      |> assign(:panel_id, panel_id)
+  defp table_cell(%{is_idle: true} = assigns) do
+    idle_duration = if is_map(assigns.cell), do: Map.get(assigns.cell, :idle_duration), else: nil
+    assigns = assign(assigns, :idle_duration, idle_duration)
 
     ~H"""
     <div
-      class={"lanes-column#{if @active, do: " is-active", else: ""}"}
-      data-testid={"lane-column-#{sanitize_agent_name(@lane.agent_name)}"}
-      style={"border-left: 3px solid var(#{@color}); overflow-y: auto;"}
-      role={@role}
+      class="lanes-cell lanes-idle-row"
+      data-testid={"lanes-cell-#{sanitize_agent_name(@agent_name)}"}
+      style={"background: color-mix(in srgb, var(#{lane_color(@lane_idx)}) 15%, transparent)"}
     >
-      <.lane_header lane={@lane} color={@color} />
-      <%= if @rendered_lines != [] do %>
-        <SpotterWeb.TranscriptComponents.transcript_panel
-          rendered_lines={@rendered_lines}
-          panel_id={@panel_id}
-          empty_message="No messages."
-        />
-      <% else %>
-        <p class="transcript-empty" data-testid="transcript-empty">No messages.</p>
-      <% end %>
+      <span :if={@idle_duration} class="lanes-idle-label">
+        idle <%= format_seconds(@idle_duration) %>
+      </span>
     </div>
     """
   end
 
-  defp format_duration(started_at, ended_at)
-       when not is_nil(started_at) and not is_nil(ended_at) do
+  defp table_cell(assigns) do
+    msg = assigns.cell
+    msg_id = if is_map(msg), do: Map.get(msg, :id) || Map.get(msg, :uuid), else: nil
+    is_expanded = msg_id && Map.get(assigns.expanded_messages, msg_id, false)
+    role = if is_map(msg), do: Map.get(msg, :role, :assistant), else: :assistant
+    content = if is_map(msg), do: Map.get(msg, :content), else: nil
+    preview = content_preview(content)
+    tools = extract_tools(content)
+    links_for_msg = find_message_links(assigns.message_links, assigns.agent_name, msg)
+    duration_class = message_duration_class(msg)
+
+    assigns =
+      assign(assigns,
+        msg: msg,
+        msg_id: msg_id,
+        is_expanded: is_expanded,
+        role: role,
+        preview: preview,
+        tools: tools,
+        links_for_msg: links_for_msg,
+        duration_class: duration_class
+      )
+
+    ~H"""
+    <div
+      class={"lanes-cell#{if @is_expanded, do: " lanes-msg-expanded", else: " lanes-msg-collapsed"}"}
+      data-testid={"lanes-cell-#{sanitize_agent_name(@agent_name)}"}
+      phx-click="toggle_message_expand"
+      phx-value-message-id={@msg_id}
+    >
+      <div class="lanes-msg-header">
+        <span class="lanes-msg-chevron"><%= if @is_expanded, do: "\u25BC", else: "\u25B6" %></span>
+        <span class={"lanes-msg-role lanes-role-#{@role}"}><%= @role %></span>
+        <span :if={@duration_class} class={"lanes-msg-duration #{@duration_class}"}></span>
+        <%= for tool <- @tools do %>
+          <span class="lanes-tool-badge"><%= tool %></span>
+        <% end %>
+        <%= for link <- @links_for_msg do %>
+          <span class={"lanes-msg-link-badge lanes-link-#{link.direction}"}>
+            <%= link.label %>
+          </span>
+        <% end %>
+        <span :if={!@is_expanded} class="lanes-msg-preview"><%= @preview %></span>
+      </div>
+      <div :if={@is_expanded} class="lanes-msg-content">
+        <.expanded_message_content msg={@msg} />
+      </div>
+    </div>
+    """
+  end
+
+  attr(:msg, :map, required: true)
+
+  defp expanded_message_content(assigns) do
+    content = Map.get(assigns.msg, :content)
+    text = extract_text(content)
+    assigns = assign(assigns, :text, text)
+
+    ~H"""
+    <pre class="lanes-msg-text"><%= @text %></pre>
+    """
+  end
+
+  # --- Helpers ---
+
+  defp content_preview(nil), do: ""
+
+  defp content_preview(content) when is_map(content) do
+    text = extract_text(content)
+    if String.length(text) > 80, do: String.slice(text, 0, 80) <> "...", else: text
+  end
+
+  defp content_preview(content) when is_binary(content) do
+    if String.length(content) > 80, do: String.slice(content, 0, 80) <> "...", else: content
+  end
+
+  defp content_preview(_), do: ""
+
+  defp extract_text(content) when is_map(content) do
+    blocks = Map.get(content, "blocks", [])
+
+    blocks
+    |> Enum.flat_map(fn
+      %{"type" => "text", "text" => text} -> [text]
+      _ -> []
+    end)
+    |> Enum.join("\n")
+    |> case do
+      "" -> Map.get(content, "text", "")
+      text -> text
+    end
+  end
+
+  defp extract_text(content) when is_binary(content), do: content
+  defp extract_text(_), do: ""
+
+  defp extract_tools(nil), do: []
+
+  defp extract_tools(content) when is_map(content) do
+    blocks = Map.get(content, "blocks", [])
+
+    tools =
+      blocks
+      |> Enum.flat_map(fn
+        %{"type" => "tool_use", "name" => name} -> [name]
+        _ -> []
+      end)
+      |> Enum.uniq()
+
+    if length(tools) > 3 do
+      ["#{length(tools)} tools"]
+    else
+      tools
+    end
+  end
+
+  defp extract_tools(_), do: []
+
+  defp find_message_links(links, agent_name, msg) when is_list(links) and is_map(msg) do
+    msg_uuid = Map.get(msg, :uuid)
+
+    sent =
+      links
+      |> Enum.filter(&(&1.sender == agent_name && &1.sender_message_uuid == msg_uuid))
+      |> Enum.map(&%{direction: :sent, label: "-> #{&1.recipient}"})
+
+    received =
+      links
+      |> Enum.filter(&(&1.recipient == agent_name))
+      |> Enum.map(&%{direction: :received, label: "<- #{&1.sender}"})
+
+    sent ++ received
+  end
+
+  defp find_message_links(_, _, _), do: []
+
+  defp message_duration_class(msg) when is_map(msg) do
+    # Could compute from consecutive messages; for now return nil
+    nil
+  end
+
+  defp message_duration_class(_), do: nil
+
+  defp format_wall_clock(nil), do: ""
+
+  defp format_wall_clock(%DateTime{} = dt) do
+    Calendar.strftime(dt, "%H:%M:%S")
+  end
+
+  defp format_wall_clock(_), do: ""
+
+  defp format_offset(_ts, nil), do: ""
+  defp format_offset(nil, _timeline), do: ""
+
+  defp format_offset(%DateTime{} = ts, %{earliest: %DateTime{} = earliest}) do
+    diff = max(DateTime.diff(ts, earliest, :second), 0)
+    minutes = div(diff, 60)
+    seconds = rem(diff, 60)
+    "+#{minutes}:#{String.pad_leading("#{seconds}", 2, "0")}"
+  end
+
+  defp format_offset(_, _), do: ""
+
+  @doc false
+  def format_duration(started_at, ended_at)
+      when not is_nil(started_at) and not is_nil(ended_at) do
     diff = max(DateTime.diff(ended_at, started_at, :second), 0)
     hours = div(diff, 3600)
     minutes = div(rem(diff, 3600), 60)
@@ -147,9 +339,23 @@ defmodule SpotterWeb.LanesComponents do
     end
   end
 
-  defp format_duration(_, _), do: ""
+  def format_duration(_, _), do: ""
+
+  defp format_seconds(nil), do: ""
+
+  defp format_seconds(seconds) when is_integer(seconds) do
+    cond do
+      seconds >= 3600 -> "#{div(seconds, 3600)}h #{div(rem(seconds, 3600), 60)}m"
+      seconds >= 60 -> "#{div(seconds, 60)}m #{rem(seconds, 60)}s"
+      true -> "#{seconds}s"
+    end
+  end
+
+  defp format_seconds(_), do: ""
 
   @doc "Sanitizes an agent name for use in data-testid attributes: lowercase, spaces to hyphens."
+  def sanitize_agent_name(nil), do: "unknown"
+
   def sanitize_agent_name(name) when is_binary(name) do
     name |> String.downcase() |> String.replace(" ", "-")
   end

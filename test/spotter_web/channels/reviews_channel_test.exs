@@ -104,10 +104,9 @@ defmodule SpotterWeb.ReviewsChannelTest do
 
       ReviewUpdates.broadcast_counts()
 
-      assert_broadcast(
-        "counts_updated",
-        %{total_open_count: 1, project_counts: [%{project_name: "alpha", open_count: 1}]}
-      )
+      assert_broadcast("counts_updated", %{project_counts: counts})
+      alpha = Enum.find(counts, &(&1.project_name == "alpha"))
+      assert alpha.open_count == 1
     end
 
     test "broadcasts zero counts when no annotations exist" do

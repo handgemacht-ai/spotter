@@ -187,7 +187,7 @@ defmodule SpotterWeb.SessionLiveLanesTest do
       assert html =~ "lanes-container"
       assert html =~ "team-lead"
       assert html =~ "qa-tester"
-      assert html =~ "lanes-column"
+      assert html =~ "lanes-grid"
     end
   end
 

@@ -11,6 +11,8 @@ defmodule Spotter.Transcripts.ParallelLanes do
   # thinking, progress, system, file_history_snapshot are non-renderable noise.
   @visible_types [:user, :assistant, :tool_result]
 
+  @idle_threshold_seconds 60
+
   @spec compute(String.t()) :: {:ok, map()} | {:error, :not_found | term()}
   def compute(team_id) do
     Tracer.with_span "spotter.parallel_lanes.compute" do
@@ -55,6 +57,11 @@ defmodule Spotter.Transcripts.ParallelLanes do
           Tracer.set_attribute("spotter.lane_count", length(lanes))
           Tracer.set_attribute("spotter.overlap_count", length(overlaps))
 
+          idle_period_count =
+            lanes |> Enum.map(&length(Map.get(&1, :idle_periods, []))) |> Enum.sum()
+
+          Tracer.set_attribute("spotter.idle_period_count", idle_period_count)
+
           Tracer.set_attribute(
             "spotter.message_count",
             lanes |> Enum.map(&length(&1.messages)) |> Enum.sum()
@@ -77,7 +84,21 @@ defmodule Spotter.Transcripts.ParallelLanes do
             %{team_id: team_id, lane_count: length(lanes)}
           )
 
-          {:ok, %{team: team, lanes: lanes, timeline: timeline, overlaps: overlaps}}
+          message_links = extract_message_links(lanes)
+          rows = align_rows(lanes)
+
+          Tracer.set_attribute("spotter.message_link_count", length(message_links))
+          Tracer.set_attribute("spotter.row_count", length(rows))
+
+          {:ok,
+           %{
+             team: team,
+             lanes: lanes,
+             timeline: timeline,
+             overlaps: overlaps,
+             message_links: message_links,
+             rows: rows
+           }}
 
         {:error, error} ->
           Tracer.set_status(:error, inspect(error))
@@ -193,15 +214,112 @@ defmodule Spotter.Transcripts.ParallelLanes do
         TranscriptRenderer.render(render_messages, opts)
       end
 
+    idle_periods = compute_idle_periods(messages)
+
     %{
       agent_name: team_member.agent_name,
       session: session,
       team_member: team_member,
       messages: messages,
       rendered_lines: rendered_lines,
+      idle_periods: idle_periods,
       started_at: truncate_dt(session.started_at) || (first && first.timestamp),
       ended_at: truncate_dt(session.ended_at) || (last && last.timestamp)
     }
+  end
+
+  defp compute_idle_periods(messages) when length(messages) < 2, do: []
+
+  defp compute_idle_periods(messages) do
+    messages
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.flat_map(&maybe_idle_gap/1)
+  end
+
+  defp maybe_idle_gap([%{timestamp: ts_a}, %{timestamp: ts_b}])
+       when not is_nil(ts_a) and not is_nil(ts_b) do
+    gap = DateTime.diff(ts_b, ts_a, :second)
+
+    if gap > @idle_threshold_seconds,
+      do: [%{start: ts_a, end: ts_b, duration_seconds: gap}],
+      else: []
+  end
+
+  defp maybe_idle_gap(_pair), do: []
+
+  defp extract_message_links(lanes) do
+    lanes
+    |> Enum.flat_map(fn lane ->
+      lane.messages
+      |> Enum.flat_map(fn msg ->
+        extract_send_messages(msg, lane.agent_name)
+      end)
+    end)
+    |> Enum.sort_by(& &1.timestamp, DateTime)
+  end
+
+  defp extract_send_messages(%{type: :assistant, content: content} = msg, sender_name)
+       when is_map(content) do
+    blocks = Map.get(content, "blocks", [])
+
+    blocks
+    |> Enum.filter(fn block ->
+      Map.get(block, "type") == "tool_use" && Map.get(block, "name") == "SendMessage"
+    end)
+    |> Enum.map(fn block ->
+      input = Map.get(block, "input", %{})
+
+      %{
+        sender: sender_name,
+        recipient: Map.get(input, "recipient", "unknown"),
+        timestamp: msg.timestamp,
+        sender_message_uuid: msg.uuid,
+        content_preview: String.slice(Map.get(input, "content", ""), 0, 80)
+      }
+    end)
+  end
+
+  defp extract_send_messages(_msg, _sender_name), do: []
+
+  defp align_rows(lanes) do
+    all_agent_names = Enum.map(lanes, & &1.agent_name)
+
+    # Build {timestamp, agent_name, message} tuples from all lanes
+    all_entries =
+      lanes
+      |> Enum.flat_map(fn lane ->
+        Enum.map(lane.messages, fn msg ->
+          {msg.timestamp, lane.agent_name, msg}
+        end)
+      end)
+      |> Enum.sort_by(&elem(&1, 0), DateTime)
+
+    # Group entries within 1 second into the same row
+    all_entries
+    |> Enum.reduce([], &merge_into_rows/2)
+    |> Enum.reverse()
+    |> Enum.map(fn row ->
+      # Fill nil for agents without a message in this row
+      filled_cells =
+        Map.new(all_agent_names, fn name ->
+          {name, Map.get(row.cells, name)}
+        end)
+
+      %{row | cells: filled_cells}
+    end)
+  end
+
+  defp merge_into_rows({ts, agent, msg}, [%{timestamp: row_ts, cells: cells} = row | rest])
+       when not is_nil(row_ts) and not is_nil(ts) do
+    if abs(DateTime.diff(ts, row_ts, :millisecond)) <= 1000 && !Map.has_key?(cells, agent) do
+      [%{row | cells: Map.put(cells, agent, msg)} | rest]
+    else
+      [%{timestamp: ts, cells: %{agent => msg}}, row | rest]
+    end
+  end
+
+  defp merge_into_rows({ts, agent, msg}, rows) do
+    [%{timestamp: ts, cells: %{agent => msg}} | rows]
   end
 
   defp message_to_map(%Message{} = msg) do

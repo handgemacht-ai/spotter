@@ -230,7 +230,7 @@ code, pre {
 .main-content {
   flex: 1;
   min-width: 0;
-  overflow-x: hidden;
+  overflow-x: auto;
 }
 
 /* --- Breadcrumb --- */
@@ -3886,7 +3886,11 @@ span.commit-detail-cochange-member {
 .lanes-container {
   display: flex;
   flex-direction: column;
+  flex: 3;
+  min-width: 0;
+  min-height: 0;
   position: relative;
+  overflow: hidden;
 }
 
 .lanes-columns-row {
@@ -3895,6 +3899,7 @@ span.commit-detail-cochange-member {
   flex: 1;
   min-height: 0;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .lanes-column {
@@ -4003,9 +4008,279 @@ span.commit-detail-cochange-member {
   }
 }
 
+/* --- Table Grid Layout --- */
+
+.lanes-grid {
+  display: grid;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+
+.lanes-grid-header {
+  position: sticky;
+  top: 0;
+  z-index: 9;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-default);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lanes-time-col {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background: var(--surface-1);
+  border-right: 1px solid var(--border-subtle);
+  padding: var(--space-1) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.lanes-grid-header.lanes-time-col {
+  z-index: 11;
+}
+
+.lanes-wall-clock {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.lanes-offset {
+  font-size: 0.65rem;
+  color: var(--text-tertiary);
+}
+
+.lanes-agent-header {
+  min-width: 280px;
+}
+
+/* --- Table Cells --- */
+
+.lanes-cell {
+  border-bottom: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+  padding: var(--space-1) var(--space-2);
+  min-height: 36px;
+  transition: background 0.1s;
+}
+
+.lanes-cell:last-child {
+  border-right: none;
+}
+
+.lanes-row-time {
+  border-bottom: 1px solid var(--border-subtle);
+  min-height: 36px;
+}
+
+.lanes-cell-empty {
+  background: transparent;
+}
+
+/* --- Collapsed Messages --- */
+
+.lanes-msg-collapsed {
+  cursor: pointer;
+}
+
+.lanes-msg-collapsed:hover {
+  background: var(--surface-2);
+}
+
+.lanes-msg-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.lanes-msg-chevron {
+  font-size: 0.6rem;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  width: 12px;
+}
+
+.lanes-msg-role {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.lanes-role-user {
+  color: var(--accent-cyan);
+}
+
+.lanes-role-assistant {
+  color: var(--accent-green);
+}
+
+.lanes-msg-preview {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.lanes-msg-duration {
+  font-size: var(--text-xs);
+  flex-shrink: 0;
+}
+
+.lanes-msg-duration.duration-fast { color: var(--accent-green); }
+.lanes-msg-duration.duration-medium { color: var(--accent-amber); }
+.lanes-msg-duration.duration-slow { color: var(--accent-red); }
+
+/* --- Tool Badges --- */
+
+.lanes-tool-badge {
+  display: inline-block;
+  padding: 0 4px;
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  background: var(--surface-3);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* --- Inter-Agent Message Badges --- */
+
+.lanes-msg-link-badge {
+  display: inline-block;
+  padding: 0 4px;
+  font-size: 0.65rem;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.lanes-link-sent {
+  background: color-mix(in srgb, var(--accent-cyan) 20%, transparent);
+  color: var(--accent-cyan);
+}
+
+.lanes-link-received {
+  background: color-mix(in srgb, var(--accent-green) 20%, transparent);
+  color: var(--accent-green);
+}
+
+/* --- Expanded Messages --- */
+
+.lanes-msg-expanded {
+  cursor: pointer;
+}
+
+.lanes-msg-expanded .lanes-msg-header {
+  position: sticky;
+  top: 0;
+  background: var(--surface-2);
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  z-index: 1;
+}
+
+.lanes-msg-content {
+  padding: var(--space-2);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.lanes-msg-text {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* --- Idle Period Rows --- */
+
+.lanes-idle-row {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 4px,
+    currentColor 4px,
+    currentColor 5px
+  );
+  background-size: 8px 8px;
+  opacity: 0.15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.lanes-idle-label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  opacity: 1;
+  background: var(--surface-1);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  position: relative;
+  z-index: 1;
+}
+
+.lanes-idle-time {
+  color: var(--text-tertiary);
+}
+
+/* --- Toolbar --- */
+
+.lanes-toolbar {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-1);
+}
+
+.lanes-toolbar-btn {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  font-family: var(--font-ui);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.lanes-toolbar-btn:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+
 /* --- Responsive: Tablet (768–1199px) --- */
 
 @media (max-width: 1199px) {
+  .lanes-grid {
+    display: none;
+  }
+
   .lanes-column {
     display: none;
   }
