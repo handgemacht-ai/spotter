@@ -148,6 +148,63 @@ defmodule SpotterWeb.LanesComponentsTest do
       assert html =~ ~s(data-lane-session-id="session-qa-tester")
     end
 
+    test "agent headers have SortableColumns hook and drag handles" do
+      lanes = [
+        build_lane("team-lead", ~U[2026-02-01 10:00:00Z], ~U[2026-02-01 10:30:00Z]),
+        build_lane("qa-tester", ~U[2026-02-01 10:05:00Z], ~U[2026-02-01 10:20:00Z])
+      ]
+
+      html =
+        render_component(&LanesComponents.lanes_panel/1,
+          lanes: lanes,
+          session_id: "test-session-123"
+        )
+
+      assert html =~ ~s(phx-hook="SortableColumns")
+      assert html =~ ~s(data-session-id="test-session-123")
+      assert html =~ ~s(data-testid="lanes-header-row")
+      assert html =~ "lanes-drag-handle"
+      # Agent headers carry session_id for SortableJS
+      assert html =~ ~s(data-lane-session-id="session-team-lead")
+      assert html =~ ~s(data-lane-session-id="session-qa-tester")
+      assert html =~ ~s(data-lane-col-index="0")
+      assert html =~ ~s(data-lane-col-index="1")
+    end
+
+    test "reset order button shown when more than 1 lane" do
+      lanes = [
+        build_lane("team-lead", ~U[2026-02-01 10:00:00Z], ~U[2026-02-01 10:30:00Z]),
+        build_lane("qa-tester", ~U[2026-02-01 10:05:00Z], ~U[2026-02-01 10:20:00Z])
+      ]
+
+      rows = build_rows(lanes)
+
+      html =
+        render_component(&LanesComponents.lanes_panel/1,
+          lanes: lanes,
+          rows: rows
+        )
+
+      assert html =~ ~s(data-testid="reset-column-order")
+      assert html =~ "Reset order"
+    end
+
+    test "reset order button hidden when single lane" do
+      lanes = [
+        build_lane("team-lead", ~U[2026-02-01 10:00:00Z], ~U[2026-02-01 10:30:00Z])
+      ]
+
+      rows = build_rows(lanes)
+
+      html =
+        render_component(&LanesComponents.lanes_panel/1,
+          lanes: lanes,
+          rows: rows
+        )
+
+      refute html =~ ~s(data-testid="reset-column-order")
+    end
+
     test "renders data-testid='lanes-panel' on container" do
       lanes = [
         build_lane("team-lead", ~U[2026-02-01 10:00:00Z], ~U[2026-02-01 10:30:00Z])

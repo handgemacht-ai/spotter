@@ -291,6 +291,23 @@ defmodule SpotterWeb.SessionLive do
 
   def handle_event("reorder_lanes", _params, socket), do: {:noreply, socket}
 
+  def handle_event("reset_column_order", _params, socket) do
+    lanes = socket.assigns.lanes
+    # Re-sort lanes by started_at (original order from ParallelLanes.compute)
+    sorted =
+      Enum.sort_by(lanes, & &1.started_at, fn
+        nil, nil -> true
+        nil, _ -> false
+        _, nil -> true
+        a, b -> DateTime.compare(a, b) != :gt
+      end)
+
+    {:noreply,
+     socket
+     |> assign(lanes: sorted, active_lane_index: 0)
+     |> push_event("reset_column_order", %{})}
+  end
+
   def handle_event("toggle_message_expand", %{"message-id" => msg_id}, socket)
       when is_binary(msg_id) and byte_size(msg_id) < 256 do
     expanded = socket.assigns.expanded_messages
@@ -571,6 +588,7 @@ defmodule SpotterWeb.SessionLive do
             message_links={@message_links}
             active_lane_index={@active_lane_index}
             expanded_messages={@expanded_messages}
+            session_id={@session_id}
           />
         <% else %>
           <div id="transcript-panel" class="session-transcript" data-testid="transcript-container">

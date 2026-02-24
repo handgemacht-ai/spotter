@@ -321,4 +321,58 @@ defmodule SpotterWeb.SessionLiveLanesTest do
       assert html =~ ~s(data-testid="lane-tab-qa-tester")
     end
   end
+
+  describe "reset_column_order" do
+    test "reset_column_order restores original lane order", %{
+      project: project,
+      session: session,
+      session_id: session_id
+    } do
+      {_session, team} = setup_team_session(project, session)
+
+      second_session_id = Ash.UUID.generate()
+
+      second_session =
+        Ash.create!(Session, %{
+          session_id: second_session_id,
+          transcript_dir: "/tmp/test-sessions",
+          cwd: "/home/user/project",
+          project_id: project.id,
+          team_name: "test-team",
+          agent_name: "qa-tester",
+          message_count: 1
+        })
+
+      Ash.create!(TeamMember, %{
+        agent_name: "qa-tester",
+        team_id: team.id,
+        session_id: second_session.id
+      })
+
+      create_message(session, %{
+        content: %{"blocks" => [%{"type" => "text", "text" => "Lead msg"}]},
+        timestamp: ~U[2026-02-20 10:00:00Z]
+      })
+
+      create_message(second_session, %{
+        content: %{"blocks" => [%{"type" => "text", "text" => "QA msg"}]},
+        timestamp: ~U[2026-02-20 10:05:00Z]
+      })
+
+      {:ok, view, _html} = live(build_conn(), "/sessions/#{session_id}")
+      render_click(view, "switch_view_mode", %{"mode" => "lanes"})
+
+      # Reorder: put qa-tester first
+      render_click(view, "reorder_lanes", %{
+        "order" => [second_session_id, session_id]
+      })
+
+      # Reset: should restore team-lead first
+      html = render_click(view, "reset_column_order", %{})
+
+      lead_pos = :binary.match(html, "team-lead") |> elem(0)
+      qa_pos = :binary.match(html, "qa-tester") |> elem(0)
+      assert lead_pos < qa_pos
+    end
+  end
 end

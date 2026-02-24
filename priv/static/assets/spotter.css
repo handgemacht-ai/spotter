@@ -4274,6 +4274,65 @@ span.commit-detail-cochange-member {
   color: var(--text-primary);
 }
 
+/* --- Drag-and-drop column reordering --- */
+
+.lanes-drag-handle {
+  opacity: 0;
+  cursor: grab;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  transition: opacity 150ms ease, color 150ms ease;
+  user-select: none;
+}
+
+.lanes-agent-header:hover .lanes-drag-handle {
+  opacity: 1;
+}
+
+.lanes-drag-handle:hover {
+  color: var(--text-primary);
+  background: var(--surface-3);
+}
+
+.lanes-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Ghost: the semi-transparent copy being dragged */
+.lanes-col-ghost {
+  opacity: 0.6;
+  transform: scale(1.03);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-md);
+  z-index: 100;
+}
+
+/* Chosen: the original element while dragging */
+.lanes-col-chosen {
+  border: 2px dashed var(--border-accent);
+  opacity: 0.4;
+  background: var(--surface-1);
+}
+
+/* Drag: applied during pointer move */
+.lanes-col-drag {
+  cursor: grabbing;
+}
+
+/* Container state during drag */
+.lanes-dragging .lanes-agent-header {
+  transition: transform 200ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Single lane: hide drag handle */
+.lanes-header-row:only-child .lanes-drag-handle,
+.lanes-agent-header:only-child .lanes-drag-handle {
+  display: none;
+}
+
 /* --- Responsive: Tablet (768–1199px) --- */
 
 @media (max-width: 1199px) {

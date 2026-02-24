@@ -18,6 +18,7 @@ defmodule SpotterWeb.LanesComponents do
   attr(:message_links, :list, default: [])
   attr(:active_lane_index, :integer, default: 0)
   attr(:expanded_messages, :map, default: %{})
+  attr(:session_id, :string, default: nil)
 
   def lanes_panel(assigns) do
     lane_index =
@@ -52,24 +53,38 @@ defmodule SpotterWeb.LanesComponents do
 
       <%!-- Desktop: table grid layout --%>
       <div class="lanes-grid" data-testid="lanes-grid" style={"grid-template-columns: 100px repeat(#{length(@lanes)}, minmax(280px, 420px))"}>
-        <%!-- Header row: time + agent headers --%>
+        <%!-- Header row: time column --%>
         <div class="lanes-grid-header lanes-time-col" data-testid="lanes-time-header">
           Time
         </div>
+        <%!-- Header row: agent columns (sortable) --%>
         <div
-          :for={{lane, idx} <- Enum.with_index(@lanes)}
-          class="lanes-grid-header lanes-agent-header"
-          data-testid={"lanes-agent-header-#{sanitize_agent_name(lane.agent_name)}"}
-          style={"border-bottom: 3px solid var(#{lane_color(idx)})"}
+          :if={@lanes != []}
+          id="lane-headers"
+          class="lanes-header-row"
+          phx-hook="SortableColumns"
+          data-session-id={@session_id}
+          data-testid="lanes-header-row"
+          style={"display: contents"}
         >
-          <span style={"width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(#{lane_color(idx)})"}></span>
-          <span data-testid="lane-name" style="font-weight: 600;"><%= lane.agent_name %></span>
-          <span style="font-size: var(--text-xs); color: var(--text-secondary);">
-            <%= format_duration(lane.started_at, lane.ended_at) %>
-          </span>
-          <span style="font-size: var(--text-xs); color: var(--text-secondary);">
-            <%= length(lane.messages) %>
-          </span>
+          <div
+            :for={{lane, idx} <- Enum.with_index(@lanes)}
+            class="lanes-grid-header lanes-agent-header"
+            data-testid={"lanes-agent-header-#{sanitize_agent_name(lane.agent_name)}"}
+            data-lane-session-id={lane.session && lane.session.session_id}
+            data-lane-col-index={idx}
+            style={"border-bottom: 3px solid var(#{lane_color(idx)})"}
+          >
+            <span class="lanes-drag-handle" title="Drag to reorder">&#x2807;</span>
+            <span style={"width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(#{lane_color(idx)})"}></span>
+            <span data-testid="lane-name" style="font-weight: 600;"><%= lane.agent_name %></span>
+            <span style="font-size: var(--text-xs); color: var(--text-secondary);">
+              <%= format_duration(lane.started_at, lane.ended_at) %>
+            </span>
+            <span style="font-size: var(--text-xs); color: var(--text-secondary);">
+              <%= length(lane.messages) %>
+            </span>
+          </div>
         </div>
 
         <%!-- Data rows --%>
@@ -95,6 +110,12 @@ defmodule SpotterWeb.LanesComponents do
         <button phx-click="expand_all" class="lanes-toolbar-btn">Expand all</button>
         <button phx-click="collapse_all" class="lanes-toolbar-btn">Collapse all</button>
         <button phx-click="collapse_idle" class="lanes-toolbar-btn">Hide idle</button>
+        <button
+          :if={length(@lanes) > 1}
+          phx-click="reset_column_order"
+          class="lanes-toolbar-btn"
+          data-testid="reset-column-order"
+        >Reset order</button>
       </div>
     </div>
     """
