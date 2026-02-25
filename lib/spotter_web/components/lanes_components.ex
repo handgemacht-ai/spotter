@@ -16,6 +16,7 @@ defmodule SpotterWeb.LanesComponents do
   attr(:rows, :list, default: [])
   attr(:timeline, :map, default: nil)
   attr(:message_links, :list, default: [])
+  attr(:received_link_targets, :map, default: %{})
   attr(:active_lane_index, :integer, default: 0)
   attr(:expanded_messages, :map, default: %{})
   attr(:session_id, :string, default: nil)
@@ -24,16 +25,23 @@ defmodule SpotterWeb.LanesComponents do
     lane_index =
       Map.new(Enum.with_index(assigns.lanes), fn {lane, idx} -> {lane.agent_name, idx} end)
 
-    received_link_targets =
-      compute_received_link_targets(assigns.message_links, assigns.lanes)
-
     rendered_lines_index = build_rendered_lines_index(assigns.lanes)
+
+    # Pre-compute links per cell: %{{agent_name, msg_uuid} => [link_descriptors]}
+    # Single O(links) pass replaces O(cells * links) per-cell filtering
+    links_by_cell =
+      build_links_by_cell(assigns.message_links, assigns.received_link_targets)
+
+    # Pre-compute preview + tools per message: %{msg_uuid => %{preview: str, tools: [str]}}
+    # Single pass over all lanes replaces per-cell content parsing
+    cell_meta = build_cell_meta(assigns.lanes)
 
     assigns =
       assigns
       |> assign(:lane_index, lane_index)
-      |> assign(:received_link_targets, received_link_targets)
       |> assign(:rendered_lines_index, rendered_lines_index)
+      |> assign(:links_by_cell, links_by_cell)
+      |> assign(:cell_meta, cell_meta)
 
     ~H"""
     <div id="lanes-scroll" class="lanes-container" data-testid="lanes-panel">
@@ -103,10 +111,10 @@ defmodule SpotterWeb.LanesComponents do
             lanes={@lanes}
             lane_index={@lane_index}
             timeline={@timeline}
-            message_links={@message_links}
             expanded_messages={@expanded_messages}
-            received_link_targets={@received_link_targets}
             rendered_lines_index={@rendered_lines_index}
+            links_by_cell={@links_by_cell}
+            cell_meta={@cell_meta}
           />
         <% end %>
 
@@ -155,10 +163,10 @@ defmodule SpotterWeb.LanesComponents do
   attr(:lanes, :list, required: true)
   attr(:lane_index, :map, required: true)
   attr(:timeline, :map, default: nil)
-  attr(:message_links, :list, default: [])
   attr(:expanded_messages, :map, default: %{})
-  attr(:received_link_targets, :map, default: %{})
   attr(:rendered_lines_index, :map, default: %{})
+  attr(:links_by_cell, :map, default: %{})
+  attr(:cell_meta, :map, default: %{})
 
   defp table_row(assigns) do
     offset = format_offset(assigns.row.timestamp, assigns.timeline)
@@ -177,10 +185,10 @@ defmodule SpotterWeb.LanesComponents do
         agent_name={lane.agent_name}
         lane_idx={Map.get(@lane_index, lane.agent_name, 0)}
         is_idle={@is_idle}
-        message_links={@message_links}
         expanded_messages={@expanded_messages}
-        received_link_targets={@received_link_targets}
         rendered_lines_index={@rendered_lines_index}
+        links_by_cell={@links_by_cell}
+        cell_meta={@cell_meta}
       />
     <% end %>
     """
@@ -190,10 +198,10 @@ defmodule SpotterWeb.LanesComponents do
   attr(:agent_name, :string, required: true)
   attr(:lane_idx, :integer, required: true)
   attr(:is_idle, :boolean, default: false)
-  attr(:message_links, :list, default: [])
   attr(:expanded_messages, :map, default: %{})
-  attr(:received_link_targets, :map, default: %{})
   attr(:rendered_lines_index, :map, default: %{})
+  attr(:links_by_cell, :map, default: %{})
+  attr(:cell_meta, :map, default: %{})
 
   defp table_cell(%{cell: nil, is_idle: false} = assigns) do
     ~H"""
@@ -224,17 +232,12 @@ defmodule SpotterWeb.LanesComponents do
     msg_uuid = if is_map(msg), do: Map.get(msg, :uuid), else: nil
     is_expanded = msg_id && Map.get(assigns.expanded_messages, msg_id, false)
     role = if is_map(msg), do: Map.get(msg, :role, :assistant), else: :assistant
-    content = if is_map(msg), do: Map.get(msg, :content), else: nil
-    preview = content_preview(content)
-    tools = extract_tools(content)
 
-    links_for_msg =
-      find_message_links(
-        assigns.message_links,
-        assigns.agent_name,
-        msg,
-        assigns.received_link_targets
-      )
+    # O(1) lookups into pre-computed indexes instead of per-cell computation
+    meta = Map.get(assigns.cell_meta, msg_uuid, %{})
+    preview = Map.get(meta, :preview, "")
+    tools = Map.get(meta, :tools, [])
+    links_for_msg = Map.get(assigns.links_by_cell, {assigns.agent_name, msg_uuid}, [])
 
     duration_class = message_duration_class(msg)
 
@@ -320,18 +323,89 @@ defmodule SpotterWeb.LanesComponents do
 
   # --- Helpers ---
 
-  defp content_preview(nil), do: ""
+  # Build a pre-computed index of link descriptors per cell.
+  # Key: {agent_name, msg_uuid}, Value: [%{direction, label, peer, ...}]
+  # Single O(links) pass replaces O(cells * links) per-cell filtering.
+  defp build_links_by_cell(links, received_link_targets)
+       when is_list(links) and is_map(received_link_targets) do
+    Enum.reduce(links, %{}, fn link, acc ->
+      # Sent badge: keyed by {sender, sender_message_uuid}
+      sent_key = {link.sender, link.sender_message_uuid}
 
-  defp content_preview(content) when is_map(content) do
+      sent_desc = %{
+        direction: :sent,
+        label: "-> #{link.recipient}",
+        peer: link.recipient,
+        content_preview: Map.get(link, :content_preview, ""),
+        timestamp: link.timestamp
+      }
+
+      acc = Map.update(acc, sent_key, [sent_desc], &[sent_desc | &1])
+
+      # Received badge: keyed by {recipient, target_msg_uuid}
+      target_uuid = Map.get(received_link_targets, link_key(link))
+
+      if target_uuid do
+        recv_key = {link.recipient, target_uuid}
+
+        recv_desc = %{
+          direction: :received,
+          label: "<- #{link.sender}",
+          peer: link.sender,
+          sender_message_uuid: link.sender_message_uuid,
+          content_preview: Map.get(link, :content_preview, ""),
+          timestamp: link.timestamp
+        }
+
+        Map.update(acc, recv_key, [recv_desc], &[recv_desc | &1])
+      else
+        acc
+      end
+    end)
+  end
+
+  defp build_links_by_cell(_, _), do: %{}
+
+  # Build a pre-computed index of preview text and tool badges per message.
+  # Key: msg_uuid, Value: %{preview: string, tools: [string]}
+  # Single pass over all lanes/messages replaces per-cell content parsing.
+  defp build_cell_meta(lanes) when is_list(lanes) do
+    Enum.reduce(lanes, %{}, fn lane, acc ->
+      index_lane_cell_meta(lane.messages, acc)
+    end)
+  end
+
+  defp build_cell_meta(_), do: %{}
+
+  defp index_lane_cell_meta(messages, acc) do
+    Enum.reduce(messages, acc, fn msg, inner_acc ->
+      case Map.get(msg, :uuid) do
+        nil ->
+          inner_acc
+
+        uuid ->
+          content = Map.get(msg, :content)
+
+          Map.put(inner_acc, uuid, %{
+            preview: compute_content_preview(content),
+            tools: compute_tools(content)
+          })
+      end
+    end)
+  end
+
+  defp compute_content_preview(nil), do: ""
+
+  defp compute_content_preview(content) when is_map(content) do
     text = extract_text(content)
     if String.length(text) > 80, do: String.slice(text, 0, 80) <> "...", else: text
   end
 
-  defp content_preview(content) when is_binary(content) do
+  defp compute_content_preview(content) when is_binary(content) do
     if String.length(content) > 80, do: String.slice(content, 0, 80) <> "...", else: content
   end
 
-  defp content_preview(_), do: ""
+  defp compute_content_preview(_), do: ""
 
   defp extract_text(content) when is_map(content) do
     blocks = Map.get(content, "blocks", [])
@@ -351,9 +425,9 @@ defmodule SpotterWeb.LanesComponents do
   defp extract_text(content) when is_binary(content), do: content
   defp extract_text(_), do: ""
 
-  defp extract_tools(nil), do: []
+  defp compute_tools(nil), do: []
 
-  defp extract_tools(content) when is_map(content) do
+  defp compute_tools(content) when is_map(content) do
     blocks = Map.get(content, "blocks", [])
 
     tools =
@@ -371,75 +445,7 @@ defmodule SpotterWeb.LanesComponents do
     end
   end
 
-  defp extract_tools(_), do: []
-
-  # Bug 3 fix: use received_link_targets to scope received badges to the correct message
-  defp find_message_links(links, agent_name, msg, received_link_targets)
-       when is_list(links) and is_map(msg) do
-    msg_uuid = Map.get(msg, :uuid)
-
-    sent =
-      links
-      |> Enum.filter(&(&1.sender == agent_name && &1.sender_message_uuid == msg_uuid))
-      |> Enum.map(
-        &%{
-          direction: :sent,
-          label: "-> #{&1.recipient}",
-          peer: &1.recipient,
-          content_preview: Map.get(&1, :content_preview, ""),
-          timestamp: &1.timestamp
-        }
-      )
-
-    received =
-      links
-      |> Enum.filter(fn link ->
-        link.recipient == agent_name &&
-          Map.get(received_link_targets, link_key(link)) == msg_uuid
-      end)
-      |> Enum.map(
-        &%{
-          direction: :received,
-          label: "<- #{&1.sender}",
-          peer: &1.sender,
-          sender_message_uuid: &1.sender_message_uuid,
-          content_preview: Map.get(&1, :content_preview, ""),
-          timestamp: &1.timestamp
-        }
-      )
-
-    sent ++ received
-  end
-
-  defp find_message_links(_, _, _, _), do: []
-
-  # Pre-compute which message UUID in each recipient lane should show each received badge.
-  # For each link, find the first message in the recipient's lane at or after the link timestamp.
-  defp compute_received_link_targets(links, lanes) when is_list(links) and is_list(lanes) do
-    lane_messages =
-      Map.new(lanes, fn lane ->
-        {lane.agent_name, Enum.sort_by(lane.messages, & &1.timestamp, DateTime)}
-      end)
-
-    Enum.reduce(links, %{}, fn link, acc ->
-      messages = Map.get(lane_messages, link.recipient, [])
-      target_uuid = first_msg_uuid_at_or_after(messages, link.timestamp)
-
-      if target_uuid do
-        Map.put(acc, link_key(link), target_uuid)
-      else
-        acc
-      end
-    end)
-  end
-
-  defp compute_received_link_targets(_, _), do: %{}
-
-  defp first_msg_uuid_at_or_after(messages, timestamp) do
-    Enum.find_value(messages, fn msg ->
-      if msg.timestamp && DateTime.compare(msg.timestamp, timestamp) != :lt, do: msg.uuid
-    end)
-  end
+  defp compute_tools(_), do: []
 
   defp link_key(link) do
     {link.sender, link.recipient, link.sender_message_uuid}

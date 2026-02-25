@@ -48,7 +48,14 @@ defmodule Spotter.Transcripts.ParallelLanes do
 
           lanes =
             team.team_members
-            |> Enum.map(&build_lane(&1, Map.get(messages_by_session, &1.session_id, [])))
+            |> Task.async_stream(
+              fn member ->
+                build_lane(member, Map.get(messages_by_session, member.session_id, []))
+              end,
+              ordered: true,
+              max_concurrency: System.schedulers_online()
+            )
+            |> Enum.map(fn {:ok, lane} -> lane end)
             |> Enum.sort_by(& &1.started_at, &nil_safe_datetime_compare/2)
 
           timeline = compute_timeline(lanes)
@@ -85,6 +92,7 @@ defmodule Spotter.Transcripts.ParallelLanes do
           )
 
           message_links = extract_message_links(lanes)
+          received_link_targets = compute_received_link_targets(message_links, lanes)
           rows = align_rows(lanes)
 
           Tracer.set_attribute("spotter.message_link_count", length(message_links))
@@ -97,6 +105,7 @@ defmodule Spotter.Transcripts.ParallelLanes do
              timeline: timeline,
              overlaps: overlaps,
              message_links: message_links,
+             received_link_targets: received_link_targets,
              rows: rows
            }}
 
@@ -281,6 +290,38 @@ defmodule Spotter.Transcripts.ParallelLanes do
 
   defp extract_send_messages(_msg, _sender_name), do: []
 
+  # Pre-compute which message UUID in each recipient lane should show each received badge.
+  # For each link, find the first message in the recipient's lane at or after the link timestamp.
+  defp compute_received_link_targets(links, lanes) when is_list(links) and is_list(lanes) do
+    lane_messages =
+      Map.new(lanes, fn lane ->
+        {lane.agent_name, Enum.sort_by(lane.messages, & &1.timestamp, DateTime)}
+      end)
+
+    Enum.reduce(links, %{}, fn link, acc ->
+      messages = Map.get(lane_messages, link.recipient, [])
+      target_uuid = first_msg_uuid_at_or_after(messages, link.timestamp)
+
+      if target_uuid do
+        Map.put(acc, link_key(link), target_uuid)
+      else
+        acc
+      end
+    end)
+  end
+
+  defp compute_received_link_targets(_, _), do: %{}
+
+  defp first_msg_uuid_at_or_after(messages, timestamp) do
+    Enum.find_value(messages, fn msg ->
+      if msg.timestamp && DateTime.compare(msg.timestamp, timestamp) != :lt, do: msg.uuid
+    end)
+  end
+
+  defp link_key(link) do
+    {link.sender, link.recipient, link.sender_message_uuid}
+  end
+
   defp align_rows(lanes) do
     all_agent_names = Enum.map(lanes, & &1.agent_name)
 
@@ -331,9 +372,57 @@ defmodule Spotter.Transcripts.ParallelLanes do
       content: msg.content,
       raw_payload: msg.raw_payload,
       timestamp: msg.timestamp,
-      agent_id: msg.agent_id
+      agent_id: msg.agent_id,
+      content_preview: content_preview(msg.content),
+      tools: extract_tools(msg.content)
     }
   end
+
+  defp content_preview(nil), do: ""
+
+  defp content_preview(content) when is_map(content) do
+    text = extract_preview_text(content)
+    if String.length(text) > 80, do: String.slice(text, 0, 80) <> "...", else: text
+  end
+
+  defp content_preview(content) when is_binary(content) do
+    if String.length(content) > 80, do: String.slice(content, 0, 80) <> "...", else: content
+  end
+
+  defp content_preview(_), do: ""
+
+  defp extract_preview_text(content) when is_map(content) do
+    blocks = Map.get(content, "blocks", [])
+
+    blocks
+    |> Enum.flat_map(fn
+      %{"type" => "text", "text" => text} -> [text]
+      _ -> []
+    end)
+    |> Enum.join("\n")
+    |> case do
+      "" -> Map.get(content, "text", "")
+      text -> text
+    end
+  end
+
+  defp extract_tools(nil), do: []
+
+  defp extract_tools(content) when is_map(content) do
+    blocks = Map.get(content, "blocks", [])
+
+    tools =
+      blocks
+      |> Enum.flat_map(fn
+        %{"type" => "tool_use", "name" => name} -> [name]
+        _ -> []
+      end)
+      |> Enum.uniq()
+
+    if length(tools) > 3, do: ["#{length(tools)} tools"], else: tools
+  end
+
+  defp extract_tools(_), do: []
 
   defp truncate_dt(nil), do: nil
   defp truncate_dt(dt), do: DateTime.truncate(dt, :millisecond)

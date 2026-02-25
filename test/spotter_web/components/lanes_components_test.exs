@@ -595,11 +595,18 @@ defmodule SpotterWeb.LanesComponentsTest do
         %{timestamp: msg.timestamp, cells: cells}
       end)
 
+    # Pre-compute received_link_targets (moved from component to ParallelLanes)
+    # The link from sender at 10:00 should target uuid-recv-1 (first msg at or after 10:00)
+    received_link_targets = %{
+      {"sender", "receiver", "uuid-sender-1"} => "uuid-recv-1"
+    }
+
     html =
       render_component(&LanesComponents.lanes_panel/1,
         lanes: lanes,
         rows: rows,
-        message_links: message_links
+        message_links: message_links,
+        received_link_targets: received_link_targets
       )
 
     # The received badge should appear at most once — only on the message

@@ -347,24 +347,48 @@ defmodule SpotterWeb.SessionLive do
   defp load_lanes_data(socket) do
     team_name = socket.assigns.session_record && socket.assigns.session_record.team_name
 
+    # Socket-level memoization: skip recompute if already loaded for this team
+    cached_team_id = socket.assigns[:lanes_team_id]
+
     case team_name && Team |> Ash.Query.filter(name == ^team_name) |> Ash.read_one() do
+      {:ok, %Team{} = team} when team.id == cached_team_id ->
+        socket
+
       {:ok, %Team{} = team} ->
         case ParallelLanes.compute(team.id) do
           {:ok, %{lanes: lanes} = result} ->
             assign(socket,
+              lanes_team_id: team.id,
               lanes: lanes,
               timeline: result.timeline,
               overlaps: result.overlaps,
               message_links: Map.get(result, :message_links, []),
+              received_link_targets: Map.get(result, :received_link_targets, %{}),
               rows: Map.get(result, :rows, [])
             )
 
           _ ->
-            assign(socket, lanes: [], timeline: nil, overlaps: [], message_links: [], rows: [])
+            assign(socket,
+              lanes_team_id: nil,
+              lanes: [],
+              timeline: nil,
+              overlaps: [],
+              message_links: [],
+              received_link_targets: %{},
+              rows: []
+            )
         end
 
       _ ->
-        assign(socket, lanes: [], timeline: nil, overlaps: [], message_links: [], rows: [])
+        assign(socket,
+          lanes_team_id: nil,
+          lanes: [],
+          timeline: nil,
+          overlaps: [],
+          message_links: [],
+          received_link_targets: %{},
+          rows: []
+        )
     end
   end
 
@@ -589,6 +613,7 @@ defmodule SpotterWeb.SessionLive do
             active_lane_index={@active_lane_index}
             expanded_messages={@expanded_messages}
             session_id={@session_id}
+            received_link_targets={@received_link_targets}
           />
         <% else %>
           <div id="transcript-panel" class="session-transcript" data-testid="transcript-container">
