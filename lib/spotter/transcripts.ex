@@ -126,5 +126,6 @@ defmodule Spotter.Transcripts do
     resource Spotter.Transcripts.Team
     resource Spotter.Transcripts.TeamMember
     resource Spotter.Transcripts.ComputedLaneCache
+    resource Spotter.Transcripts.RawHookEvent
   end
 end

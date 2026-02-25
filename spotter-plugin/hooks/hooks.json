@@ -8,6 +8,11 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/notify-session.sh",
             "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
+            "timeout": 5000
           }
         ]
       }
@@ -25,6 +30,23 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/waiting-overlay.sh clear",
             "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
+            "timeout": 5000
           }
         ]
       }
@@ -36,6 +58,16 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/pre-tool-capture.sh",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
             "timeout": 5000
           }
         ]
@@ -59,17 +91,10 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/tool-call-capture.sh",
             "timeout": 5000
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "matcher": "",
-        "hooks": [
+          },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/waiting-overlay.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
             "timeout": 5000
           }
         ]
@@ -82,6 +107,148 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/tool-call-capture.sh",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/waiting-overlay.sh",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "ConfigChange": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "WorktreeCreate": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
             "timeout": 5000
           }
         ]

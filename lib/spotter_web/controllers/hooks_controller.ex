@@ -11,6 +11,7 @@ defmodule SpotterWeb.HooksController do
   alias Spotter.Transcripts.Jobs.ComputeCoChange
   alias Spotter.Transcripts.Jobs.ComputeHeatmap
   alias Spotter.Transcripts.Jobs.EnrichCommits
+  alias Spotter.Transcripts.RawHookEvent
   alias Spotter.Transcripts.Session
   alias Spotter.Transcripts.SessionCommitLink
   alias Spotter.Transcripts.Sessions
@@ -22,6 +23,9 @@ defmodule SpotterWeb.HooksController do
 
   @max_commit_hashes 50
   @hash_pattern ~r/\A[0-9a-fA-F]{40}\z/
+  @max_field_size 10_240
+  @preserved_keys ~w(session_id tool_use_id file_path transcript_path cwd hook_event_name tool_name error)
+  @max_truncation_depth 10
 
   def commit_event(conn, %{"session_id" => session_id, "new_commit_hashes" => hashes} = params)
       when is_binary(session_id) and is_list(hashes) do
@@ -297,6 +301,50 @@ defmodule SpotterWeb.HooksController do
       |> put_status(:bad_request)
       |> OtelTraceHelpers.put_trace_response_header()
       |> json(%{error: "session_id is required"})
+    end
+  end
+
+  def raw_event(conn, %{"hook_payload" => hook_payload, "env" => env} = params)
+      when is_map(hook_payload) and is_map(env) do
+    meta = raw_event_meta(conn, hook_payload)
+
+    OtelTraceHelpers.with_span "spotter.hook.raw_event", meta.span_attrs do
+      emit_hook_received("raw_event", meta.flow_keys, meta.received_payload)
+
+      handle_raw_event_result(
+        conn,
+        meta,
+        persist_raw_event(hook_payload, env, params["captured_at"])
+      )
+    end
+  end
+
+  def raw_event(conn, _params) do
+    hook_event = get_req_header(conn, "x-spotter-hook-event") |> List.first() || "unknown"
+    hook_script = get_req_header(conn, "x-spotter-hook-script") |> List.first() || "unknown"
+
+    OtelTraceHelpers.with_span "spotter.hook.raw_event", %{} do
+      error_payload =
+        ErrorReport.hook_flow_error(
+          "invalid_params",
+          "hook_payload and env are required",
+          400,
+          hook_event,
+          hook_script,
+          %{"reason" => "hook_payload and env are required"}
+        )
+
+      OtelTraceHelpers.set_error("invalid_params", %{
+        "http.status_code" => 400,
+        "error.source" => "hooks_controller"
+      })
+
+      emit_hook_outcome("raw_event", :error, [FlowKeys.system()], error_payload)
+
+      conn
+      |> put_status(:bad_request)
+      |> OtelTraceHelpers.put_trace_response_header()
+      |> json(%{error: "hook_payload and env are required"})
     end
   end
 
@@ -680,5 +728,158 @@ defmodule SpotterWeb.HooksController do
       {:ok, _tool_call} -> {:ok, nil}
       {:error, changeset} -> {:error, :validation_error, changeset}
     end
+  end
+
+  # --- Raw event helpers ---
+
+  defp raw_event_meta(conn, hook_payload) do
+    session_id = hook_payload["session_id"]
+    hook_event_name = hook_payload["hook_event_name"]
+    tool_name = hook_payload["tool_name"]
+    hook_event = get_req_header(conn, "x-spotter-hook-event") |> List.first() || "unknown"
+    hook_script = get_req_header(conn, "x-spotter-hook-script") |> List.first() || "unknown"
+
+    %{
+      hook_event: hook_event,
+      hook_script: hook_script,
+      flow_keys: if(session_id, do: [FlowKeys.session(session_id)], else: [FlowKeys.system()]),
+      span_attrs: %{
+        "spotter.session_id" => session_id || "unknown",
+        "spotter.hook_event_name" => hook_event_name || "unknown",
+        "spotter.tool_name" => tool_name || "unknown",
+        "spotter.hook.event" => hook_event,
+        "spotter.hook.script" => hook_script
+      },
+      received_payload: %{
+        "session_id" => session_id,
+        "hook_event_name" => hook_event_name,
+        "tool_name" => tool_name,
+        "hook_event" => hook_event,
+        "hook_script" => hook_script
+      }
+    }
+  end
+
+  defp handle_raw_event_result(conn, meta, {:ok, _event}) do
+    emit_hook_outcome("raw_event", :ok, meta.flow_keys)
+
+    conn
+    |> put_status(:created)
+    |> OtelTraceHelpers.put_trace_response_header()
+    |> json(%{ok: true})
+  end
+
+  defp handle_raw_event_result(conn, meta, {:error, :missing_session_id}) do
+    respond_raw_event_error(
+      conn,
+      meta,
+      "invalid_params",
+      "session_id is required in hook_payload",
+      :bad_request,
+      400
+    )
+  end
+
+  defp handle_raw_event_result(conn, meta, {:error, changeset}) do
+    respond_raw_event_error(
+      conn,
+      meta,
+      "validation_error",
+      inspect(changeset),
+      :unprocessable_entity,
+      422
+    )
+  end
+
+  defp respond_raw_event_error(conn, meta, error_type, message, http_status, status_code) do
+    error_payload =
+      ErrorReport.hook_flow_error(
+        error_type,
+        message,
+        status_code,
+        meta.hook_event,
+        meta.hook_script,
+        %{
+          "reason" => message
+        }
+      )
+
+    OtelTraceHelpers.set_error(error_type, %{
+      "http.status_code" => status_code,
+      "error.source" => "hooks_controller"
+    })
+
+    emit_hook_outcome("raw_event", :error, meta.flow_keys, error_payload)
+
+    conn
+    |> put_status(http_status)
+    |> OtelTraceHelpers.put_trace_response_header()
+    |> json(%{error: message})
+  end
+
+  defp persist_raw_event(hook_payload, env, raw_captured_at) do
+    session_id = hook_payload["session_id"]
+
+    if is_nil(session_id) or session_id == "" do
+      {:error, :missing_session_id}
+    else
+      attrs = %{
+        session_id: session_id,
+        hook_event_name: hook_payload["hook_event_name"] || "unknown",
+        tool_name: hook_payload["tool_name"],
+        tool_use_id: hook_payload["tool_use_id"],
+        hook_payload: truncate_large_strings(hook_payload, @max_field_size, 0),
+        env: normalize_env(env),
+        captured_at: parse_captured_at(raw_captured_at)
+      }
+
+      Ash.create(RawHookEvent, attrs, action: :upsert)
+    end
+  end
+
+  defp parse_captured_at(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, dt, _offset} -> dt
+      {:error, _} -> DateTime.utc_now()
+    end
+  end
+
+  defp parse_captured_at(_), do: DateTime.utc_now()
+
+  defp truncate_large_strings(map, max_size, depth)
+       when is_map(map) and depth < @max_truncation_depth do
+    Map.new(map, fn {k, v} -> {k, truncate_field(k, v, max_size, depth)} end)
+  end
+
+  defp truncate_large_strings(value, _max_size, _depth), do: value
+
+  defp truncate_field(key, value, _max_size, _depth) when key in @preserved_keys, do: value
+
+  defp truncate_field(_key, value, max_size, _depth)
+       when is_binary(value) and byte_size(value) > max_size do
+    String.slice(value, 0, max_size) <> "[truncated]"
+  end
+
+  defp truncate_field(_key, value, max_size, depth) when is_map(value) do
+    truncate_large_strings(value, max_size, depth + 1)
+  end
+
+  defp truncate_field(_key, value, max_size, depth) when is_list(value) do
+    Enum.map(value, fn
+      item when is_map(item) ->
+        truncate_large_strings(item, max_size, depth + 1)
+
+      item when is_binary(item) and byte_size(item) > max_size ->
+        String.slice(item, 0, max_size) <> "[truncated]"
+
+      item ->
+        item
+    end)
+  end
+
+  defp truncate_field(_key, value, _max_size, _depth), do: value
+
+  defp normalize_env(env) when is_map(env) do
+    Map.new(env, fn {k, v} -> {to_string(k), to_string(v)} end)
   end
 end
