@@ -232,6 +232,7 @@ defmodule SpotterWeb.LanesComponents do
     msg_uuid = if is_map(msg), do: Map.get(msg, :uuid), else: nil
     is_expanded = msg_id && Map.get(assigns.expanded_messages, msg_id, false)
     role = if is_map(msg), do: Map.get(msg, :role, :assistant), else: :assistant
+    msg_type = if is_map(msg), do: Map.get(msg, :type, role), else: role
 
     # O(1) lookups into pre-computed indexes instead of per-cell computation
     meta = Map.get(assigns.cell_meta, msg_uuid, %{})
@@ -249,6 +250,7 @@ defmodule SpotterWeb.LanesComponents do
         msg_id: msg_id,
         is_expanded: is_expanded,
         role: role,
+        msg_type: msg_type,
         preview: preview,
         tools: tools,
         links_for_msg: links_for_msg,
@@ -267,7 +269,7 @@ defmodule SpotterWeb.LanesComponents do
     >
       <div class="lanes-msg-header">
         <span class="lanes-msg-chevron"><%= if @is_expanded, do: "\u25BC", else: "\u25B6" %></span>
-        <span class={"lanes-msg-role lanes-role-#{@role}"}><%= @role %></span>
+        <span class={"lanes-msg-type lanes-type-#{@msg_type}"}><%= format_msg_type(@msg_type) %></span>
         <span :if={@duration_class} class={"lanes-msg-duration #{@duration_class}"}></span>
         <%= for tool <- @tools do %>
           <span class="lanes-tool-badge"><%= tool %></span>
@@ -283,7 +285,9 @@ defmodule SpotterWeb.LanesComponents do
             <%= link.label %>
           </span>
         <% end %>
-        <span :if={!@is_expanded} class="lanes-msg-preview"><%= @preview %></span>
+      </div>
+      <div :if={!@is_expanded && @preview != ""} class="lanes-msg-preview-line">
+        <span class="lanes-msg-preview"><%= @preview %></span>
       </div>
       <div :if={@is_expanded} class="lanes-msg-content">
         <.expanded_message_content msg={@msg} rendered_lines={@rendered_lines} />
@@ -500,6 +504,16 @@ defmodule SpotterWeb.LanesComponents do
   end
 
   defp message_duration_class(_), do: nil
+
+  defp format_msg_type(:tool_use), do: "tool_use"
+  defp format_msg_type(:tool_result), do: "tool_result"
+  defp format_msg_type(:thinking), do: "thinking"
+  defp format_msg_type(:progress), do: "progress"
+  defp format_msg_type(:system), do: "system"
+  defp format_msg_type(:file_history_snapshot), do: "snapshot"
+  defp format_msg_type(type) when is_atom(type), do: Atom.to_string(type)
+  defp format_msg_type(type) when is_binary(type), do: type
+  defp format_msg_type(_), do: "message"
 
   defp format_wall_clock(nil), do: ""
 

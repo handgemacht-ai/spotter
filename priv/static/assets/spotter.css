@@ -4114,19 +4114,24 @@ span.commit-detail-cochange-member {
   width: 12px;
 }
 
-.lanes-msg-role {
+.lanes-msg-type {
   font-size: var(--text-xs);
   font-weight: 500;
   color: var(--text-secondary);
   flex-shrink: 0;
 }
 
-.lanes-role-user {
-  color: var(--accent-cyan);
-}
+.lanes-type-user { color: var(--accent-cyan); }
+.lanes-type-assistant { color: var(--accent-green); }
+.lanes-type-tool_use { color: var(--accent-amber); }
+.lanes-type-tool_result { color: var(--accent-purple, #a78bfa); }
+.lanes-type-thinking { color: var(--text-tertiary); }
+.lanes-type-progress { color: var(--text-tertiary); }
+.lanes-type-system { color: var(--accent-red); }
 
-.lanes-role-assistant {
-  color: var(--accent-green);
+.lanes-msg-preview-line {
+  margin-top: 2px;
+  overflow: hidden;
 }
 
 .lanes-msg-preview {
@@ -4135,8 +4140,7 @@ span.commit-detail-cochange-member {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
-  min-width: 0;
+  display: block;
 }
 
 .lanes-msg-duration {

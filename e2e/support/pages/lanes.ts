@@ -116,9 +116,9 @@ export class LanesPage {
     return cell.locator(".lanes-tool-badge");
   }
 
-  /** Locator for the role label within a message cell. */
-  msgRole(cell: Locator): Locator {
-    return cell.locator(".lanes-msg-role");
+  /** Locator for the type label within a message cell. */
+  msgType(cell: Locator): Locator {
+    return cell.locator(".lanes-msg-type");
   }
 
   /** Locator for the content preview within a collapsed message cell. */
@@ -418,12 +418,12 @@ export class LanesPage {
     expect(expandedCount, "no messages should be expanded by default").toBe(0);
   }
 
-  /** Assert collapsed messages show role label and content preview. */
+  /** Assert collapsed messages show type label and content preview. */
   async expectCollapsedMessageContent() {
     const firstCollapsed = this.collapsedMessages().first();
     await expect(firstCollapsed).toBeVisible();
-    const role = this.msgRole(firstCollapsed);
-    await expect(role).toBeVisible();
+    const typeLabel = this.msgType(firstCollapsed);
+    await expect(typeLabel).toBeVisible();
     const preview = this.msgPreview(firstCollapsed);
     const text = await preview.textContent();
     expect(
