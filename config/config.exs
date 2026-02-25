@@ -77,6 +77,13 @@ config :spark,
     ]
   ]
 
+# Sentry error tracking
+config :sentry,
+  client: Sentry.ReqHTTPClient,
+  environment_name: Mix.env(),
+  enable_source_code_context: true,
+  root_source_code_paths: [File.cwd!()]
+
 config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
 
 # Keep tzdata cache on a writable path in container/dev flows.
