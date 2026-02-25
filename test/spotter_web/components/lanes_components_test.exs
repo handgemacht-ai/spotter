@@ -442,6 +442,179 @@ defmodule SpotterWeb.LanesComponentsTest do
     end
   end
 
+  describe "expanded message content rendering parity" do
+    test "expanded content includes tool_use and code block text, not just plain text blocks" do
+      # A message with mixed block types: text, tool_use, and code
+      msg_with_mixed_blocks = %{
+        id: "mixed-msg-1",
+        uuid: "uuid-mixed-1",
+        type: :assistant,
+        role: :assistant,
+        content: %{
+          "blocks" => [
+            %{"type" => "text", "text" => "Let me check the file."},
+            %{"type" => "tool_use", "name" => "Read", "input" => %{"file_path" => "/tmp/foo.ex"}},
+            %{
+              "type" => "tool_result",
+              "tool_use_id" => "tool-1",
+              "content" => "defmodule Foo do\n  def bar, do: :ok\nend"
+            },
+            %{"type" => "text", "text" => "The file looks correct."}
+          ]
+        },
+        timestamp: ~U[2026-02-01 10:00:00Z]
+      }
+
+      lane = %{
+        agent_name: "agent-a",
+        session: %{session_id: "session-a", cwd: "/tmp/test"},
+        messages: [msg_with_mixed_blocks],
+        rendered_lines: [
+          %{
+            line_number: 1,
+            line: "Let me check the file.",
+            kind: :text,
+            render_mode: :plain
+          },
+          %{
+            line_number: 2,
+            line: "Read /tmp/foo.ex",
+            kind: :tool_use,
+            render_mode: :tool_badge
+          },
+          %{
+            line_number: 3,
+            line: "defmodule Foo do\n  def bar, do: :ok\nend",
+            kind: :tool_result,
+            render_mode: :code
+          },
+          %{
+            line_number: 4,
+            line: "The file looks correct.",
+            kind: :text,
+            render_mode: :plain
+          }
+        ],
+        idle_periods: [],
+        started_at: ~U[2026-02-01 10:00:00Z],
+        ended_at: ~U[2026-02-01 10:30:00Z]
+      }
+
+      rows = [
+        %{
+          timestamp: ~U[2026-02-01 10:00:00Z],
+          cells: %{"agent-a" => msg_with_mixed_blocks}
+        }
+      ]
+
+      html =
+        render_component(&LanesComponents.lanes_panel/1,
+          lanes: [lane],
+          rows: rows,
+          expanded_messages: %{"mixed-msg-1" => true}
+        )
+
+      # The expanded content should include tool_use information, not just text blocks.
+      # Currently extract_text only returns text blocks and ignores tool_use/tool_result,
+      # losing critical information that the normal transcript renderer shows.
+      assert html =~ "Let me check the file."
+      assert html =~ "The file looks correct."
+
+      # The expanded content area (inside lanes-msg-content) should include tool details.
+      # Currently extract_text only extracts "text" type blocks and ignores tool_use/tool_result,
+      # losing critical information that the normal transcript renderer shows.
+      #
+      # We check the content within the expanded area specifically:
+      assert html =~ "foo.ex",
+             "Expanded content should show tool_use file path (foo.ex) but extract_text drops tool_use blocks"
+
+      assert html =~ "defmodule Foo",
+             "Expanded content should show tool_result code but extract_text drops tool_result blocks"
+    end
+  end
+
+  test "received link badges only appear on the correct message, not all messages in recipient lane" do
+    # Receiver has 3 messages; only one should get the received badge
+    receiver_messages = [
+      %{
+        id: "recv-msg-1",
+        uuid: "uuid-recv-1",
+        type: :assistant,
+        role: :assistant,
+        content: %{"text" => "first message"},
+        timestamp: ~U[2026-02-01 10:01:00Z]
+      },
+      %{
+        id: "recv-msg-2",
+        uuid: "uuid-recv-2",
+        type: :assistant,
+        role: :assistant,
+        content: %{"text" => "second message"},
+        timestamp: ~U[2026-02-01 10:05:00Z]
+      },
+      %{
+        id: "recv-msg-3",
+        uuid: "uuid-recv-3",
+        type: :assistant,
+        role: :assistant,
+        content: %{"text" => "third message"},
+        timestamp: ~U[2026-02-01 10:10:00Z]
+      }
+    ]
+
+    sender_lane = build_lane("sender", ~U[2026-02-01 10:00:00Z], ~U[2026-02-01 10:30:00Z], 1)
+
+    receiver_lane = %{
+      agent_name: "receiver",
+      session: %{session_id: "session-receiver", cwd: "/tmp/test"},
+      messages: receiver_messages,
+      rendered_lines: receiver_messages,
+      idle_periods: [],
+      started_at: ~U[2026-02-01 10:00:00Z],
+      ended_at: ~U[2026-02-01 10:30:00Z]
+    }
+
+    lanes = [sender_lane, receiver_lane]
+
+    # Link sent at 10:00 from sender to receiver
+    message_links = [
+      %{
+        sender: "sender",
+        recipient: "receiver",
+        timestamp: ~U[2026-02-01 10:00:00Z],
+        sender_message_uuid: "uuid-sender-1",
+        content_preview: "Hello receiver"
+      }
+    ]
+
+    all_agents = Enum.map(lanes, & &1.agent_name)
+
+    rows =
+      Enum.map(receiver_messages, fn msg ->
+        cells = Map.new(all_agents, fn name -> {name, if(name == "receiver", do: msg)} end)
+        %{timestamp: msg.timestamp, cells: cells}
+      end)
+
+    html =
+      render_component(&LanesComponents.lanes_panel/1,
+        lanes: lanes,
+        rows: rows,
+        message_links: message_links
+      )
+
+    # The received badge should appear at most once — only on the message
+    # temporally closest to the send event, NOT on every message in the receiver lane.
+    received_badge_count =
+      html
+      |> String.split("data-link-direction=\"received\"")
+      |> length()
+      |> Kernel.-(1)
+
+    assert received_badge_count == 1,
+           "Expected exactly 1 received badge but found #{received_badge_count}. " <>
+             "Received badges are leaking to every message in the recipient lane."
+  end
+
   describe "format_duration/2" do
     test "formats seconds" do
       assert LanesComponents.format_duration(

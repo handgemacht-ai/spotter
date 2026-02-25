@@ -24,7 +24,16 @@ defmodule SpotterWeb.LanesComponents do
     lane_index =
       Map.new(Enum.with_index(assigns.lanes), fn {lane, idx} -> {lane.agent_name, idx} end)
 
-    assigns = assign(assigns, :lane_index, lane_index)
+    received_link_targets =
+      compute_received_link_targets(assigns.message_links, assigns.lanes)
+
+    rendered_lines_index = build_rendered_lines_index(assigns.lanes)
+
+    assigns =
+      assigns
+      |> assign(:lane_index, lane_index)
+      |> assign(:received_link_targets, received_link_targets)
+      |> assign(:rendered_lines_index, rendered_lines_index)
 
     ~H"""
     <div id="lanes-scroll" class="lanes-container" data-testid="lanes-panel">
@@ -96,6 +105,8 @@ defmodule SpotterWeb.LanesComponents do
             timeline={@timeline}
             message_links={@message_links}
             expanded_messages={@expanded_messages}
+            received_link_targets={@received_link_targets}
+            rendered_lines_index={@rendered_lines_index}
           />
         <% end %>
 
@@ -146,6 +157,8 @@ defmodule SpotterWeb.LanesComponents do
   attr(:timeline, :map, default: nil)
   attr(:message_links, :list, default: [])
   attr(:expanded_messages, :map, default: %{})
+  attr(:received_link_targets, :map, default: %{})
+  attr(:rendered_lines_index, :map, default: %{})
 
   defp table_row(assigns) do
     offset = format_offset(assigns.row.timestamp, assigns.timeline)
@@ -166,6 +179,8 @@ defmodule SpotterWeb.LanesComponents do
         is_idle={@is_idle}
         message_links={@message_links}
         expanded_messages={@expanded_messages}
+        received_link_targets={@received_link_targets}
+        rendered_lines_index={@rendered_lines_index}
       />
     <% end %>
     """
@@ -177,6 +192,8 @@ defmodule SpotterWeb.LanesComponents do
   attr(:is_idle, :boolean, default: false)
   attr(:message_links, :list, default: [])
   attr(:expanded_messages, :map, default: %{})
+  attr(:received_link_targets, :map, default: %{})
+  attr(:rendered_lines_index, :map, default: %{})
 
   defp table_cell(%{cell: nil, is_idle: false} = assigns) do
     ~H"""
@@ -204,13 +221,24 @@ defmodule SpotterWeb.LanesComponents do
   defp table_cell(assigns) do
     msg = assigns.cell
     msg_id = if is_map(msg), do: Map.get(msg, :id) || Map.get(msg, :uuid), else: nil
+    msg_uuid = if is_map(msg), do: Map.get(msg, :uuid), else: nil
     is_expanded = msg_id && Map.get(assigns.expanded_messages, msg_id, false)
     role = if is_map(msg), do: Map.get(msg, :role, :assistant), else: :assistant
     content = if is_map(msg), do: Map.get(msg, :content), else: nil
     preview = content_preview(content)
     tools = extract_tools(content)
-    links_for_msg = find_message_links(assigns.message_links, assigns.agent_name, msg)
+
+    links_for_msg =
+      find_message_links(
+        assigns.message_links,
+        assigns.agent_name,
+        msg,
+        assigns.received_link_targets
+      )
+
     duration_class = message_duration_class(msg)
+
+    rendered_lines = Map.get(assigns.rendered_lines_index, msg_uuid, [])
 
     assigns =
       assign(assigns,
@@ -221,7 +249,8 @@ defmodule SpotterWeb.LanesComponents do
         preview: preview,
         tools: tools,
         links_for_msg: links_for_msg,
-        duration_class: duration_class
+        duration_class: duration_class,
+        rendered_lines: rendered_lines
       )
 
     ~H"""
@@ -254,13 +283,30 @@ defmodule SpotterWeb.LanesComponents do
         <span :if={!@is_expanded} class="lanes-msg-preview"><%= @preview %></span>
       </div>
       <div :if={@is_expanded} class="lanes-msg-content">
-        <.expanded_message_content msg={@msg} />
+        <.expanded_message_content msg={@msg} rendered_lines={@rendered_lines} />
       </div>
     </div>
     """
   end
 
   attr(:msg, :map, required: true)
+  attr(:rendered_lines, :list, default: [])
+
+  defp expanded_message_content(%{rendered_lines: [_ | _]} = assigns) do
+    ~H"""
+    <div class="lanes-rendered-lines">
+      <%= for line <- @rendered_lines do %>
+        <div class={"lanes-rendered-line lanes-line-#{line[:kind] || :text}"} data-render-mode={to_string(line[:render_mode] || "plain")}>
+          <%= if line[:render_mode] == :code do %>
+            <pre class="lanes-msg-text"><code class={"language-#{line[:code_language] || "plaintext"}"}><%= line.line %></code></pre>
+          <% else %>
+            <span class="lanes-msg-text"><%= line.line %></span>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
 
   defp expanded_message_content(assigns) do
     content = Map.get(assigns.msg, :content)
@@ -327,7 +373,9 @@ defmodule SpotterWeb.LanesComponents do
 
   defp extract_tools(_), do: []
 
-  defp find_message_links(links, agent_name, msg) when is_list(links) and is_map(msg) do
+  # Bug 3 fix: use received_link_targets to scope received badges to the correct message
+  defp find_message_links(links, agent_name, msg, received_link_targets)
+       when is_list(links) and is_map(msg) do
     msg_uuid = Map.get(msg, :uuid)
 
     sent =
@@ -345,7 +393,10 @@ defmodule SpotterWeb.LanesComponents do
 
     received =
       links
-      |> Enum.filter(&(&1.recipient == agent_name))
+      |> Enum.filter(fn link ->
+        link.recipient == agent_name &&
+          Map.get(received_link_targets, link_key(link)) == msg_uuid
+      end)
       |> Enum.map(
         &%{
           direction: :received,
@@ -360,7 +411,82 @@ defmodule SpotterWeb.LanesComponents do
     sent ++ received
   end
 
-  defp find_message_links(_, _, _), do: []
+  defp find_message_links(_, _, _, _), do: []
+
+  # Pre-compute which message UUID in each recipient lane should show each received badge.
+  # For each link, find the first message in the recipient's lane at or after the link timestamp.
+  defp compute_received_link_targets(links, lanes) when is_list(links) and is_list(lanes) do
+    lane_messages =
+      Map.new(lanes, fn lane ->
+        {lane.agent_name, Enum.sort_by(lane.messages, & &1.timestamp, DateTime)}
+      end)
+
+    Enum.reduce(links, %{}, fn link, acc ->
+      messages = Map.get(lane_messages, link.recipient, [])
+      target_uuid = first_msg_uuid_at_or_after(messages, link.timestamp)
+
+      if target_uuid do
+        Map.put(acc, link_key(link), target_uuid)
+      else
+        acc
+      end
+    end)
+  end
+
+  defp compute_received_link_targets(_, _), do: %{}
+
+  defp first_msg_uuid_at_or_after(messages, timestamp) do
+    Enum.find_value(messages, fn msg ->
+      if msg.timestamp && DateTime.compare(msg.timestamp, timestamp) != :lt, do: msg.uuid
+    end)
+  end
+
+  defp link_key(link) do
+    {link.sender, link.recipient, link.sender_message_uuid}
+  end
+
+  # Build a map from msg_uuid to rendered_lines for expanded content rendering (Bug 2 fix).
+  # Uses pre-computed rendered_lines from ParallelLanes.build_lane.
+  defp build_rendered_lines_index(lanes) when is_list(lanes) do
+    Enum.reduce(lanes, %{}, fn lane, acc ->
+      rendered = Map.get(lane, :rendered_lines, [])
+      index_lane_rendered_lines(lane.messages, rendered, acc)
+    end)
+  end
+
+  defp build_rendered_lines_index(_), do: %{}
+
+  defp index_lane_rendered_lines(messages, rendered_lines, acc) do
+    msg_id_to_uuid =
+      Map.new(messages, fn msg -> {msg.id || msg.uuid, msg.uuid} end)
+
+    lines_by_msg_id = Enum.group_by(rendered_lines, fn line -> line[:message_id] end)
+
+    # If all lines lack :message_id (nil key only), distribute to each message by id
+    case Map.keys(lines_by_msg_id) do
+      [nil] ->
+        distribute_unkeyed_lines(messages, rendered_lines, acc)
+
+      _ ->
+        Enum.reduce(lines_by_msg_id, acc, &merge_lines_for_msg(&1, &2, msg_id_to_uuid))
+    end
+  end
+
+  defp distribute_unkeyed_lines(messages, rendered_lines, acc) do
+    case messages do
+      [single] -> Map.put(acc, single.uuid, rendered_lines)
+      _ -> acc
+    end
+  end
+
+  defp merge_lines_for_msg({nil, _lines}, acc, _msg_id_to_uuid), do: acc
+
+  defp merge_lines_for_msg({msg_id, lines}, acc, msg_id_to_uuid) do
+    case Map.get(msg_id_to_uuid, msg_id) do
+      nil -> acc
+      uuid -> Map.put(acc, uuid, lines)
+    end
+  end
 
   defp message_duration_class(msg) when is_map(msg) do
     # Could compute from consecutive messages; for now return nil

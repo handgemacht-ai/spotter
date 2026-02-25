@@ -4187,6 +4187,10 @@ span.commit-detail-cochange-member {
 
 .lanes-msg-expanded {
   cursor: pointer;
+  position: relative;
+  z-index: 2;
+  overflow: visible;
+  background: var(--surface-1);
 }
 
 .lanes-msg-expanded .lanes-msg-header {
