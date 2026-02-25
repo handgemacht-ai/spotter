@@ -125,5 +125,6 @@ defmodule Spotter.Transcripts do
     resource Spotter.Transcripts.ProjectIngestState
     resource Spotter.Transcripts.Team
     resource Spotter.Transcripts.TeamMember
+    resource Spotter.Transcripts.ComputedLaneCache
   end
 end

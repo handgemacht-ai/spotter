@@ -513,6 +513,95 @@ defmodule Spotter.Transcripts.ParallelLanesTest do
     end
   end
 
+  describe "compute_and_cache/1" do
+    test "caches result and load_cached returns it", %{team: team, project: project} do
+      create_member_with_messages(team, project, "cache-agent", [
+        {:user, :user, ~U[2026-02-01 12:00:00Z]},
+        {:assistant, :assistant, ~U[2026-02-01 12:00:01Z]}
+      ])
+
+      assert {:miss, nil} = ParallelLanes.load_cached(team.id)
+
+      {:ok, computed} = ParallelLanes.compute_and_cache(team.id)
+      assert length(computed.lanes) == 1
+
+      {:ok, cached} = ParallelLanes.load_cached(team.id)
+      assert length(cached.lanes) == 1
+      assert hd(cached.lanes).agent_name == "cache-agent"
+    end
+
+    test "cached lanes preserve message fields", %{team: team, project: project} do
+      create_member_with_messages(team, project, "field-agent", [
+        {:user, :user, ~U[2026-02-01 12:00:00Z]},
+        {:assistant, :assistant, ~U[2026-02-01 12:00:01Z]}
+      ])
+
+      {:ok, _} = ParallelLanes.compute_and_cache(team.id)
+      {:ok, cached} = ParallelLanes.load_cached(team.id)
+
+      lane = hd(cached.lanes)
+      msg = hd(lane.messages)
+      assert is_binary(msg.uuid)
+      assert msg.type in [:user, :assistant]
+      assert %DateTime{} = msg.timestamp
+    end
+
+    test "cached result preserves timeline and overlaps", %{team: team, project: project} do
+      create_member_with_messages(team, project, "tl-agent-a", [
+        {:user, :user, ~U[2026-02-01 10:00:00Z]},
+        {:assistant, :assistant, ~U[2026-02-01 12:00:00Z]}
+      ])
+
+      create_member_with_messages(team, project, "tl-agent-b", [
+        {:user, :user, ~U[2026-02-01 11:00:00Z]},
+        {:assistant, :assistant, ~U[2026-02-01 13:00:00Z]}
+      ])
+
+      {:ok, _} = ParallelLanes.compute_and_cache(team.id)
+      {:ok, cached} = ParallelLanes.load_cached(team.id)
+
+      assert %{earliest: %DateTime{}, latest: %DateTime{}} = cached.timeline
+      assert cached.overlaps != []
+    end
+
+    test "cached rows preserve cell structure", %{team: team, project: project} do
+      create_member_with_messages(team, project, "row-cache-a", [
+        {:user, :user, ~U[2026-02-01 12:00:00Z]}
+      ])
+
+      create_member_with_messages(team, project, "row-cache-b", [
+        {:user, :user, ~U[2026-02-01 12:00:05Z]}
+      ])
+
+      {:ok, _} = ParallelLanes.compute_and_cache(team.id)
+      {:ok, cached} = ParallelLanes.load_cached(team.id)
+
+      assert cached.rows != []
+      first_row = hd(cached.rows)
+      assert %{timestamp: %DateTime{}, cells: cells} = first_row
+      assert is_map(cells)
+    end
+
+    test "re-caching overwrites previous cache", %{team: team, project: project} do
+      create_member_with_messages(team, project, "overwrite-agent", [
+        {:user, :user, ~U[2026-02-01 12:00:00Z]}
+      ])
+
+      {:ok, _} = ParallelLanes.compute_and_cache(team.id)
+      {:ok, first} = ParallelLanes.load_cached(team.id)
+      assert length(first.lanes) == 1
+
+      # Add another member and re-cache
+      create_member_with_messages(team, project, "overwrite-agent-2", [
+        {:user, :user, ~U[2026-02-01 12:00:01Z]}
+      ])
+
+      {:ok, _} = ParallelLanes.compute_and_cache(team.id)
+      {:ok, second} = ParallelLanes.load_cached(team.id)
+      assert length(second.lanes) == 2
+    end
+  end
+
   describe "row alignment" do
     test "align_rows/1 normalizes turns across lanes into time-ordered rows", %{
       team: team,

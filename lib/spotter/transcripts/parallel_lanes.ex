@@ -5,7 +5,7 @@ defmodule Spotter.Transcripts.ParallelLanes do
   require Ash.Query
 
   alias Spotter.Services.TranscriptRenderer
-  alias Spotter.Transcripts.{Message, Team}
+  alias Spotter.Transcripts.{ComputedLaneCache, Message, Team}
 
   # tool_use is embedded within :assistant content blocks, not stored as top-level rows.
   # thinking, progress, system, file_history_snapshot are non-renderable noise.
@@ -121,6 +121,102 @@ defmodule Spotter.Transcripts.ParallelLanes do
           {:error, error}
       end
     end
+  end
+
+  @cache_version 1
+
+  @doc """
+  Compute lanes and persist the result in the database cache.
+
+  Called by the `ComputeLanes` Oban worker after transcript sync.
+  """
+  @spec compute_and_cache(String.t()) :: {:ok, map()} | {:error, term()}
+  def compute_and_cache(team_id) do
+    Tracer.with_span "spotter.parallel_lanes.compute_and_cache" do
+      Tracer.set_attribute("spotter.team_id", team_id)
+
+      case compute(team_id) do
+        {:ok, result} ->
+          payload = :erlang.term_to_binary(serialize_result(result))
+
+          Ash.create!(ComputedLaneCache, %{
+            team_id: team_id,
+            payload: payload,
+            version: @cache_version,
+            computed_at: DateTime.utc_now()
+          })
+
+          Tracer.set_attribute("spotter.cache_size_bytes", byte_size(payload))
+          {:ok, result}
+
+        error ->
+          error
+      end
+    end
+  end
+
+  @doc """
+  Load pre-computed lanes from the database cache.
+
+  Returns `{:ok, result}` on cache hit, `{:miss, nil}` on cache miss or version mismatch.
+  """
+  @spec load_cached(String.t()) :: {:ok, map()} | {:miss, nil}
+  def load_cached(team_id) do
+    Tracer.with_span "spotter.parallel_lanes.load_cached" do
+      Tracer.set_attribute("spotter.team_id", team_id)
+
+      case ComputedLaneCache
+           |> Ash.Query.filter(team_id == ^team_id and version == ^@cache_version)
+           |> Ash.read_one() do
+        {:ok, %ComputedLaneCache{payload: payload}} when is_binary(payload) ->
+          result = payload |> :erlang.binary_to_term([:safe]) |> deserialize_result()
+          Tracer.set_attribute("spotter.cache_hit", true)
+          {:ok, result}
+
+        _ ->
+          Tracer.set_attribute("spotter.cache_hit", false)
+          {:miss, nil}
+      end
+    end
+  end
+
+  # Convert the compute result into plain Elixir terms safe for term_to_binary.
+  # Strips Ash structs; lanes component only needs maps with atom keys.
+  defp serialize_result(result) do
+    %{
+      lanes: Enum.map(result.lanes, &serialize_lane/1),
+      timeline: result.timeline,
+      overlaps: result.overlaps,
+      message_links: result.message_links,
+      received_link_targets: result.received_link_targets,
+      rows: Enum.map(result.rows, &serialize_row/1)
+    }
+  end
+
+  defp serialize_lane(lane) do
+    %{
+      agent_name: lane.agent_name,
+      session: %{id: lane.session.id, session_id: lane.session.session_id, cwd: lane.session.cwd},
+      messages: Enum.map(lane.messages, &message_to_map/1),
+      rendered_lines: lane.rendered_lines,
+      idle_periods: lane.idle_periods,
+      started_at: lane.started_at,
+      ended_at: lane.ended_at
+    }
+  end
+
+  defp serialize_row(%{timestamp: ts, cells: cells}) do
+    serialized_cells =
+      Map.new(cells, fn
+        {agent_name, nil} -> {agent_name, nil}
+        {agent_name, msg} -> {agent_name, message_to_map(msg)}
+      end)
+
+    %{timestamp: ts, cells: serialized_cells}
+  end
+
+  defp deserialize_result(data) do
+    data
   end
 
   @doc "Compute time regions where two or more lanes overlap."

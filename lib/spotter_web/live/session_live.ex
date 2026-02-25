@@ -355,7 +355,7 @@ defmodule SpotterWeb.SessionLive do
         socket
 
       {:ok, %Team{} = team} ->
-        case ParallelLanes.compute(team.id) do
+        case load_lanes_result(team.id) do
           {:ok, %{lanes: lanes} = result} ->
             assign(socket,
               lanes_team_id: team.id,
@@ -389,6 +389,14 @@ defmodule SpotterWeb.SessionLive do
           received_link_targets: %{},
           rows: []
         )
+    end
+  end
+
+  # Try DB cache first, fall back to live computation.
+  defp load_lanes_result(team_id) do
+    case ParallelLanes.load_cached(team_id) do
+      {:ok, _result} = hit -> hit
+      {:miss, nil} -> ParallelLanes.compute(team_id)
     end
   end
 

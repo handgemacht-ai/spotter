@@ -13,6 +13,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   alias Spotter.Transcripts.Config
   alias Spotter.Transcripts.Jobs.ComputeCoChange
   alias Spotter.Transcripts.Jobs.ComputeHeatmap
+  alias Spotter.Transcripts.Jobs.ComputeLanes
   alias Spotter.Transcripts.JsonlParser
   alias Spotter.Transcripts.Session
   alias Spotter.Transcripts.Sessions
@@ -280,6 +281,19 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
     %{project_id: project.id}
     |> ReindexProject.new()
     |> Oban.insert()
+
+    enqueue_lanes(project)
+  end
+
+  defp enqueue_lanes(project) do
+    Team
+    |> Ash.Query.filter(project_id == ^project.id)
+    |> Ash.read!()
+    |> Enum.each(fn team ->
+      %{team_id: team.id}
+      |> ComputeLanes.new()
+      |> Oban.insert()
+    end)
   end
 
   defp broadcast(message) do
