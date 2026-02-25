@@ -55,7 +55,8 @@ defmodule Spotter.MixProject do
       {:opentelemetry_phoenix, "~> 2.0"},
       {:opentelemetry_telemetry, "~> 1.1"},
       {:opentelemetry_ash, "~> 0.1"},
-      {:myxql, "~> 0.8"}
+      {:myxql, "~> 0.8"},
+      {:sentry, "~> 11.0"}
     ]
   end
 

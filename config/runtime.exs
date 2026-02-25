@@ -17,6 +17,10 @@ import Config
 # SPOTTER_ROLLUP_BUCKET_KIND - bucket granularity: day, week, or month (default: week)
 # SPOTTER_ROLLUP_LOOKBACK_DAYS - rolling summary lookback window in days (default: 30)
 
+if dsn = System.get_env("SENTRY_DSN") do
+  config :sentry, dsn: dsn
+end
+
 # Product Spec (Dolt) configuration
 config :spotter, Spotter.ProductSpec.Repo,
   hostname: System.get_env("SPOTTER_DOLT_HOST", "localhost"),

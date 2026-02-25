@@ -10,6 +10,10 @@ defmodule Spotter.Application do
 
   @impl true
   def start(_type, _args) do
+    :logger.add_handler(:sentry_handler, Sentry.LoggerHandler, %{
+      config: %{metadata: [:file, :line]}
+    })
+
     # Initialize OpenTelemetry before starting children
     Otel.setup()
     LiveviewOtel.setup()

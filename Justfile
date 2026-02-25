@@ -86,10 +86,17 @@ up: _check-prereqs
         overmind kill 2>/dev/null || true
         rm -f "{{project_root}}/.overmind.sock" 2>/dev/null || true
       fi
-      overmind start -f {{project_root}}/Procfile.dev -D 2>/dev/null || true
+      if [ -n "${SYSTEMD_EXEC_PID:-}" ]; then
+        # Running under systemd — stay in foreground so systemd can track the process
+        exec overmind start -f {{project_root}}/Procfile.dev
+      else
+        overmind start -f {{project_root}}/Procfile.dev -D 2>/dev/null || true
+      fi
     fi
 
-    bash {{project_root}}/scripts/runtime/wait-for-phoenix.sh
+    if [ -z "${SYSTEMD_EXEC_PID:-}" ]; then
+      bash {{project_root}}/scripts/runtime/wait-for-phoenix.sh
+    fi
 
 # Stop all services
 down:
@@ -130,6 +137,19 @@ down:
       sleep 1
     done
     true
+
+# Deploy latest main
+deploy:
+    bash {{project_root}}/../../../scripts/deploy-main.sh spotter
+
+# View systemd journal
+journal *ARGS:
+    journalctl --user -u rig@spotter -f {{ARGS}}
+
+# Restart via systemd
+restart-systemd:
+    systemctl --user restart rig@spotter
+    bash {{project_root}}/scripts/runtime/wait-for-phoenix.sh
 
 # Show service health
 status:
