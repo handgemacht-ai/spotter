@@ -8,6 +8,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- `RetroSubmission` and `RetroItem` Ash resources for structured agent retrospectives (spotter-xnz.1)
+  - `retro_submissions` table with `session_id`, `agent_name`, `submitted_at` columns
+  - `retro_items` table with `category` (enum: went_well, frustrating, surprising, do_differently, open_questions), `content`, `rating` (1-5)
+  - Migration: `priv/repo/migrations/20260226212526_add_retro_submissions_and_items.exs`
+  - Files: `lib/spotter/transcripts/retro_submission.ex`, `lib/spotter/transcripts/retro_item.ex`
+- MCP actions for retrospective submission and querying (spotter-xnz.2)
+  - `submit_retro` — accepts structured retro data (5 categories) and persists submission + items
+  - `list_retros` — lists retrospective submissions with optional session/agent filters
+  - `rate_retro_item` — rates individual retro items on a 1-5 scale
+  - OTel tracing on all three actions
+  - Registered in `SpotterWeb.Plugs.SpotterMcpPlug`
+  - Files: `lib/spotter_web/plugs/spotter_mcp_plug.ex`, `lib/spotter/transcripts.ex`
+- Global Spotter MCP configuration in `personal_claude` (spotter-xnz.3)
+  - `.mcp.json` entry and Makefile target for workspace-wide MCP access
+- New structured retro skill with 5 reflection categories and Wait re-examination (spotter-xnz.4)
+  - Categories: went_well, frustrating, surprising, do_differently, open_questions
+  - Includes Wait step for agents to re-examine their observations before submitting
+  - No action items — retrospectives capture observations only
+- Deprecated old rig-level retro skill in favor of new structured skill (spotter-xnz.5)
+- 38 new tests covering RetroSubmission, RetroItem, and MCP actions
+  - Files: `test/spotter/transcripts/retro_submission_test.exs`, `test/spotter/transcripts/retro_item_test.exs`, `test/spotter/transcripts/retro_item_rate_test.exs`, `test/spotter/transcripts/retro_mcp_actions_test.exs`
+
+### Added
+
 - Table-based lanes layout with CSS Grid, sticky time column, and wall clock + offset display (spotter-4iv.1, spotter-4iv.4, spotter-4iv.5)
   - Rewrote `lanes_components.ex` from flex columns to CSS Grid table layout
   - Sticky time column with wall clock and offset display
