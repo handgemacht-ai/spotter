@@ -1,5 +1,10 @@
 # Release Notes
 
+## 2026-02-26
+
+- Claude Code agents can now submit structured retrospectives after each session, reflecting on what went well, what was frustrating, what surprised them, what they'd do differently, and what questions remain open.
+- Retrospective data is stored and queryable, making it possible to spot patterns across sessions and improve agent workflows over time.
+
 ## 2026-02-24
 
 - Team session timelines now show a structured table view with a sticky time column, making it easy to follow what each agent did and when.
