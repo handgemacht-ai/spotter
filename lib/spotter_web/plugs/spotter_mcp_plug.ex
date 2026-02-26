@@ -26,7 +26,10 @@ defmodule SpotterWeb.SpotterMcpPlug do
       :list_review_annotations,
       :resolve_annotation,
       :create_hotspot,
-      :list_hotspots
+      :list_hotspots,
+      :submit_retro,
+      :list_retros,
+      :rate_retro_item
     ]
   ]
 

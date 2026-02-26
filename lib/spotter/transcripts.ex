@@ -101,6 +101,19 @@ defmodule Spotter.Transcripts do
     tool :list_hotspots, Spotter.Transcripts.CommitHotspot, :mcp_list do
       description "List code hotspots for the current project (scoped by MCP project context)."
     end
+
+    tool :submit_retro, Spotter.Transcripts.RetroSubmission, :mcp_submit do
+      description "Submit a session retrospective. Provide session_id (from list_sessions), optional summary (one sentence), and items array. Each item: category (knowledge_gained|effective_strategy|gotcha|requirements_clarity|struggle), observation (what happened), explanation (why it matters). Project auto-scoped."
+    end
+
+    tool :list_retros, Spotter.Transcripts.RetroSubmission, :mcp_list do
+      description "List retrospective submissions for the current project."
+      load [:items]
+    end
+
+    tool :rate_retro_item, Spotter.Transcripts.RetroItem, :mcp_rate do
+      description "Rate a retro item. Provide item id and rating (useful|undecided|not_useful)."
+    end
   end
 
   resources do
@@ -127,5 +140,7 @@ defmodule Spotter.Transcripts do
     resource Spotter.Transcripts.TeamMember
     resource Spotter.Transcripts.ComputedLaneCache
     resource Spotter.Transcripts.RawHookEvent
+    resource Spotter.Transcripts.RetroSubmission
+    resource Spotter.Transcripts.RetroItem
   end
 end
