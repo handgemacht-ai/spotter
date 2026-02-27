@@ -21,6 +21,11 @@ INPUT="$(cat)"
 SESSION_ID="$(echo "$INPUT" | jq -r '.session_id // empty')"
 CWD="$(echo "$INPUT" | jq -r '.cwd // empty')"
 
+# Persist session_id for MCP tools via CLAUDE_ENV_FILE
+if [ -n "${CLAUDE_ENV_FILE:-}" ] && [ -n "${SESSION_ID:-}" ]; then
+  echo "export SPOTTER_SESSION_ID=\"${SESSION_ID}\"" >> "$CLAUDE_ENV_FILE"
+fi
+
 if [ -z "${SESSION_ID:-}" ] || [ -z "${TMUX_PANE:-}" ]; then
   exit 0
 fi

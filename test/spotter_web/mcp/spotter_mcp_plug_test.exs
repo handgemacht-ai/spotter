@@ -50,6 +50,21 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
     {conn.status, Jason.decode!(conn.resp_body), conn}
   end
 
+  defp mcp_post_with_session_id(body, mcp_session_id, spotter_session_id) do
+    conn =
+      Phoenix.ConnTest.build_conn()
+      |> Plug.Conn.put_req_header("content-type", "application/json")
+
+    conn =
+      if mcp_session_id,
+        do: Plug.Conn.put_req_header(conn, "mcp-session-id", mcp_session_id),
+        else: conn
+
+    path = "/api/mcp?session_id=#{spotter_session_id}"
+    conn = Phoenix.ConnTest.dispatch(conn, @endpoint, :post, path, body)
+    {conn.status, Jason.decode!(conn.resp_body), conn}
+  end
+
   defp initialize do
     {200, body, conn} =
       mcp_post(%{
@@ -195,7 +210,7 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
       assert scope.project_dir == project_dir
     end
 
-    test "missing header sets scope error context" do
+    test "missing header falls back to recent session project", %{project: project} do
       {_body, session_id} = initialize()
 
       {200, _body, conn} =
@@ -210,7 +225,9 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
         )
 
       ash_context = get_in(conn.private, [:ash, :context]) || %{}
-      assert ash_context[:spotter_mcp_scope_error] == "missing_header"
+      scope = ash_context[:spotter_mcp_scope]
+      assert scope != nil
+      assert scope.project_id == project.id
     end
 
     test "unmatched header sets scope error context" do
@@ -265,7 +282,7 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
       end)
     end
 
-    test "missing scope causes list_sessions to return error" do
+    test "missing header still resolves list_sessions via fallback", %{project: project} do
       {_body, session_id} = initialize()
 
       {200, body, _conn} =
@@ -282,14 +299,93 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
           session_id
         )
 
-      # AshAi returns scope errors as isError result or JSON-RPC error
-      cond do
-        body["result"] != nil ->
-          assert body["result"]["isError"] == true
+      result = body["result"]
+      assert result["isError"] in [false, nil]
 
-        body["error"] != nil ->
-          assert is_binary(body["error"]["message"])
-      end
+      [content | _] = result["content"]
+      decoded = Jason.decode!(content["text"])
+      assert is_list(decoded)
+
+      Enum.each(decoded, fn session ->
+        assert session["project_id"] == project.id
+      end)
+    end
+  end
+
+  describe "project scope resolution from session_id query param" do
+    test "session_id query param resolves project scope", %{session: session, project: project} do
+      {_body, mcp_session_id} = initialize()
+
+      {200, _body, conn} =
+        mcp_post_with_session_id(
+          %{
+            "jsonrpc" => "2.0",
+            "id" => 200,
+            "method" => "tools/list",
+            "params" => %{}
+          },
+          mcp_session_id,
+          session.session_id
+        )
+
+      ash_context = get_in(conn.private, [:ash, :context]) || %{}
+      scope = ash_context[:spotter_mcp_scope]
+      assert scope != nil
+      assert scope.project_id == project.id
+    end
+
+    test "header takes priority over session_id query param", %{
+      session: session,
+      project: project
+    } do
+      {_body, mcp_session_id} = initialize()
+
+      # Use both header and query param — header should win
+      conn =
+        Phoenix.ConnTest.build_conn()
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+        |> Plug.Conn.put_req_header("x-spotter-project-dir", "test-mcp-project")
+        |> Plug.Conn.put_req_header("mcp-session-id", mcp_session_id)
+
+      conn =
+        Phoenix.ConnTest.dispatch(
+          conn,
+          @endpoint,
+          :post,
+          "/api/mcp?session_id=#{session.session_id}",
+          %{
+            "jsonrpc" => "2.0",
+            "id" => 201,
+            "method" => "tools/list",
+            "params" => %{}
+          }
+        )
+
+      ash_context = get_in(conn.private, [:ash, :context]) || %{}
+      scope = ash_context[:spotter_mcp_scope]
+      assert scope != nil
+      assert scope.project_id == project.id
+    end
+
+    test "invalid session_id falls back to recent session", %{project: project} do
+      {_body, mcp_session_id} = initialize()
+
+      {200, _body, conn} =
+        mcp_post_with_session_id(
+          %{
+            "jsonrpc" => "2.0",
+            "id" => 202,
+            "method" => "tools/list",
+            "params" => %{}
+          },
+          mcp_session_id,
+          "nonexistent-session-id"
+        )
+
+      ash_context = get_in(conn.private, [:ash, :context]) || %{}
+      scope = ash_context[:spotter_mcp_scope]
+      assert scope != nil
+      assert scope.project_id == project.id
     end
   end
 
