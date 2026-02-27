@@ -3,7 +3,6 @@ defmodule SpotterWeb.RetrosLive do
 
   alias Spotter.Transcripts.{Project, RetroSubmission}
   require Ash.Query
-  require Logger
 
   @impl true
   def mount(_params, _session, socket) do
@@ -42,9 +41,8 @@ defmodule SpotterWeb.RetrosLive do
   defp parse_project_id(id) when is_binary(id) and id != "" and id != "all", do: id
   defp parse_project_id(_), do: nil
 
-  defp first_project_id(project_counts) do
-    List.first(project_counts) |> then(&(&1 && &1.project_id))
-  end
+  defp first_project_id([%{project_id: id} | _]), do: id
+  defp first_project_id(_), do: nil
 
   defp normalize_project_id(project_counts, project_id) do
     first = first_project_id(project_counts)
@@ -62,12 +60,11 @@ defmodule SpotterWeb.RetrosLive do
   defp list_project_submission_counts do
     projects = Project |> Ash.Query.sort(name: :asc) |> Ash.read!()
 
-    submissions =
+    counts_by_project =
       RetroSubmission
       |> Ash.Query.select([:project_id])
       |> Ash.read!()
-
-    counts_by_project = Enum.frequencies_by(submissions, & &1.project_id)
+      |> Enum.frequencies_by(& &1.project_id)
 
     Enum.map(projects, fn project ->
       %{
@@ -76,32 +73,26 @@ defmodule SpotterWeb.RetrosLive do
         submission_count: Map.get(counts_by_project, project.id, 0)
       }
     end)
-  rescue
-    error ->
-      Logger.warning("Failed to load retro submission counts: #{Exception.message(error)}")
-      []
   end
 
-  defp load_submissions(socket) do
-    case socket.assigns.selected_project_id do
-      nil ->
-        assign(socket, submissions: [])
-
-      project_id ->
-        submissions =
-          RetroSubmission
-          |> Ash.Query.filter(project_id == ^project_id)
-          |> Ash.Query.sort(submitted_at: :desc)
-          |> Ash.Query.load([:items, :session])
-          |> Ash.read!()
-
-        assign(socket, submissions: submissions)
-    end
+  defp load_submissions(%{assigns: %{selected_project_id: nil}} = socket) do
+    assign(socket, submissions: [])
   end
 
-  defp session_label(%{slug: slug}) when is_binary(slug), do: slug
-  defp session_label(%{session_id: sid}), do: String.slice(sid, 0, 8)
-  defp session_label(_), do: nil
+  defp load_submissions(%{assigns: %{selected_project_id: project_id}} = socket) do
+    submissions =
+      RetroSubmission
+      |> Ash.Query.filter(project_id == ^project_id)
+      |> Ash.Query.sort(submitted_at: :desc)
+      |> Ash.Query.load([:items, :session])
+      |> Ash.read!()
+
+    assign(socket, submissions: submissions)
+  end
+
+  defp session_label(session) do
+    session.slug || String.slice(session.session_id, 0, 8)
+  end
 
   @impl true
   def render(assigns) do
@@ -135,36 +126,34 @@ defmodule SpotterWeb.RetrosLive do
         </div>
       </div>
 
-      <%= if @selected_project_id do %>
-        <%= if @submissions == [] do %>
-          <div class="empty-state">
-            No retro submissions for the selected project.
-          </div>
-        <% else %>
-          <%= for sub <- @submissions do %>
-            <div class="annotation-card">
-              <div class="flex items-center gap-2 mb-2">
-                <span class="text-sm"><strong>{sub.summary}</strong></span>
-                <span :if={sub.session} class="text-muted text-xs">
-                  {session_label(sub.session)}
-                </span>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="text-muted text-xs">
-                  {Calendar.strftime(sub.submitted_at, "%Y-%m-%d %H:%M")}
-                </span>
-                <span class="badge">
-                  {length(sub.items)} items
-                </span>
-              </div>
-            </div>
-          <% end %>
-        <% end %>
-      <% else %>
-        <div class="empty-state">
-          No project selected.
+      <div :if={@selected_project_id && @submissions == []} class="empty-state">
+        No retro submissions for the selected project.
+      </div>
+
+      <div
+        :for={sub <- @submissions}
+        :if={@selected_project_id}
+        class="annotation-card"
+      >
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-sm"><strong>{sub.summary}</strong></span>
+          <span :if={sub.session} class="text-muted text-xs">
+            {session_label(sub.session)}
+          </span>
         </div>
-      <% end %>
+        <div class="flex items-center gap-2">
+          <span class="text-muted text-xs">
+            {Calendar.strftime(sub.submitted_at, "%Y-%m-%d %H:%M")}
+          </span>
+          <span class="badge">
+            {length(sub.items)} items
+          </span>
+        </div>
+      </div>
+
+      <div :if={!@selected_project_id} class="empty-state">
+        No project selected.
+      </div>
     </div>
     """
   end
