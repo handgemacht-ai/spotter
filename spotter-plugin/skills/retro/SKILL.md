@@ -12,13 +12,13 @@ Submit structured observations about this session to Spotter for cross-session l
 
 ## Step 1: Identify the session
 
-Find your session ID. Run:
+Use the `$SPOTTER_SESSION_ID` environment variable:
 
 ```bash
-# Look for the session ID in the environment or Spotter
+echo $SPOTTER_SESSION_ID
 ```
 
-Check for `CLAUDE_SESSION_ID` in the environment. This is set automatically by Claude Code hooks when available.
+Pass this value directly as `session_id` in the `submit_retro` call.
 
 ## Step 2: Reflect across the 5 categories
 
