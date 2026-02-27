@@ -3,6 +3,7 @@
 ## 2026-02-27
 
 - You can now browse and rate agent retrospectives in a dedicated Retros page, filtered by project, with expandable cards showing categorized observations and quick rating buttons.
+- The Spotter plugin for Claude Code now exposes a smaller, more focused set of tools — keeping just what's needed for code review and retrospective workflows, reducing clutter for agents.
 
 ## 2026-02-26
 

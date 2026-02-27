@@ -18,7 +18,7 @@ Find your session ID. Run:
 # Look for the session ID in the environment or Spotter
 ```
 
-If the Spotter MCP `list_sessions` tool is available, use it to find the current session. Otherwise, check for `CLAUDE_SESSION_ID` or similar environment markers.
+Check for `CLAUDE_SESSION_ID` in the environment. This is set automatically by Claude Code hooks when available.
 
 ## Step 2: Reflect across the 5 categories
 
