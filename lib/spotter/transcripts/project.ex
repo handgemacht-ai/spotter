@@ -57,6 +57,7 @@ defmodule Spotter.Transcripts.Project do
   relationships do
     has_many :sessions, Spotter.Transcripts.Session
     has_many :annotations, Spotter.Transcripts.Annotation
+    has_many :retro_submissions, Spotter.Transcripts.RetroSubmission
   end
 
   calculations do
