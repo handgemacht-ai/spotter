@@ -199,6 +199,7 @@ defmodule Spotter.Services.TranscriptDiscovery do
         Session
         |> Ash.Query.filter(session_id in ^session_ids)
         |> Ash.read!()
+        |> Enum.filter(&ingested_session?/1)
         |> Enum.map(& &1.session_id)
         |> MapSet.new()
       end
@@ -207,6 +208,19 @@ defmodule Spotter.Services.TranscriptDiscovery do
       %{preview | already_imported: MapSet.member?(imported_ids, preview.session_id)}
     end)
   end
+
+  defp ingested_session?(session) do
+    has_transcript_dir?(session) or has_ingested_messages?(session)
+  end
+
+  defp has_transcript_dir?(%{transcript_dir: transcript_dir}) when is_binary(transcript_dir) do
+    transcript_dir != ""
+  end
+
+  defp has_transcript_dir?(_), do: false
+
+  defp has_ingested_messages?(%{message_count: count}) when is_integer(count), do: count > 0
+  defp has_ingested_messages?(_), do: false
 
   defp transcript_roots_from_config do
     config = Config.read!()

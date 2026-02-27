@@ -19,9 +19,16 @@ INPUT="$(cat)"
 
 # Extract fields from the JSON input
 SESSION_ID="$(echo "$INPUT" | jq -r '.session_id // empty')"
+HOOK_EVENT="$(echo "$INPUT" | jq -r '.hook_event_name // "SessionEnd"')"
+REASON="$(echo "$INPUT" | jq -r '.reason // empty')"
+CWD="$(echo "$INPUT" | jq -r '.cwd // empty')"
 
 if [ -z "${SESSION_ID:-}" ]; then
   exit 0
+fi
+
+if [ -z "${HOOK_EVENT:-}" ]; then
+  HOOK_EVENT="SessionEnd"
 fi
 
 # Generate trace context (fail gracefully if unavailable)
@@ -42,6 +49,7 @@ SPOTTER_URLS="$(spotter_resolve_urls "${PORT}")"
 
 send_to_spotter() {
   local body="$1"
+  local hook_event="$2"
   local connect_timeout
   local max_time
   connect_timeout="$(resolve_timeout "${SPOTTER_NOTIFY_END_CONNECT_TIMEOUT:-}" "${SPOTTER_HOOK_CONNECT_TIMEOUT:-}" "$SPOTTER_DEFAULT_CONNECT_TIMEOUT")"
@@ -52,7 +60,7 @@ send_to_spotter() {
       "$BASE_URL" \
       "/api/hooks/session-end" \
       "$body" \
-      "Stop" \
+      "$hook_event" \
       "notify-session-end.sh" \
       "${TRACEPARENT:-}" \
       "$connect_timeout" \
@@ -64,4 +72,14 @@ send_to_spotter() {
   return 0
 }
 
-send_to_spotter "{\"session_id\": \"${SESSION_ID}\"}" || true
+REQUEST_BODY="$(jq -n \
+  --arg session_id "$SESSION_ID" \
+  --arg reason "$REASON" \
+  --arg cwd "$CWD" \
+  '{
+    session_id: $session_id
+  }
+  + (if $reason == "" then {} else {reason: $reason} end)
+  + (if $cwd == "" then {} else {cwd: $cwd} end)')"
+
+send_to_spotter "$REQUEST_BODY" "$HOOK_EVENT" || true

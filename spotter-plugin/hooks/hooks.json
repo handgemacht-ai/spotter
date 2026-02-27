@@ -23,11 +23,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/notify-session-end.sh",
-            "timeout": 5000
-          },
-          {
-            "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/waiting-overlay.sh clear",
             "timeout": 5000
           },
@@ -43,6 +38,11 @@
       {
         "matcher": "",
         "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/notify-session-end.sh",
+            "timeout": 5000
+          },
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",

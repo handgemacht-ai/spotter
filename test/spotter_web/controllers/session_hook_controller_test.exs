@@ -3,6 +3,7 @@ defmodule SpotterWeb.SessionHookControllerTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Spotter.Observability.FlowHub
+  alias Spotter.Transcripts.{Project, Session}
 
   @endpoint SpotterWeb.Endpoint
 
@@ -208,6 +209,32 @@ defmodule SpotterWeb.SessionHookControllerTest do
 
       assert status == 200
       assert body["ok"] == true
+    end
+
+    test "marks an existing session as ended" do
+      project =
+        Ash.create!(Project, %{name: "session-end-project", pattern: "^session-end-project$"})
+
+      session_id = Ash.UUID.generate()
+
+      Ash.create!(Session, %{
+        session_id: session_id,
+        project_id: project.id,
+        cwd: "/home/user/session-end-project"
+      })
+
+      {status, body, _conn} =
+        post_session_end(%{"session_id" => session_id, "reason" => "clear"})
+
+      assert status == 200
+      assert body["ok"] == true
+
+      ended_session =
+        Session
+        |> Ash.read!()
+        |> Enum.find(&(&1.session_id == session_id))
+
+      assert ended_session.hook_ended_at != nil
     end
 
     test "returns 400 for missing session_id" do

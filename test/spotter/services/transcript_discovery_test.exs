@@ -77,11 +77,36 @@ defmodule Spotter.Services.TranscriptDiscoveryTest do
       Ash.create!(Spotter.Transcripts.Session, %{
         session_id: session_id,
         project_id: project.id,
-        cwd: "/home/user/project"
+        cwd: "/home/user/project",
+        transcript_dir: "imported-project",
+        message_count: 2
       })
 
       [preview] = TranscriptDiscovery.discover(tmp_dir)
       assert preview.already_imported == true
+    end
+
+    test "does not mark stub sessions as already imported", %{tmp_dir: tmp_dir} do
+      session_id = Ash.UUID.generate()
+      project_dir = Path.join(tmp_dir, "stub-project")
+      File.mkdir_p!(project_dir)
+      write_jsonl_file(project_dir, session_id)
+      write_sessions_index(project_dir, session_id)
+
+      project =
+        Ash.create!(Spotter.Transcripts.Project, %{
+          name: "stub-project",
+          pattern: "stub"
+        })
+
+      Ash.create!(Spotter.Transcripts.Session, %{
+        session_id: session_id,
+        project_id: project.id,
+        cwd: "/home/user/project"
+      })
+
+      [preview] = TranscriptDiscovery.discover(tmp_dir)
+      assert preview.already_imported == false
     end
   end
 

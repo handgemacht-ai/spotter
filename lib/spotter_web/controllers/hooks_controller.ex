@@ -5,6 +5,7 @@ defmodule SpotterWeb.HooksController do
   alias Spotter.Observability.ErrorReport
   alias Spotter.Observability.FlowHub
   alias Spotter.Observability.FlowKeys
+  alias Spotter.Services.SessionEndFinalizer
   alias Spotter.Telemetry.TraceContext
   alias Spotter.Transcripts.Commit
   alias Spotter.Transcripts.FileSnapshot
@@ -19,6 +20,7 @@ defmodule SpotterWeb.HooksController do
   alias SpotterWeb.OtelTraceHelpers
 
   require Ash.Query
+  require Logger
   require SpotterWeb.OtelTraceHelpers
 
   @max_commit_hashes 50
@@ -314,6 +316,7 @@ defmodule SpotterWeb.HooksController do
       handle_raw_event_result(
         conn,
         meta,
+        hook_payload,
         persist_raw_event(hook_payload, env, params["captured_at"])
       )
     end
@@ -760,7 +763,8 @@ defmodule SpotterWeb.HooksController do
     }
   end
 
-  defp handle_raw_event_result(conn, meta, {:ok, _event}) do
+  defp handle_raw_event_result(conn, meta, hook_payload, {:ok, _event}) do
+    maybe_finalize_session_end(hook_payload)
     emit_hook_outcome("raw_event", :ok, meta.flow_keys)
 
     conn
@@ -769,7 +773,7 @@ defmodule SpotterWeb.HooksController do
     |> json(%{ok: true})
   end
 
-  defp handle_raw_event_result(conn, meta, {:error, :missing_session_id}) do
+  defp handle_raw_event_result(conn, meta, _hook_payload, {:error, :missing_session_id}) do
     respond_raw_event_error(
       conn,
       meta,
@@ -780,7 +784,7 @@ defmodule SpotterWeb.HooksController do
     )
   end
 
-  defp handle_raw_event_result(conn, meta, {:error, changeset}) do
+  defp handle_raw_event_result(conn, meta, _hook_payload, {:error, changeset}) do
     respond_raw_event_error(
       conn,
       meta,
@@ -816,6 +820,24 @@ defmodule SpotterWeb.HooksController do
     |> OtelTraceHelpers.put_trace_response_header()
     |> json(%{error: message})
   end
+
+  defp maybe_finalize_session_end(
+         %{"hook_event_name" => "SessionEnd", "session_id" => session_id} = payload
+       )
+       when is_binary(session_id) do
+    trace_ctx = OtelTraceHelpers.maybe_add_trace_context(%{})
+    SessionEndFinalizer.finalize(session_id, payload, trace_context: trace_ctx)
+    :ok
+  rescue
+    error ->
+      Logger.warning(
+        "Failed to process SessionEnd raw event for #{session_id}: #{Exception.message(error)}"
+      )
+
+      :ok
+  end
+
+  defp maybe_finalize_session_end(_payload), do: :ok
 
   defp persist_raw_event(hook_payload, env, raw_captured_at) do
     session_id = hook_payload["session_id"]

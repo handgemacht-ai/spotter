@@ -6,13 +6,13 @@ defmodule SpotterWeb.SessionHookController do
   alias Spotter.Observability.ErrorReport
   alias Spotter.Observability.FlowHub
   alias Spotter.Observability.FlowKeys
+  alias Spotter.Services.SessionEndFinalizer
   alias Spotter.Services.TranscriptTailSupervisor
   alias Spotter.Telemetry.TraceContext
   alias Spotter.Transcripts.Jobs.{IngestRecentCommits, SyncTranscripts}
   alias Spotter.Transcripts.Sessions
   alias SpotterWeb.OtelTraceHelpers
 
-  require Ash.Query
   require Logger
   require SpotterWeb.OtelTraceHelpers
 
@@ -110,24 +110,33 @@ defmodule SpotterWeb.SessionHookController do
 
   def session_end(conn, %{"session_id" => session_id} = params)
       when is_binary(session_id) do
-    hook_event = get_req_header(conn, "x-spotter-hook-event") |> List.first() || "Stop"
+    hook_event = get_req_header(conn, "x-spotter-hook-event") |> List.first() || "SessionEnd"
     hook_script = get_req_header(conn, "x-spotter-hook-script") |> List.first() || "unknown"
+    reason = params["reason"] || "unknown"
     flow_keys = [FlowKeys.session(session_id)]
 
     OtelTraceHelpers.with_span "spotter.hook.session_end", %{
       "spotter.session_id" => session_id,
       "spotter.hook.event" => hook_event,
-      "spotter.hook.script" => hook_script
+      "spotter.hook.script" => hook_script,
+      "spotter.session_end.reason" => reason
     } do
       emit_hook_received("session_end", flow_keys, %{
         "session_id" => session_id,
         "hook_event" => hook_event,
-        "hook_script" => hook_script
+        "hook_script" => hook_script,
+        "reason" => reason
       })
 
-      TranscriptTailSupervisor.stop_worker(session_id)
-      maybe_enqueue_ingest_for_session(session_id)
-      mark_ended(session_id, params)
+      trace_ctx = OtelTraceHelpers.maybe_add_trace_context(%{})
+      result = SessionEndFinalizer.finalize(session_id, params, trace_context: trace_ctx)
+
+      OtelTraceHelpers.set_attributes_safely(%{
+        "spotter.session_end.sync_status" => to_string(result.sync_status),
+        "spotter.session_end.ingested_messages" => result.ingested_messages,
+        "spotter.session_end.marked_ended" => to_string(result.marked_ended),
+        "spotter.session_end.ingest_enqueued" => result.ingest_enqueued
+      })
 
       emit_hook_outcome("session_end", :ok, flow_keys)
 
@@ -138,7 +147,7 @@ defmodule SpotterWeb.SessionHookController do
   end
 
   def session_end(conn, _params) do
-    hook_event = get_req_header(conn, "x-spotter-hook-event") |> List.first() || "Stop"
+    hook_event = get_req_header(conn, "x-spotter-hook-event") |> List.first() || "SessionEnd"
     hook_script = get_req_header(conn, "x-spotter-hook-script") |> List.first() || "unknown"
 
     OtelTraceHelpers.with_span "spotter.hook.session_end", %{} do
@@ -220,28 +229,6 @@ defmodule SpotterWeb.SessionHookController do
     |> Oban.insert()
   end
 
-  defp maybe_enqueue_ingest_for_session(session_id) do
-    case Spotter.Transcripts.Session
-         |> Ash.Query.filter(session_id == ^session_id)
-         |> Ash.read_one() do
-      {:ok, %{project_id: project_id}} when not is_nil(project_id) ->
-        enqueue_ingest(project_id)
-
-      _ ->
-        :ok
-    end
-  end
-
-  defp mark_ended(session_id, params) do
-    case Sessions.find_or_create(session_id, cwd: params["cwd"]) do
-      {:ok, session} ->
-        Ash.update!(session, %{hook_ended_at: DateTime.utc_now()})
-
-      {:error, reason} ->
-        Logger.warning("Failed to mark session ended #{session_id}: #{inspect(reason)}")
-    end
-  end
-
   defp maybe_start_tail_worker(session_id, cwd) when is_binary(cwd) do
     transcript_path = live_transcript_path(cwd, session_id)
     TranscriptTailSupervisor.ensure_worker(session_id, transcript_path)
@@ -283,16 +270,21 @@ defmodule SpotterWeb.SessionHookController do
 
   @env Application.compile_env(:spotter, :env, :prod)
 
-  defp maybe_bootstrap_sync(_session) when @env == :test, do: :ok
-
   defp maybe_bootstrap_sync(session) do
-    if is_nil(session.message_count) or session.message_count == 0 do
-      trace_ctx = OtelTraceHelpers.maybe_add_trace_context(%{})
-      session_id = session.session_id
+    cond do
+      @env == :test ->
+        :ok
 
-      Task.start(fn ->
-        SyncTranscripts.sync_session_by_id(session_id, trace_context: trace_ctx)
-      end)
+      is_nil(session.message_count) or session.message_count == 0 ->
+        trace_ctx = OtelTraceHelpers.maybe_add_trace_context(%{})
+        session_id = session.session_id
+
+        Task.start(fn ->
+          SyncTranscripts.sync_session_by_id(session_id, trace_context: trace_ctx)
+        end)
+
+      true ->
+        :ok
     end
   rescue
     error ->

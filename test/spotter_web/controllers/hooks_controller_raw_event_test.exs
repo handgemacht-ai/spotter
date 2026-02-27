@@ -3,7 +3,7 @@ defmodule SpotterWeb.HooksControllerRawEventTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Spotter.Observability.FlowHub
-  alias Spotter.Transcripts.RawHookEvent
+  alias Spotter.Transcripts.{Project, RawHookEvent, Session}
 
   require Ash.Query
 
@@ -154,6 +154,40 @@ defmodule SpotterWeb.HooksControllerRawEventTest do
       event = RawHookEvent |> Ash.read_one!()
       assert event.hook_event_name == "SessionStart"
       assert is_nil(event.tool_use_id)
+    end
+
+    test "SessionEnd raw event finalizes the session lifecycle" do
+      project = Ash.create!(Project, %{name: "raw-end-project", pattern: "^raw-end-project$"})
+      session_id = Ash.UUID.generate()
+
+      Ash.create!(Session, %{
+        session_id: session_id,
+        project_id: project.id,
+        cwd: "/home/user/raw-end-project"
+      })
+
+      payload = %{
+        "hook_payload" => %{
+          "session_id" => session_id,
+          "hook_event_name" => "SessionEnd",
+          "reason" => "clear",
+          "cwd" => "/home/user/raw-end-project"
+        },
+        "env" => %{},
+        "captured_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      }
+
+      {status, body, _conn} = post_raw_event(payload)
+
+      assert status == 201
+      assert body["ok"] == true
+
+      ended_session =
+        Session
+        |> Ash.read!()
+        |> Enum.find(&(&1.session_id == session_id))
+
+      assert ended_session.hook_ended_at != nil
     end
 
     test "handles Notification payload" do
