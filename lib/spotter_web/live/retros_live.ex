@@ -51,18 +51,33 @@ defmodule SpotterWeb.RetrosLive do
   end
 
   @impl true
-  def handle_event("rate_item", %{"item-id" => item_id, "rating" => rating}, socket) do
-    Tracer.with_span "spotter.retros_live.rate_item" do
-      Tracer.set_attribute(:"retro.item_id", item_id)
-      Tracer.set_attribute(:"retro.rating", rating)
+  def handle_event("rate_item", %{"item-id" => item_id, "rating" => raw_rating}, socket) do
+    result =
+      Tracer.with_span "spotter.retros_live.rate_item" do
+        Tracer.set_attribute(:"retro.item_id", item_id)
+        Tracer.set_attribute(:"retro.rating", raw_rating)
 
-      RetroItem
-      |> Ash.get!(item_id)
-      |> Ash.update!(%{rating: String.to_existing_atom(rating)}, action: :rate)
+        with {:ok, rating} <- parse_rating(raw_rating),
+             {:ok, item} <- Ash.get(RetroItem, item_id),
+             {:ok, _updated} <- Ash.update(item, %{rating: rating}, action: :rate) do
+          :ok
+        else
+          {:error, reason} ->
+            Tracer.set_status(:error, inspect(reason))
+            {:error, reason}
+        end
+      end
+
+    case result do
+      :ok -> {:noreply, load_submissions(socket)}
+      {:error, _} -> {:noreply, put_flash(socket, :error, "Failed to save rating")}
     end
-
-    {:noreply, load_submissions(socket)}
   end
+
+  defp parse_rating("useful"), do: {:ok, :useful}
+  defp parse_rating("undecided"), do: {:ok, :undecided}
+  defp parse_rating("not_useful"), do: {:ok, :not_useful}
+  defp parse_rating(_), do: {:error, :invalid_rating}
 
   defp parse_project_id(id) when is_binary(id) and id != "" and id != "all", do: id
   defp parse_project_id(_), do: nil
@@ -122,8 +137,9 @@ defmodule SpotterWeb.RetrosLive do
   defp rating_sort_key(:not_useful), do: 1
   defp rating_sort_key(_), do: 2
 
-  defp rating_label(:useful), do: "useful"
-  defp rating_label(:not_useful), do: "not useful"
+  defp rating_label(:useful), do: "Useful"
+  defp rating_label(:undecided), do: "Undecided"
+  defp rating_label(:not_useful), do: "Not useful"
   defp rating_label(other), do: to_string(other)
 
   defp category_distribution(items) do
@@ -229,7 +245,7 @@ defmodule SpotterWeb.RetrosLive do
                 phx-value-rating={rating}
                 class={"rating-btn#{if item.rating == rating, do: " is-active"} rating-#{rating}"}
               >
-                {rating}
+                {rating_label(rating)}
               </button>
             </div>
           </div>

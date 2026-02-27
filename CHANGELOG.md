@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Retro LiveView at `/retros` with project-filtered retrospective submission browser (spotter-gw2)
   - `SpotterWeb.RetrosLive` LiveView following ReviewsLive patterns with `project_id` query param
   - Project filter chips with submission counts, auto-select first project, empty state handling
-  - Expandable submission cards with color-coded category badges (went_well, frustrating, surprising, do_differently, open_questions)
+  - Expandable submission cards with color-coded category badges (knowledge_gained, effective_strategy, gotcha, requirements_clarity, struggle)
   - Rating buttons (useful/undecided/not_useful) with active state highlighting and distribution summary on collapsed headers
   - Sidebar nav link in `root.html.heex`
   - `has_many :retro_submissions` relationship on `Project` resource
