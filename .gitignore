@@ -33,3 +33,9 @@ site/dist/
 .claude/commands/
 .logs/
 .claude/worktrees
+.beads/issues.jsonl
+
+# E2E
+e2e/screenshots
+e2e/traces
+test-results
