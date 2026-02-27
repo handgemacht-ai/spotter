@@ -184,4 +184,219 @@ defmodule SpotterWeb.RetrosLiveTest do
       assert html =~ "2 items"
     end
   end
+
+  describe "expandable submission cards" do
+    test "clicking a submission card expands it to show items" do
+      project = create_project("alpha")
+      session = create_session(project)
+      sub = create_submission(project, session, summary: "Expand me")
+      create_item(sub, category: :knowledge_gained, observation: "Learned something important")
+
+      {:ok, view, html} = live(build_conn(), "/retros?project_id=#{project.id}")
+
+      # Items not visible in collapsed state
+      refute html =~ "Learned something important"
+
+      # Click to expand
+      html = render_click(view, "toggle_submission", %{"id" => sub.id})
+
+      # Items now visible
+      assert html =~ "Learned something important"
+    end
+
+    test "expanded card shows all items with category badges" do
+      project = create_project("alpha")
+      session = create_session(project)
+      sub = create_submission(project, session, summary: "Badge test")
+
+      create_item(sub, category: :knowledge_gained, observation: "Knowledge obs")
+      create_item(sub, category: :gotcha, observation: "Gotcha obs")
+      create_item(sub, category: :effective_strategy, observation: "Strategy obs")
+      create_item(sub, category: :requirements_clarity, observation: "Requirements obs")
+      create_item(sub, category: :struggle, observation: "Struggle obs")
+
+      {:ok, view, _html} = live(build_conn(), "/retros?project_id=#{project.id}")
+
+      html = render_click(view, "toggle_submission", %{"id" => sub.id})
+
+      # All items visible
+      assert html =~ "Knowledge obs"
+      assert html =~ "Gotcha obs"
+      assert html =~ "Strategy obs"
+      assert html =~ "Requirements obs"
+      assert html =~ "Struggle obs"
+
+      # Each category has a distinct badge
+      assert html =~ "knowledge_gained"
+      assert html =~ "gotcha"
+      assert html =~ "effective_strategy"
+      assert html =~ "requirements_clarity"
+      assert html =~ "struggle"
+    end
+
+    test "clicking expanded card collapses it" do
+      project = create_project("alpha")
+      session = create_session(project)
+      sub = create_submission(project, session, summary: "Toggle test")
+      create_item(sub, category: :knowledge_gained, observation: "Visible then hidden")
+
+      {:ok, view, _html} = live(build_conn(), "/retros?project_id=#{project.id}")
+
+      # Expand
+      html = render_click(view, "toggle_submission", %{"id" => sub.id})
+      assert html =~ "Visible then hidden"
+
+      # Collapse
+      html = render_click(view, "toggle_submission", %{"id" => sub.id})
+      refute html =~ "Visible then hidden"
+    end
+
+    test "collapsed state shows summary, item count, and category distribution" do
+      project = create_project("alpha")
+      session = create_session(project)
+      sub = create_submission(project, session, summary: "Distribution test")
+
+      create_item(sub, category: :knowledge_gained)
+      create_item(sub, category: :knowledge_gained)
+      create_item(sub, category: :gotcha)
+
+      {:ok, _view, html} = live(build_conn(), "/retros?project_id=#{project.id}")
+
+      # Summary visible in collapsed state
+      assert html =~ "Distribution test"
+      # Item count
+      assert html =~ "3 items"
+      # Category distribution badges visible in collapsed state
+      assert html =~ "knowledge_gained"
+      assert html =~ "gotcha"
+    end
+
+    test "items show observation and explanation text" do
+      project = create_project("alpha")
+      session = create_session(project)
+      sub = create_submission(project, session, summary: "Content test")
+
+      create_item(sub,
+        category: :effective_strategy,
+        observation: "Pair programming worked well",
+        explanation: "It caught bugs early in the process"
+      )
+
+      {:ok, view, _html} = live(build_conn(), "/retros?project_id=#{project.id}")
+
+      html = render_click(view, "toggle_submission", %{"id" => sub.id})
+
+      assert html =~ "Pair programming worked well"
+      assert html =~ "It caught bugs early in the process"
+    end
+  end
+
+  describe "rating buttons" do
+    test "each item in expanded card shows three rating buttons" do
+      project = create_project("alpha")
+      session = create_session(project)
+      sub = create_submission(project, session, summary: "Rate me")
+      create_item(sub, category: :knowledge_gained, observation: "Rate this item")
+
+      {:ok, view, _html} = live(build_conn(), "/retros?project_id=#{project.id}")
+
+      html = render_click(view, "toggle_submission", %{"id" => sub.id})
+
+      assert html =~ "useful"
+      assert html =~ "undecided"
+      assert html =~ "not_useful"
+    end
+
+    test "clicking a rating button updates the item rating" do
+      project = create_project("alpha")
+      session = create_session(project)
+      sub = create_submission(project, session, summary: "Rate me")
+      item = create_item(sub, category: :knowledge_gained, observation: "Rate this")
+
+      {:ok, view, _html} = live(build_conn(), "/retros?project_id=#{project.id}")
+
+      # Expand the card
+      render_click(view, "toggle_submission", %{"id" => sub.id})
+
+      # Click "useful" rating
+      _html = render_click(view, "rate_item", %{"item-id" => item.id, "rating" => "useful"})
+
+      # Rating should be persisted — reload from DB to verify
+      updated_item = Ash.get!(RetroItem, item.id)
+      assert updated_item.rating == :useful
+    end
+
+    test "current rating button is visually highlighted" do
+      project = create_project("alpha")
+      session = create_session(project)
+      sub = create_submission(project, session, summary: "Highlight test")
+      item = create_item(sub, category: :gotcha, observation: "Check highlight")
+
+      {:ok, view, _html} = live(build_conn(), "/retros?project_id=#{project.id}")
+
+      # Expand and rate as useful
+      render_click(view, "toggle_submission", %{"id" => sub.id})
+      html = render_click(view, "rate_item", %{"item-id" => item.id, "rating" => "useful"})
+
+      # The useful button should have is-active class
+      assert html =~
+               "rating-btn is-active rating-useful"
+    end
+
+    test "default rating is undecided" do
+      project = create_project("alpha")
+      session = create_session(project)
+      sub = create_submission(project, session, summary: "Default test")
+      _item = create_item(sub, category: :knowledge_gained, observation: "Default rating")
+
+      {:ok, view, _html} = live(build_conn(), "/retros?project_id=#{project.id}")
+
+      html = render_click(view, "toggle_submission", %{"id" => sub.id})
+
+      # Undecided button should be highlighted by default
+      assert html =~
+               "rating-btn is-active rating-undecided"
+    end
+
+    test "rating persists after page reload" do
+      project = create_project("alpha")
+      session = create_session(project)
+      sub = create_submission(project, session, summary: "Persist test")
+      item = create_item(sub, category: :struggle, observation: "Persistent rating")
+
+      {:ok, view, _html} = live(build_conn(), "/retros?project_id=#{project.id}")
+
+      # Expand and rate
+      render_click(view, "toggle_submission", %{"id" => sub.id})
+      render_click(view, "rate_item", %{"item-id" => item.id, "rating" => "not_useful"})
+
+      # Reload the page entirely
+      {:ok, view2, _html} = live(build_conn(), "/retros?project_id=#{project.id}")
+      html = render_click(view2, "toggle_submission", %{"id" => sub.id})
+
+      # not_useful should still be highlighted
+      assert html =~
+               "rating-btn is-active rating-not_useful"
+    end
+
+    test "rating distribution summary on submission card header" do
+      project = create_project("alpha")
+      session = create_session(project)
+      sub = create_submission(project, session, summary: "Distribution test")
+      item1 = create_item(sub, category: :knowledge_gained, observation: "Item 1")
+      item2 = create_item(sub, category: :gotcha, observation: "Item 2")
+      item3 = create_item(sub, category: :struggle, observation: "Item 3")
+
+      # Rate items
+      Ash.update!(item1, %{rating: :useful}, action: :rate)
+      Ash.update!(item2, %{rating: :useful}, action: :rate)
+      Ash.update!(item3, %{rating: :not_useful}, action: :rate)
+
+      {:ok, _view, html} = live(build_conn(), "/retros?project_id=#{project.id}")
+
+      # Rating distribution should be visible on the collapsed card
+      assert html =~ "2 useful"
+      assert html =~ "1 not useful"
+    end
+  end
 end
