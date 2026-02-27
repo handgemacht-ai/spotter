@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2026-02-27
+
+- You can now browse and rate agent retrospectives in a dedicated Retros page, filtered by project, with expandable cards showing categorized observations and quick rating buttons.
+
 ## 2026-02-26
 
 - Claude Code agents can now submit structured retrospectives after each session, reflecting on what went well, what was frustrating, what surprised them, what they'd do differently, and what questions remain open.

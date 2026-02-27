@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- Retro LiveView at `/retros` with project-filtered retrospective submission browser (spotter-gw2)
+  - `SpotterWeb.RetrosLive` LiveView following ReviewsLive patterns with `project_id` query param
+  - Project filter chips with submission counts, auto-select first project, empty state handling
+  - Expandable submission cards with color-coded category badges (went_well, frustrating, surprising, do_differently, open_questions)
+  - Rating buttons (useful/undecided/not_useful) with active state highlighting and distribution summary on collapsed headers
+  - Sidebar nav link in `root.html.heex`
+  - `has_many :retro_submissions` relationship on `Project` resource
+  - OTel span: `spotter.retros_live.rate_item`
+  - CSS for category badge colors (5 categories) and rating button states using design tokens
+  - 19 new integration tests
+  - Files: `lib/spotter_web/live/retros_live.ex`, `test/spotter_web/live/retros_live_test.exs`, `lib/spotter_web/router.ex`, `lib/spotter_web/components/layouts/root.html.heex`, `priv/static/assets/spotter.css`, `lib/spotter/transcripts/project.ex`
+
 - `RetroSubmission` and `RetroItem` Ash resources for structured agent retrospectives (spotter-xnz.1)
   - `retro_submissions` table with `session_id`, `agent_name`, `submitted_at` columns
   - `retro_items` table with `category` (enum: went_well, frustrating, surprising, do_differently, open_questions), `content`, `rating` (1-5)
