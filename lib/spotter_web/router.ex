@@ -41,6 +41,7 @@ defmodule SpotterWeb.Router do
     live("/history", HistoryLive)
     live("/history/commits/:commit_id", CommitDetailLive)
     live("/reviews", ReviewsLive)
+    live("/retros", RetrosLive)
     live("/sessions/:session_id", SessionLive)
     live("/sessions/:session_id/agents/:agent_id", SubagentLive)
     live("/file-metrics", FileMetricsLive)
