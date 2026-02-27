@@ -51,13 +51,24 @@ defmodule Spotter.Transcripts.SessionsTest do
       assert project.name == "todo2"
     end
 
-    test "returns error when no pattern matches" do
+    test "auto-creates project when no pattern matches" do
       create_project!("todo", "^-home-marco-projects-todo")
 
       session_id = Ash.UUID.generate()
+      {:ok, session} = Sessions.find_or_create(session_id, cwd: "/home/marco/projects/unrelated")
 
-      assert {:error, {:project_not_found, "/home/marco/projects/unrelated"}} =
-               Sessions.find_or_create(session_id, cwd: "/home/marco/projects/unrelated")
+      project = Project |> Ash.Query.filter(id == ^session.project_id) |> Ash.read_one!()
+      assert project.name == "unrelated"
+      assert project.pattern == "^\\-home\\-marco\\-projects\\-unrelated$"
+    end
+
+    test "auto-created project is reused on subsequent sessions" do
+      cwd = "/home/marco/projects/newapp"
+
+      {:ok, session1} = Sessions.find_or_create(Ash.UUID.generate(), cwd: cwd)
+      {:ok, session2} = Sessions.find_or_create(Ash.UUID.generate(), cwd: cwd)
+
+      assert session1.project_id == session2.project_id
     end
 
     test "returns error when cwd is nil" do
