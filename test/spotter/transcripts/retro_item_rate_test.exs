@@ -31,7 +31,7 @@ defmodule Spotter.Transcripts.RetroItemRateTest do
         retro_submission_id: submission.id
       })
 
-    %{item: item}
+    %{item: item, project: project}
   end
 
   describe "rate action" do
@@ -59,19 +59,50 @@ defmodule Spotter.Transcripts.RetroItemRateTest do
   end
 
   describe "mcp_rate action" do
-    test "updates rating to :useful", %{item: item} do
-      updated = Ash.update!(item, %{rating: :useful}, action: :mcp_rate)
+    test "updates rating to :useful with matching scope", %{item: item, project: project} do
+      updated =
+        Ash.update!(item, %{rating: :useful},
+          action: :mcp_rate,
+          context: %{spotter_mcp_scope: %{project_id: project.id}}
+        )
+
       assert updated.rating == :useful
     end
 
-    test "updates rating to :not_useful", %{item: item} do
-      updated = Ash.update!(item, %{rating: :not_useful}, action: :mcp_rate)
+    test "updates rating to :not_useful with matching scope", %{item: item, project: project} do
+      updated =
+        Ash.update!(item, %{rating: :not_useful},
+          action: :mcp_rate,
+          context: %{spotter_mcp_scope: %{project_id: project.id}}
+        )
+
       assert updated.rating == :not_useful
     end
 
-    test "rejects invalid rating", %{item: item} do
+    test "rejects invalid rating", %{item: item, project: project} do
       assert_raise Ash.Error.Invalid, fn ->
-        Ash.update!(item, %{rating: :invalid}, action: :mcp_rate)
+        Ash.update!(item, %{rating: :invalid},
+          action: :mcp_rate,
+          context: %{spotter_mcp_scope: %{project_id: project.id}}
+        )
+      end
+    end
+
+    test "rejects rating without MCP scope", %{item: item} do
+      assert_raise Ash.Error.Invalid, fn ->
+        Ash.update!(item, %{rating: :useful}, action: :mcp_rate)
+      end
+    end
+
+    test "rejects rating with wrong project scope", %{item: item} do
+      other_project =
+        Ash.create!(Spotter.Transcripts.Project, %{name: "other-rate", pattern: "^other"})
+
+      assert_raise Ash.Error.Invalid, fn ->
+        Ash.update!(item, %{rating: :useful},
+          action: :mcp_rate,
+          context: %{spotter_mcp_scope: %{project_id: other_project.id}}
+        )
       end
     end
   end

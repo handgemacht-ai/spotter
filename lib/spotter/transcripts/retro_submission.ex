@@ -37,9 +37,20 @@ defmodule Spotter.Transcripts.RetroSubmission do
       change fn changeset, _context ->
         case changeset.context[:spotter_mcp_scope] do
           %{project_id: project_id} when is_binary(project_id) ->
-            changeset
-            |> Ash.Changeset.force_change_attribute(:project_id, project_id)
-            |> Ash.Changeset.force_change_attribute(:submitted_at, DateTime.utc_now())
+            session_id = Ash.Changeset.get_attribute(changeset, :session_id)
+
+            case Ash.get(Spotter.Transcripts.Session, session_id) do
+              {:ok, %{project_id: ^project_id}} ->
+                changeset
+                |> Ash.Changeset.force_change_attribute(:project_id, project_id)
+                |> Ash.Changeset.force_change_attribute(:submitted_at, DateTime.utc_now())
+
+              _ ->
+                Ash.Changeset.add_error(
+                  changeset,
+                  "session_id does not belong to MCP scoped project"
+                )
+            end
 
           _ ->
             Ash.Changeset.add_error(
@@ -55,14 +66,20 @@ defmodule Spotter.Transcripts.RetroSubmission do
                Tracer.with_span "spotter.retro.submit_items" do
                  Tracer.set_attribute(:"retro.item_count", length(items))
 
-                 Enum.each(items, fn item ->
-                   Ash.create!(Spotter.Transcripts.RetroItem, %{
-                     retro_submission_id: submission.id,
-                     category: item["category"],
-                     observation: item["observation"],
-                     explanation: item["explanation"]
-                   })
-                 end)
+                 try do
+                   Enum.each(items, fn item ->
+                     Ash.create!(Spotter.Transcripts.RetroItem, %{
+                       retro_submission_id: submission.id,
+                       category: item["category"],
+                       observation: item["observation"],
+                       explanation: item["explanation"]
+                     })
+                   end)
+                 rescue
+                   error ->
+                     Tracer.set_status(:error, Exception.message(error))
+                     reraise error, __STACKTRACE__
+                 end
                end
 
                {:ok, submission}

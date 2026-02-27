@@ -46,6 +46,22 @@ defmodule Spotter.Transcripts.RetroItem do
         constraints one_of: [:useful, :undecided, :not_useful]
       end
 
+      change fn changeset, _context ->
+        with %{project_id: project_id} when is_binary(project_id) <-
+               changeset.context[:spotter_mcp_scope],
+             {:ok, submission} <-
+               Ash.get(Spotter.Transcripts.RetroSubmission, changeset.data.retro_submission_id),
+             true <- submission.project_id == project_id do
+          changeset
+        else
+          _ ->
+            Ash.Changeset.add_error(
+              changeset,
+              "MCP project scope is required and must match retro item project"
+            )
+        end
+      end
+
       change set_attribute(:rating, arg(:rating))
     end
   end

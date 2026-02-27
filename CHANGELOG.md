@@ -30,8 +30,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - 38 new tests covering RetroSubmission, RetroItem, and MCP actions
   - Files: `test/spotter/transcripts/retro_submission_test.exs`, `test/spotter/transcripts/retro_item_test.exs`, `test/spotter/transcripts/retro_item_rate_test.exs`, `test/spotter/transcripts/retro_mcp_actions_test.exs`
 
-### Added
-
 - Table-based lanes layout with CSS Grid, sticky time column, and wall clock + offset display (spotter-4iv.1, spotter-4iv.4, spotter-4iv.5)
   - Rewrote `lanes_components.ex` from flex columns to CSS Grid table layout
   - Sticky time column with wall clock and offset display

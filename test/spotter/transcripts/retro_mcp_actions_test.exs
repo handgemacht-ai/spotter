@@ -77,10 +77,10 @@ defmodule Spotter.Transcripts.RetroMcpActionsTest do
       assert DateTime.compare(submission.submitted_at, before) in [:gt, :eq]
     end
 
-    test "forces project_id from scope", %{project: _project, session: session} do
+    test "rejects session_id from different project", %{session: session} do
       other_project = Ash.create!(Project, %{name: "other-proj", pattern: "^other"})
 
-      submission =
+      assert_raise Ash.Error.Invalid, fn ->
         Ash.create!(
           RetroSubmission,
           %{
@@ -92,8 +92,7 @@ defmodule Spotter.Transcripts.RetroMcpActionsTest do
           action: :mcp_submit,
           context: %{spotter_mcp_scope: %{project_id: other_project.id}}
         )
-
-      assert submission.project_id == other_project.id
+      end
     end
 
     test "rejects calls without MCP project scope", %{session: session} do
