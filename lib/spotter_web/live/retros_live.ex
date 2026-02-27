@@ -1,8 +1,9 @@
 defmodule SpotterWeb.RetrosLive do
   use Phoenix.LiveView
 
-  alias Spotter.Transcripts.{Project, RetroSubmission}
+  alias Spotter.Transcripts.{Project, RetroItem, RetroSubmission}
   require Ash.Query
+  require OpenTelemetry.Tracer, as: Tracer
 
   @impl true
   def mount(_params, _session, socket) do
@@ -49,6 +50,20 @@ defmodule SpotterWeb.RetrosLive do
         else: MapSet.put(expanded_ids, id)
 
     {:noreply, assign(socket, expanded_ids: expanded_ids)}
+  end
+
+  @impl true
+  def handle_event("rate_item", %{"item-id" => item_id, "rating" => rating}, socket) do
+    Tracer.with_span "spotter.retros_live.rate_item" do
+      rating_atom = String.to_existing_atom(rating)
+      Tracer.set_attribute(:"retro.item_id", item_id)
+      Tracer.set_attribute(:"retro.rating", rating)
+
+      item = Ash.get!(RetroItem, item_id)
+      Ash.update!(item, %{rating: rating_atom}, action: :rate)
+    end
+
+    {:noreply, load_submissions(socket)}
   end
 
   defp parse_project_id(id) when is_binary(id) and id != "" and id != "all", do: id
@@ -102,6 +117,21 @@ defmodule SpotterWeb.RetrosLive do
 
     assign(socket, submissions: submissions)
   end
+
+  defp rating_distribution(items) do
+    items
+    |> Enum.frequencies_by(& &1.rating)
+    |> Enum.reject(fn {rating, _} -> rating == :undecided end)
+    |> Enum.sort_by(fn {rating, _} -> rating_sort_key(rating) end)
+  end
+
+  defp rating_sort_key(:useful), do: 0
+  defp rating_sort_key(:not_useful), do: 1
+  defp rating_sort_key(_), do: 2
+
+  defp rating_label(:useful), do: "useful"
+  defp rating_label(:not_useful), do: "not useful"
+  defp rating_label(other), do: to_string(other)
 
   defp category_distribution(items) do
     items
@@ -184,6 +214,12 @@ defmodule SpotterWeb.RetrosLive do
           >
             {category} ({count})
           </span>
+          <span
+            :for={{rating, count} <- rating_distribution(sub.items)}
+            class={"text-xs rating-summary rating-#{rating}"}
+          >
+            {count} {rating_label(rating)}
+          </span>
         </div>
         <div :if={MapSet.member?(@expanded_ids, sub.id)} style="margin-top: 0.5rem;">
           <div :for={item <- sub.items} class="retro-item">
@@ -192,6 +228,17 @@ defmodule SpotterWeb.RetrosLive do
             </span>
             <p class="text-sm">{item.observation}</p>
             <p class="text-muted text-xs">{item.explanation}</p>
+            <div class="flex items-center gap-2" style="margin-top: 0.25rem;">
+              <button
+                :for={rating <- ~w(useful undecided not_useful)a}
+                phx-click="rate_item"
+                phx-value-item-id={item.id}
+                phx-value-rating={rating}
+                class={"rating-btn#{if item.rating == rating, do: " is-active"} rating-#{rating}"}
+              >
+                {rating}
+              </button>
+            </div>
           </div>
         </div>
       </div>
