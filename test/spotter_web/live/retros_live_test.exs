@@ -302,9 +302,9 @@ defmodule SpotterWeb.RetrosLiveTest do
 
       html = render_click(view, "toggle_submission", %{"id" => sub.id})
 
-      assert html =~ "useful"
-      assert html =~ "undecided"
-      assert html =~ "not_useful"
+      assert html =~ "Useful"
+      assert html =~ "Undecided"
+      assert html =~ "Not useful"
     end
 
     test "clicking a rating button updates the item rating" do
@@ -395,8 +395,46 @@ defmodule SpotterWeb.RetrosLiveTest do
       {:ok, _view, html} = live(build_conn(), "/retros?project_id=#{project.id}")
 
       # Rating distribution should be visible on the collapsed card
-      assert html =~ "2 useful"
-      assert html =~ "1 not useful"
+      assert html =~ "2 Useful"
+      assert html =~ "1 Not useful"
+    end
+  end
+
+  describe "negative-path tests" do
+    test "invalid rating value does not crash the LiveView" do
+      project = create_project("alpha")
+      session = create_session(project)
+      sub = create_submission(project, session, summary: "Invalid rating test")
+      item = create_item(sub, category: :knowledge_gained, observation: "Obs")
+
+      {:ok, view, _html} = live(build_conn(), "/retros?project_id=#{project.id}")
+      render_click(view, "toggle_submission", %{"id" => sub.id})
+
+      html = render_click(view, "rate_item", %{"item-id" => item.id, "rating" => "super_useful"})
+
+      assert html =~ "Failed to save rating"
+
+      # Verify rating unchanged
+      reloaded = Ash.get!(RetroItem, item.id)
+      assert reloaded.rating == :undecided
+    end
+
+    test "unknown item-id does not crash the LiveView" do
+      project = create_project("alpha")
+      session = create_session(project)
+      sub = create_submission(project, session, summary: "Unknown item test")
+      create_item(sub, category: :gotcha, observation: "Obs")
+
+      {:ok, view, _html} = live(build_conn(), "/retros?project_id=#{project.id}")
+      render_click(view, "toggle_submission", %{"id" => sub.id})
+
+      html =
+        render_click(view, "rate_item", %{
+          "item-id" => "00000000-0000-0000-0000-000000000000",
+          "rating" => "useful"
+        })
+
+      assert html =~ "Failed to save rating"
     end
   end
 end
