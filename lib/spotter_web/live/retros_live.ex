@@ -13,7 +13,8 @@ defmodule SpotterWeb.RetrosLive do
      |> assign(
        project_counts: project_counts,
        selected_project_id: first_project_id(project_counts),
-       submissions: []
+       submissions: [],
+       expanded_ids: MapSet.new()
      )}
   end
 
@@ -36,6 +37,18 @@ defmodule SpotterWeb.RetrosLive do
     path = if project_id, do: "/retros?project_id=#{project_id}", else: "/retros"
 
     {:noreply, push_patch(socket, to: path)}
+  end
+
+  @impl true
+  def handle_event("toggle_submission", %{"id" => id}, socket) do
+    expanded_ids = socket.assigns.expanded_ids
+
+    expanded_ids =
+      if MapSet.member?(expanded_ids, id),
+        do: MapSet.delete(expanded_ids, id),
+        else: MapSet.put(expanded_ids, id)
+
+    {:noreply, assign(socket, expanded_ids: expanded_ids)}
   end
 
   defp parse_project_id(id) when is_binary(id) and id != "" and id != "all", do: id
@@ -90,6 +103,19 @@ defmodule SpotterWeb.RetrosLive do
     assign(socket, submissions: submissions)
   end
 
+  defp category_distribution(items) do
+    items
+    |> Enum.frequencies_by(& &1.category)
+    |> Enum.sort_by(fn {_cat, count} -> -count end)
+  end
+
+  defp category_label(:knowledge_gained), do: "Knowledge gained"
+  defp category_label(:effective_strategy), do: "Effective strategy"
+  defp category_label(:gotcha), do: "Gotcha"
+  defp category_label(:requirements_clarity), do: "Requirements clarity"
+  defp category_label(:struggle), do: "Struggle"
+  defp category_label(other), do: to_string(other)
+
   defp session_label(session) do
     session.slug || String.slice(session.session_id, 0, 8)
   end
@@ -134,8 +160,12 @@ defmodule SpotterWeb.RetrosLive do
         :for={sub <- @submissions}
         :if={@selected_project_id}
         class="annotation-card"
+        phx-click="toggle_submission"
+        phx-value-id={sub.id}
+        style="cursor: pointer;"
       >
         <div class="flex items-center gap-2 mb-2">
+          <span class="text-xs">{if MapSet.member?(@expanded_ids, sub.id), do: "▾", else: "▸"}</span>
           <span class="text-sm"><strong>{sub.summary}</strong></span>
           <span :if={sub.session} class="text-muted text-xs">
             {session_label(sub.session)}
@@ -148,6 +178,21 @@ defmodule SpotterWeb.RetrosLive do
           <span class="badge">
             {length(sub.items)} items
           </span>
+          <span
+            :for={{category, count} <- category_distribution(sub.items)}
+            class={"retro-category-badge retro-category-#{category}"}
+          >
+            {category} ({count})
+          </span>
+        </div>
+        <div :if={MapSet.member?(@expanded_ids, sub.id)} style="margin-top: 0.5rem;">
+          <div :for={item <- sub.items} class="retro-item">
+            <span class={"retro-category-badge retro-category-#{item.category}"}>
+              {category_label(item.category)}
+            </span>
+            <p class="text-sm">{item.observation}</p>
+            <p class="text-muted text-xs">{item.explanation}</p>
+          </div>
         </div>
       </div>
 
