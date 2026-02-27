@@ -106,9 +106,11 @@ defmodule SpotterWeb.SpotterMcpPlug do
   defp resolve_mcp_project_scope(conn, _attrs) do
     require OpenTelemetry.Tracer, as: Tracer
 
+    # Priority: 1) x-spotter-project-dir header, 2) session_id query param, 3) recent session fallback
     case Plug.Conn.get_req_header(conn, "x-spotter-project-dir") do
       [project_dir | _] when project_dir != "" ->
         Tracer.set_attribute("spotter.mcp.scope.project_dir_present", true)
+        Tracer.set_attribute("spotter.mcp.scope.strategy", "header")
 
         case Sessions.resolve_project_by_cwd(project_dir) do
           {:ok, project} ->
@@ -127,9 +129,76 @@ defmodule SpotterWeb.SpotterMcpPlug do
 
       _ ->
         Tracer.set_attribute("spotter.mcp.scope.project_dir_present", false)
-        Tracer.set_attribute("spotter.mcp.scope.error", "missing_header")
 
-        Ash.PlugHelpers.set_context(conn, %{spotter_mcp_scope_error: "missing_header"})
+        # Claude Code bug #14977: custom headers in .mcp.json are not sent for
+        # HTTP MCP servers. Try session_id from query param (set via CLAUDE_ENV_FILE).
+        conn = Plug.Conn.fetch_query_params(conn)
+
+        case conn.query_params do
+          %{"session_id" => session_id} when session_id != "" ->
+            resolve_scope_from_session_id(conn, session_id)
+
+          _ ->
+            fallback_to_recent_session_project(conn)
+        end
+    end
+  end
+
+  defp resolve_scope_from_session_id(conn, session_id) do
+    require OpenTelemetry.Tracer, as: Tracer
+    require Ash.Query
+
+    alias Spotter.Transcripts.Session
+
+    case Session
+         |> Ash.Query.filter(session_id == ^session_id)
+         |> Ash.read_one() do
+      {:ok, %{project_id: project_id, cwd: cwd}} when not is_nil(project_id) ->
+        Tracer.set_attribute("spotter.mcp.scope.strategy", "session_id_query_param")
+        Tracer.set_attribute("spotter.mcp.scope.project_id", project_id)
+
+        Logger.debug(
+          "MCP scope: resolved project #{project_id} from session_id query param (cwd: #{cwd})"
+        )
+
+        Ash.PlugHelpers.set_context(conn, %{
+          spotter_mcp_scope: %{project_id: project_id, project_dir: cwd}
+        })
+
+      _ ->
+        Tracer.set_attribute("spotter.mcp.scope.session_id_lookup_failed", true)
+        fallback_to_recent_session_project(conn)
+    end
+  end
+
+  defp fallback_to_recent_session_project(conn) do
+    require OpenTelemetry.Tracer, as: Tracer
+    require Ash.Query
+
+    case Spotter.Transcripts.Session
+         |> Ash.Query.filter(not is_nil(project_id))
+         |> Ash.Query.sort(started_at: :desc)
+         |> Ash.Query.limit(1)
+         |> Ash.read_one() do
+      {:ok, %{project_id: project_id, cwd: cwd}} when not is_nil(project_id) ->
+        Tracer.set_attribute("spotter.mcp.scope.strategy", "recent_session_fallback")
+        Tracer.set_attribute("spotter.mcp.scope.project_id", project_id)
+
+        Logger.debug(
+          "MCP scope fallback: using recent session project #{project_id} (cwd: #{cwd})"
+        )
+
+        Ash.PlugHelpers.set_context(conn, %{
+          spotter_mcp_scope: %{project_id: project_id, project_dir: cwd}
+        })
+
+      _ ->
+        Tracer.set_attribute("spotter.mcp.scope.strategy", "none")
+        Tracer.set_attribute("spotter.mcp.scope.error", "no_active_session")
+
+        Ash.PlugHelpers.set_context(conn, %{
+          spotter_mcp_scope_error: "no_active_session"
+        })
     end
   end
 

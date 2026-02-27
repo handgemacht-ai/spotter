@@ -1,0 +1,14 @@
+{
+  "name": "spotter",
+  "owner": {
+    "name": "Handgemacht",
+    "url": "https://github.com/handgemacht-ai"
+  },
+  "plugins": [
+    {
+      "name": "spotter",
+      "source": "./spotter-plugin",
+      "description": "Track file changes and session activity during Claude Code sessions"
+    }
+  ]
+}
