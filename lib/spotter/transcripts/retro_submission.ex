@@ -5,6 +5,7 @@ defmodule Spotter.Transcripts.RetroSubmission do
     domain: Spotter.Transcripts,
     data_layer: AshSqlite.DataLayer
 
+  require Ash.Query
   require OpenTelemetry.Tracer, as: Tracer
 
   sqlite do
@@ -27,7 +28,11 @@ defmodule Spotter.Transcripts.RetroSubmission do
     end
 
     create :mcp_submit do
-      accept [:session_id, :summary]
+      accept [:summary]
+
+      argument :session_id, :string do
+        allow_nil? false
+      end
 
       argument :items, {:array, :map} do
         allow_nil? false
@@ -37,11 +42,14 @@ defmodule Spotter.Transcripts.RetroSubmission do
       change fn changeset, _context ->
         case changeset.context[:spotter_mcp_scope] do
           %{project_id: project_id} when is_binary(project_id) ->
-            session_id = Ash.Changeset.get_attribute(changeset, :session_id)
+            claude_session_id = Ash.Changeset.get_argument(changeset, :session_id)
 
-            case Ash.get(Spotter.Transcripts.Session, session_id) do
-              {:ok, %{project_id: ^project_id}} ->
+            case Spotter.Transcripts.Session
+                 |> Ash.Query.filter(session_id == ^claude_session_id)
+                 |> Ash.read_one() do
+              {:ok, %{id: id, project_id: ^project_id}} ->
                 changeset
+                |> Ash.Changeset.force_change_attribute(:session_id, id)
                 |> Ash.Changeset.force_change_attribute(:project_id, project_id)
                 |> Ash.Changeset.force_change_attribute(:submitted_at, DateTime.utc_now())
 

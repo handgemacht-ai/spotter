@@ -38,7 +38,7 @@ defmodule Spotter.Transcripts.RetroMcpActionsTest do
       submission =
         Ash.create!(
           RetroSubmission,
-          %{session_id: session.id, items: items},
+          %{session_id: session.session_id, items: items},
           action: :mcp_submit,
           context: %{spotter_mcp_scope: %{project_id: project.id}}
         )
@@ -61,7 +61,7 @@ defmodule Spotter.Transcripts.RetroMcpActionsTest do
         Ash.create!(
           RetroSubmission,
           %{
-            session_id: session.id,
+            session_id: session.session_id,
             items: [
               %{
                 "category" => "struggle",
@@ -84,7 +84,7 @@ defmodule Spotter.Transcripts.RetroMcpActionsTest do
         Ash.create!(
           RetroSubmission,
           %{
-            session_id: session.id,
+            session_id: session.session_id,
             items: [
               %{"category" => "gotcha", "observation" => "obs", "explanation" => "exp"}
             ]
@@ -100,7 +100,7 @@ defmodule Spotter.Transcripts.RetroMcpActionsTest do
         Ash.create!(
           RetroSubmission,
           %{
-            session_id: session.id,
+            session_id: session.session_id,
             items: [
               %{"category" => "gotcha", "observation" => "obs", "explanation" => "exp"}
             ]
@@ -114,7 +114,7 @@ defmodule Spotter.Transcripts.RetroMcpActionsTest do
       assert_raise Ash.Error.Invalid, fn ->
         Ash.create!(
           RetroSubmission,
-          %{session_id: session.id, items: []},
+          %{session_id: session.session_id, items: []},
           action: :mcp_submit,
           context: %{spotter_mcp_scope: %{project_id: project.id}}
         )
@@ -126,7 +126,7 @@ defmodule Spotter.Transcripts.RetroMcpActionsTest do
         Ash.create!(
           RetroSubmission,
           %{
-            session_id: session.id,
+            session_id: session.session_id,
             items: [
               %{
                 "category" => "invalid_category",
@@ -146,7 +146,7 @@ defmodule Spotter.Transcripts.RetroMcpActionsTest do
         Ash.create!(
           RetroSubmission,
           %{
-            session_id: session.id,
+            session_id: session.session_id,
             summary: "Good session",
             items: [
               %{
@@ -170,7 +170,7 @@ defmodule Spotter.Transcripts.RetroMcpActionsTest do
       Ash.create!(
         RetroSubmission,
         %{
-          session_id: session.id,
+          session_id: session.session_id,
           items: [
             %{"category" => "knowledge_gained", "observation" => "obs1", "explanation" => "exp1"},
             %{"category" => "gotcha", "observation" => "obs2", "explanation" => "exp2"},
@@ -193,7 +193,7 @@ defmodule Spotter.Transcripts.RetroMcpActionsTest do
       Ash.create!(
         RetroSubmission,
         %{
-          session_id: session.id,
+          session_id: session.session_id,
           items: [
             %{"category" => "gotcha", "observation" => "obs", "explanation" => "exp"}
           ]
@@ -220,7 +220,7 @@ defmodule Spotter.Transcripts.RetroMcpActionsTest do
       Ash.create!(
         RetroSubmission,
         %{
-          session_id: session.id,
+          session_id: session.session_id,
           items: [
             %{"category" => "gotcha", "observation" => "obs", "explanation" => "exp"}
           ]

@@ -548,7 +548,7 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
               "name" => "submit_retro",
               "arguments" => %{
                 "input" => %{
-                  "session_id" => session.id,
+                  "session_id" => session.session_id,
                   "summary" => "Good session overall",
                   "items" => [
                     %{
