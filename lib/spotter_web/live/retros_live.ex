@@ -24,12 +24,10 @@ defmodule SpotterWeb.RetrosLive do
     project_id =
       normalize_project_id(socket.assigns.project_counts, parse_project_id(params["project_id"]))
 
-    socket =
-      socket
-      |> assign(selected_project_id: project_id)
-      |> load_submissions()
-
-    {:noreply, socket}
+    {:noreply,
+     socket
+     |> assign(selected_project_id: project_id)
+     |> load_submissions()}
   end
 
   @impl true
@@ -42,25 +40,25 @@ defmodule SpotterWeb.RetrosLive do
 
   @impl true
   def handle_event("toggle_submission", %{"id" => id}, socket) do
-    expanded_ids = socket.assigns.expanded_ids
+    expanded = socket.assigns.expanded_ids
 
-    expanded_ids =
-      if MapSet.member?(expanded_ids, id),
-        do: MapSet.delete(expanded_ids, id),
-        else: MapSet.put(expanded_ids, id)
+    updated =
+      if MapSet.member?(expanded, id),
+        do: MapSet.delete(expanded, id),
+        else: MapSet.put(expanded, id)
 
-    {:noreply, assign(socket, expanded_ids: expanded_ids)}
+    {:noreply, assign(socket, expanded_ids: updated)}
   end
 
   @impl true
   def handle_event("rate_item", %{"item-id" => item_id, "rating" => rating}, socket) do
     Tracer.with_span "spotter.retros_live.rate_item" do
-      rating_atom = String.to_existing_atom(rating)
       Tracer.set_attribute(:"retro.item_id", item_id)
       Tracer.set_attribute(:"retro.rating", rating)
 
-      item = Ash.get!(RetroItem, item_id)
-      Ash.update!(item, %{rating: rating_atom}, action: :rate)
+      RetroItem
+      |> Ash.get!(item_id)
+      |> Ash.update!(%{rating: String.to_existing_atom(rating)}, action: :rate)
     end
 
     {:noreply, load_submissions(socket)}
@@ -73,16 +71,11 @@ defmodule SpotterWeb.RetrosLive do
   defp first_project_id(_), do: nil
 
   defp normalize_project_id(project_counts, project_id) do
-    first = first_project_id(project_counts)
-
-    case project_id do
-      nil -> first
-      _ -> if project_exists?(project_counts, project_id), do: project_id, else: first
+    if project_id && Enum.any?(project_counts, &(&1.project_id == project_id)) do
+      project_id
+    else
+      first_project_id(project_counts)
     end
-  end
-
-  defp project_exists?(project_counts, project_id) do
-    Enum.any?(project_counts, &(&1.project_id == project_id))
   end
 
   defp list_project_submission_counts do
