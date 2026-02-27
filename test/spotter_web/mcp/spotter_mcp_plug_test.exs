@@ -2,7 +2,7 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
   use ExUnit.Case, async: false
 
   alias Ecto.Adapters.SQL.Sandbox
-  alias Spotter.Transcripts.{Annotation, Project, Session}
+  alias Spotter.Transcripts.{Annotation, Commit, CommitHotspot, Project, RetroSubmission, Session}
 
   @endpoint SpotterWeb.Endpoint
 
@@ -95,7 +95,7 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
   end
 
   describe "tools/list" do
-    test "returns scoped tool names without list_projects" do
+    test "returns only retained tools and excludes pruned tools" do
       {_body, session_id} = initialize()
 
       {200, body, _conn} =
@@ -111,36 +111,22 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
 
       tool_names = Enum.map(body["result"]["tools"], & &1["name"]) |> Enum.sort()
 
+      # Exact retained tool set — no more, no less
+      assert tool_names == [
+               "create_hotspot",
+               "list_review_annotations",
+               "resolve_annotation",
+               "submit_retro"
+             ]
+
+      # Pruned tools must be absent
+      refute "list_sessions" in tool_names
+      refute "list_hotspots" in tool_names
+      refute "list_retros" in tool_names
+      refute "rate_retro_item" in tool_names
+
+      # list_projects was already removed
       refute "list_projects" in tool_names
-      assert "list_sessions" in tool_names
-      assert "list_review_annotations" in tool_names
-      assert "resolve_annotation" in tool_names
-    end
-
-    test "list_sessions schema includes project_id filter" do
-      {_body, session_id} = initialize()
-
-      {200, body, _conn} =
-        mcp_post(
-          %{
-            "jsonrpc" => "2.0",
-            "id" => 20,
-            "method" => "tools/list",
-            "params" => %{}
-          },
-          session_id
-        )
-
-      tools = body["result"]["tools"]
-
-      list_sessions = Enum.find(tools, &(&1["name"] == "list_sessions"))
-      assert list_sessions != nil
-
-      filter_props =
-        get_in(list_sessions, ["inputSchema", "properties", "filter", "properties"])
-
-      assert filter_props != nil
-      assert Map.has_key?(filter_props, "project_id")
     end
   end
 
@@ -249,67 +235,6 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
       assert ash_context[:spotter_mcp_scope_error] != nil
       assert ash_context[:spotter_mcp_scope] == nil
     end
-
-    test "scoped list_sessions only returns sessions for scoped project", %{project: project} do
-      project_dir = "test-mcp-project"
-
-      {_body, session_id} = initialize()
-
-      {200, body, _conn} =
-        mcp_post_with_project_dir(
-          %{
-            "jsonrpc" => "2.0",
-            "id" => 103,
-            "method" => "tools/call",
-            "params" => %{
-              "name" => "list_sessions",
-              "arguments" => %{}
-            }
-          },
-          session_id,
-          project_dir
-        )
-
-      result = body["result"]
-      assert result["isError"] in [false, nil]
-
-      [content | _] = result["content"]
-      decoded = Jason.decode!(content["text"])
-      assert is_list(decoded)
-
-      Enum.each(decoded, fn session ->
-        assert session["project_id"] == project.id
-      end)
-    end
-
-    test "missing header still resolves list_sessions via fallback", %{project: project} do
-      {_body, session_id} = initialize()
-
-      {200, body, _conn} =
-        mcp_post(
-          %{
-            "jsonrpc" => "2.0",
-            "id" => 104,
-            "method" => "tools/call",
-            "params" => %{
-              "name" => "list_sessions",
-              "arguments" => %{}
-            }
-          },
-          session_id
-        )
-
-      result = body["result"]
-      assert result["isError"] in [false, nil]
-
-      [content | _] = result["content"]
-      decoded = Jason.decode!(content["text"])
-      assert is_list(decoded)
-
-      Enum.each(decoded, fn session ->
-        assert session["project_id"] == project.id
-      end)
-    end
   end
 
   describe "project scope resolution from session_id query param" do
@@ -390,36 +315,6 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
   end
 
   describe "tools/call" do
-    test "list_sessions returns scoped sessions", %{project: project} do
-      {_body, session_id} = initialize()
-
-      {200, body, _conn} =
-        mcp_post_with_project_dir(
-          %{
-            "jsonrpc" => "2.0",
-            "id" => 11,
-            "method" => "tools/call",
-            "params" => %{
-              "name" => "list_sessions",
-              "arguments" => %{}
-            }
-          },
-          session_id,
-          "test-mcp-project"
-        )
-
-      result = body["result"]
-      assert result["isError"] in [false, nil]
-
-      [content | _] = result["content"]
-      decoded = Jason.decode!(content["text"])
-      assert is_list(decoded)
-
-      Enum.each(decoded, fn session ->
-        assert session["project_id"] == project.id
-      end)
-    end
-
     test "list_review_annotations output includes public fields", %{
       session: session,
       project: project
@@ -514,34 +409,35 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
       refute "explain" in purposes
     end
 
-    test "tool call with invalid filter returns error", %{} do
-      {_body, session_id} = initialize()
+    for tool_name <- ["list_sessions", "list_hotspots", "list_retros", "rate_retro_item"] do
+      @tool_name tool_name
+      test "calling pruned tool #{@tool_name} returns error" do
+        {_body, session_id} = initialize()
 
-      {200, body, _conn} =
-        mcp_post_with_project_dir(
-          %{
-            "jsonrpc" => "2.0",
-            "id" => 15,
-            "method" => "tools/call",
-            "params" => %{
-              "name" => "list_sessions",
-              "arguments" => %{"filter" => %{"cwd" => %{"eq" => "/fake"}}}
-            }
-          },
-          session_id,
-          "test-mcp-project"
-        )
+        {200, body, _conn} =
+          mcp_post_with_project_dir(
+            %{
+              "jsonrpc" => "2.0",
+              "id" => 50,
+              "method" => "tools/call",
+              "params" => %{
+                "name" => @tool_name,
+                "arguments" => %{}
+              }
+            },
+            session_id,
+            "test-mcp-project"
+          )
 
-      # AshAi returns tool errors as isError result or JSON-RPC error
-      cond do
-        body["result"] != nil ->
-          assert body["result"]["isError"] == true
-          [content | _] = body["result"]["content"]
-          assert content["type"] == "text"
+        # AshAi returns tool errors as isError result or JSON-RPC error
+        cond do
+          body["result"] != nil ->
+            assert body["result"]["isError"] == true
 
-        body["error"] != nil ->
-          assert is_binary(body["error"]["message"])
-          assert body["error"]["code"] != nil
+          body["error"] != nil ->
+            assert is_binary(body["error"]["message"])
+            assert body["error"]["code"] != nil
+        end
       end
     end
 
@@ -590,6 +486,93 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
       assert updated.metadata["resolution"] == "Fixed the code"
       assert updated.metadata["resolution_kind"] == "code_change"
       assert updated.metadata["resolved_at"] != nil
+    end
+
+    test "create_hotspot creates a hotspot and returns success", %{project: project} do
+      commit = Ash.create!(Commit, %{commit_hash: "abc123def456"})
+
+      {_body, session_id} = initialize()
+
+      {200, body, _conn} =
+        mcp_post_with_project_dir(
+          %{
+            "jsonrpc" => "2.0",
+            "id" => 5,
+            "method" => "tools/call",
+            "params" => %{
+              "name" => "create_hotspot",
+              "arguments" => %{
+                "input" => %{
+                  "commit_id" => commit.id,
+                  "relative_path" => "lib/example.ex",
+                  "line_start" => 10,
+                  "line_end" => 20,
+                  "snippet" => "def foo, do: :bar",
+                  "reason" => "Complex function needs refactoring",
+                  "overall_score" => 75.0
+                }
+              }
+            }
+          },
+          session_id,
+          "test-mcp-project"
+        )
+
+      result = body["result"]
+      assert result != nil, "Expected result but got: #{inspect(body)}"
+      assert result["isError"] in [false, nil]
+
+      hotspot = Ash.read_first!(CommitHotspot)
+      assert hotspot.relative_path == "lib/example.ex"
+      assert hotspot.line_start == 10
+      assert hotspot.line_end == 20
+      assert hotspot.reason == "Complex function needs refactoring"
+      assert hotspot.overall_score == 75.0
+      assert hotspot.project_id == project.id
+      assert hotspot.commit_id == commit.id
+    end
+
+    test "submit_retro creates a retro submission with items", %{
+      session: session,
+      project: project
+    } do
+      {_body, mcp_session_id} = initialize()
+
+      {200, body, _conn} =
+        mcp_post_with_project_dir(
+          %{
+            "jsonrpc" => "2.0",
+            "id" => 6,
+            "method" => "tools/call",
+            "params" => %{
+              "name" => "submit_retro",
+              "arguments" => %{
+                "input" => %{
+                  "session_id" => session.id,
+                  "summary" => "Good session overall",
+                  "items" => [
+                    %{
+                      "category" => "effective_strategy",
+                      "observation" => "Used TDD approach",
+                      "explanation" => "Caught bugs early"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          mcp_session_id,
+          "test-mcp-project"
+        )
+
+      result = body["result"]
+      assert result != nil, "Expected result but got: #{inspect(body)}"
+      assert result["isError"] in [false, nil]
+
+      submission = Ash.read_first!(RetroSubmission)
+      assert submission.summary == "Good session overall"
+      assert submission.project_id == project.id
+      assert submission.session_id == session.id
     end
   end
 end

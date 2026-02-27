@@ -22,14 +22,10 @@ defmodule SpotterWeb.SpotterMcpPlug do
     mcp_name: "Spotter",
     mcp_server_version: "1.0.0",
     tools: [
-      :list_sessions,
       :list_review_annotations,
       :resolve_annotation,
       :create_hotspot,
-      :list_hotspots,
-      :submit_retro,
-      :list_retros,
-      :rate_retro_item
+      :submit_retro
     ]
   ]
 

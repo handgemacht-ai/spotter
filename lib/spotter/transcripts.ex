@@ -81,10 +81,6 @@ defmodule Spotter.Transcripts do
   end
 
   tools do
-    tool :list_sessions, Spotter.Transcripts.Session, :mcp_list do
-      description "List sessions for the current project (scoped by MCP project context)."
-    end
-
     tool :list_review_annotations, Spotter.Transcripts.Annotation, :mcp_read_review_annotations do
       description "List review annotations for the current project (filter by state/session_id; includes refs)."
       load [:subagent, :file_refs, message_refs: [:message]]
@@ -98,21 +94,8 @@ defmodule Spotter.Transcripts do
       description "Create a code hotspot for a commit. Requires commit_id, relative_path, line_start, line_end, snippet, reason, and overall_score (0-100). Project is auto-scoped via MCP context."
     end
 
-    tool :list_hotspots, Spotter.Transcripts.CommitHotspot, :mcp_list do
-      description "List code hotspots for the current project (scoped by MCP project context)."
-    end
-
     tool :submit_retro, Spotter.Transcripts.RetroSubmission, :mcp_submit do
-      description "Submit a session retrospective. Provide session_id (from list_sessions), optional summary (one sentence), and items array. Each item: category (knowledge_gained|effective_strategy|gotcha|requirements_clarity|struggle), observation (what happened), explanation (why it matters). Project auto-scoped."
-    end
-
-    tool :list_retros, Spotter.Transcripts.RetroSubmission, :mcp_list do
-      description "List retrospective submissions for the current project."
-      load [:items]
-    end
-
-    tool :rate_retro_item, Spotter.Transcripts.RetroItem, :mcp_rate do
-      description "Rate a retro item. Provide item id and rating (useful|undecided|not_useful)."
+      description "Submit a session retrospective. Provide session_id, optional summary (one sentence), and items array. Each item: category (knowledge_gained|effective_strategy|gotcha|requirements_clarity|struggle), observation (what happened), explanation (why it matters). Project auto-scoped."
     end
   end
 

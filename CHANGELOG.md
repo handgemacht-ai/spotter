@@ -71,6 +71,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   - SVG overlay is `pointer-events:none`, positioned absolute over grid
   - Files: `assets/js/hooks/connector_overlay.js`, `assets/js/app.js`, `lib/spotter_web/components/lanes_components.ex`
 
+### Removed
+
+- MCP tools `list_sessions`, `list_hotspots`, `list_retros`, `rate_retro_item` from the exposed MCP surface (spotter-q9p)
+  - Retained tools: `list_review_annotations`, `resolve_annotation`, `create_hotspot`, `submit_retro`
+  - Tool declarations removed from `Spotter.Transcripts` domain and `SpotterWeb.SpotterMcpPlug` allowlist
+  - Underlying Ash resource actions are preserved for internal use
+  - Spotter review and retro skill docs updated to reflect reduced tool surface
+
 ### Fixed
 
 - CSS layout: `.main-content` overflow-x clipping and `.lanes-container` flex sizing (spotter-4iv.1)
