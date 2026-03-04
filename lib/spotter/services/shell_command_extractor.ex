@@ -19,12 +19,13 @@ defmodule Spotter.Services.ShellCommandExtractor do
   @doc """
   Extracts shell command events from a raw hook event and persists them.
 
-  Returns `{:ok, count}` with the number of events created, or `{:error, reason}`.
+  Returns `{:ok, count, project_id}` with the number of events created, or `{:error, reason}`.
   Never raises.
   """
-  @spec extract_and_persist(map(), String.t()) :: {:ok, non_neg_integer()} | {:error, term()}
+  @spec extract_and_persist(map(), String.t()) ::
+          {:ok, non_neg_integer(), String.t() | nil} | {:error, term()}
   def extract_and_persist(hook_payload, _raw_hook_event_id) when not is_map(hook_payload) do
-    {:ok, 0}
+    {:ok, 0, nil}
   end
 
   def extract_and_persist(hook_payload, raw_hook_event_id) do
@@ -35,19 +36,19 @@ defmodule Spotter.Services.ShellCommandExtractor do
         commands = extract_commands(hook_payload)
 
         if commands == [] do
-          {:ok, 0}
+          {:ok, 0, nil}
         else
           persist_commands(commands, hook_payload, raw_hook_event_id, phase, finish_status)
         end
 
       {:error, :not_tool_event} ->
-        {:ok, 0}
+        {:ok, 0, nil}
     end
   rescue
     error ->
       Logger.warning("ShellCommandExtractor failed: #{Exception.message(error)}")
 
-      {:ok, 0}
+      {:ok, 0, nil}
   end
 
   @doc """
@@ -118,7 +119,7 @@ defmodule Spotter.Services.ShellCommandExtractor do
         }
 
         count = Enum.count(commands, &upsert_command(&1, base_attrs))
-        {:ok, count}
+        {:ok, count, session.project_id}
 
       {:error, reason} ->
         {:error, reason}

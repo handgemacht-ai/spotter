@@ -8,8 +8,9 @@ config :opentelemetry,
     {:otel_simple_processor, %{exporter: {:otel_exporter_pid, :undefined}}}
   ]
 
-# Use simple (synchronous) processor so spans can be routed to test processes
-config :opentelemetry, :processors, [{:otel_simple_processor, %{}}]
+# Disable Ash auto-tracing in tests to prevent OTel simple processor contention
+# (Ash spans serialize exports and block manual span assertions)
+config :ash, tracer: []
 
 config :spotter, Oban, testing: :manual
 config :logger, level: :warning

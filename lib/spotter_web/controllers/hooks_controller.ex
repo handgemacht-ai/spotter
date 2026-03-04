@@ -830,8 +830,13 @@ defmodule SpotterWeb.HooksController do
       "spotter.hook.event" => hook_payload["hook_event_name"] || "unknown"
     } do
       case ShellCommandExtractor.extract_and_persist(hook_payload, to_string(event.id)) do
-        {:ok, count} ->
+        {:ok, count, project_id} ->
           OpenTelemetry.Tracer.set_attribute("spotter.shell_command.count", count)
+
+          if project_id do
+            OpenTelemetry.Tracer.set_attribute("spotter.project_id", project_id)
+            broadcast_shell_telemetry(project_id)
+          end
 
         {:error, reason} ->
           OtelTraceHelpers.set_error("shell_telemetry_ingest_failed", %{
@@ -843,6 +848,16 @@ defmodule SpotterWeb.HooksController do
     error ->
       Logger.warning("Shell command extraction failed: #{Exception.message(error)}")
       :ok
+  end
+
+  defp broadcast_shell_telemetry(project_id) do
+    Phoenix.PubSub.broadcast(
+      Spotter.PubSub,
+      SpotterWeb.ShellTelemetryLive.telemetry_topic(project_id),
+      {:shell_telemetry_updated, %{project_id: project_id}}
+    )
+  rescue
+    _error -> :ok
   end
 
   defp maybe_finalize_session_end(
