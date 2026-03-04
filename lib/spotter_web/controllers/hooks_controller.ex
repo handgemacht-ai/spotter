@@ -857,7 +857,9 @@ defmodule SpotterWeb.HooksController do
       {:shell_telemetry_updated, %{project_id: project_id}}
     )
   rescue
-    _error -> :ok
+    error ->
+      Logger.warning("Shell telemetry broadcast failed: #{Exception.message(error)}")
+      :ok
   end
 
   defp maybe_finalize_session_end(

@@ -26,7 +26,7 @@ defmodule Spotter.Transcripts.ShellCommandEvent do
   ]
 
   actions do
-    defaults [:read, :destroy]
+    defaults [:read]
 
     create :create do
       primary? true

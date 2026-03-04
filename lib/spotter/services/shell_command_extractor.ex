@@ -109,7 +109,7 @@ defmodule Spotter.Services.ShellCommandExtractor do
           session_id: session.id,
           external_session_id: session_id,
           project_id: session.project_id,
-          tool_use_id: tool_use_id || "unknown",
+          tool_use_id: tool_use_id || "unknown_#{Ash.UUID.generate()}",
           tool_name: tool_name,
           hook_event_name: hook_payload["hook_event_name"],
           phase: phase,
