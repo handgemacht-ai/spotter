@@ -6,6 +6,7 @@ defmodule SpotterWeb.HooksController do
   alias Spotter.Observability.FlowHub
   alias Spotter.Observability.FlowKeys
   alias Spotter.Services.SessionEndFinalizer
+  alias Spotter.Services.ShellCommandExtractor
   alias Spotter.Telemetry.TraceContext
   alias Spotter.Transcripts.Commit
   alias Spotter.Transcripts.FileSnapshot
@@ -763,8 +764,9 @@ defmodule SpotterWeb.HooksController do
     }
   end
 
-  defp handle_raw_event_result(conn, meta, hook_payload, {:ok, _event}) do
+  defp handle_raw_event_result(conn, meta, hook_payload, {:ok, event}) do
     maybe_finalize_session_end(hook_payload)
+    maybe_extract_shell_commands(hook_payload, event)
     emit_hook_outcome("raw_event", :ok, meta.flow_keys)
 
     conn
@@ -819,6 +821,28 @@ defmodule SpotterWeb.HooksController do
     |> put_status(http_status)
     |> OtelTraceHelpers.put_trace_response_header()
     |> json(%{error: message})
+  end
+
+  defp maybe_extract_shell_commands(hook_payload, event) do
+    OtelTraceHelpers.with_span "spotter.shell_telemetry.ingest", %{
+      "spotter.session_id" => hook_payload["session_id"] || "unknown",
+      "spotter.tool_use_id" => hook_payload["tool_use_id"] || "unknown",
+      "spotter.hook.event" => hook_payload["hook_event_name"] || "unknown"
+    } do
+      case ShellCommandExtractor.extract_and_persist(hook_payload, to_string(event.id)) do
+        {:ok, count} ->
+          OpenTelemetry.Tracer.set_attribute("spotter.shell_command.count", count)
+
+        {:error, reason} ->
+          OtelTraceHelpers.set_error("shell_telemetry_ingest_failed", %{
+            "error.details" => inspect(reason)
+          })
+      end
+    end
+  rescue
+    error ->
+      Logger.warning("Shell command extraction failed: #{Exception.message(error)}")
+      :ok
   end
 
   defp maybe_finalize_session_end(

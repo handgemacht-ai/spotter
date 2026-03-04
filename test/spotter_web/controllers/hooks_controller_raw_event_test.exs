@@ -3,7 +3,7 @@ defmodule SpotterWeb.HooksControllerRawEventTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Spotter.Observability.FlowHub
-  alias Spotter.Transcripts.{Project, RawHookEvent, Session}
+  alias Spotter.Transcripts.{Project, RawHookEvent, Session, ShellCommandEvent}
 
   require Ash.Query
 
@@ -283,6 +283,227 @@ defmodule SpotterWeb.HooksControllerRawEventTest do
 
       event = RawHookEvent |> Ash.read_one!()
       assert event.captured_at != nil
+    end
+  end
+
+  describe "POST /api/hooks/raw-event shell command extraction" do
+    setup do
+      project =
+        Ash.create!(Project, %{name: "shell-test", pattern: "^shell-test$"})
+
+      %{project: project}
+    end
+
+    defp create_session(project) do
+      session_id = Ash.UUID.generate()
+
+      Ash.create!(Session, %{
+        session_id: session_id,
+        project_id: project.id,
+        cwd: "/home/user/shell-test"
+      })
+
+      session_id
+    end
+
+    test "PreToolUse Bash payload creates ShellCommandEvent with phase :start", %{
+      project: project
+    } do
+      session_id = create_session(project)
+
+      payload = %{
+        "hook_payload" => %{
+          "session_id" => session_id,
+          "hook_event_name" => "PreToolUse",
+          "tool_name" => "Bash",
+          "tool_use_id" => "toolu_shell_pre_1",
+          "tool_input" => %{"command" => "mix test"}
+        },
+        "env" => %{},
+        "captured_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      }
+
+      {status, body, _conn} = post_raw_event(payload)
+
+      assert status == 201
+      assert body["ok"] == true
+
+      events = Ash.read!(ShellCommandEvent)
+      assert length(events) == 1
+
+      event = hd(events)
+      assert event.phase == :start
+      assert event.command == "mix test"
+      assert event.command_path == "tool_input.command"
+    end
+
+    test "PostToolUse Bash payload creates ShellCommandEvent with phase :finish and finish_status :ok",
+         %{project: project} do
+      session_id = create_session(project)
+
+      payload = %{
+        "hook_payload" => %{
+          "session_id" => session_id,
+          "hook_event_name" => "PostToolUse",
+          "tool_name" => "Bash",
+          "tool_use_id" => "toolu_shell_post_1",
+          "tool_input" => %{"command" => "git status"}
+        },
+        "env" => %{},
+        "captured_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      }
+
+      {status, body, _conn} = post_raw_event(payload)
+
+      assert status == 201
+      assert body["ok"] == true
+
+      events = Ash.read!(ShellCommandEvent)
+      assert length(events) == 1
+
+      event = hd(events)
+      assert event.phase == :finish
+      assert event.finish_status == :ok
+      assert event.command == "git status"
+    end
+
+    test "PostToolUseFailure Bash payload creates ShellCommandEvent with phase :finish and finish_status :error",
+         %{project: project} do
+      session_id = create_session(project)
+
+      payload = %{
+        "hook_payload" => %{
+          "session_id" => session_id,
+          "hook_event_name" => "PostToolUseFailure",
+          "tool_name" => "Bash",
+          "tool_use_id" => "toolu_shell_fail_1",
+          "tool_input" => %{"command" => "rm -rf /nope"}
+        },
+        "env" => %{},
+        "captured_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      }
+
+      {status, body, _conn} = post_raw_event(payload)
+
+      assert status == 201
+      assert body["ok"] == true
+
+      events = Ash.read!(ShellCommandEvent)
+      assert length(events) == 1
+
+      event = hd(events)
+      assert event.phase == :finish
+      assert event.finish_status == :error
+      assert event.command == "rm -rf /nope"
+    end
+
+    test "payload without command fields creates no ShellCommandEvent", %{project: project} do
+      session_id = create_session(project)
+
+      payload = %{
+        "hook_payload" => %{
+          "session_id" => session_id,
+          "hook_event_name" => "PostToolUse",
+          "tool_name" => "Write",
+          "tool_use_id" => "toolu_shell_none_1",
+          "tool_input" => %{"file_path" => "/tmp/test.txt", "content" => "hello"}
+        },
+        "env" => %{},
+        "captured_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      }
+
+      {status, body, _conn} = post_raw_event(payload)
+
+      assert status == 201
+      assert body["ok"] == true
+
+      events = Ash.read!(ShellCommandEvent)
+      assert events == []
+    end
+
+    test "duplicate event with same raw_hook_event_id, command_path, and phase is not duplicated",
+         %{project: project} do
+      session_id = create_session(project)
+
+      payload = %{
+        "hook_payload" => %{
+          "session_id" => session_id,
+          "hook_event_name" => "PreToolUse",
+          "tool_name" => "Bash",
+          "tool_use_id" => "toolu_shell_dup_1",
+          "tool_input" => %{"command" => "echo hello"}
+        },
+        "env" => %{},
+        "captured_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      }
+
+      {201, _, _} = post_raw_event(payload)
+      {201, _, _} = post_raw_event(payload)
+
+      events = Ash.read!(ShellCommandEvent)
+      assert length(events) == 1
+    end
+
+    test "multiple commands in one payload creates multiple events", %{project: project} do
+      session_id = create_session(project)
+
+      payload = %{
+        "hook_payload" => %{
+          "session_id" => session_id,
+          "hook_event_name" => "PreToolUse",
+          "tool_name" => "Bash",
+          "tool_use_id" => "toolu_shell_multi_1",
+          "tool_input" => %{"command" => "npm install"},
+          "nested" => %{"command" => "npm test"}
+        },
+        "env" => %{},
+        "captured_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      }
+
+      {status, body, _conn} = post_raw_event(payload)
+
+      assert status == 201
+      assert body["ok"] == true
+
+      events = Ash.read!(ShellCommandEvent)
+      assert length(events) == 2
+
+      commands = Enum.map(events, & &1.command) |> Enum.sort()
+      assert commands == ["npm install", "npm test"]
+    end
+
+    test "malformed captured_at still creates ShellCommandEvent with server time", %{
+      project: project
+    } do
+      session_id = create_session(project)
+
+      payload = %{
+        "hook_payload" => %{
+          "session_id" => session_id,
+          "hook_event_name" => "PreToolUse",
+          "tool_name" => "Bash",
+          "tool_use_id" => "toolu_shell_badtime_1",
+          "tool_input" => %{"command" => "echo hi"}
+        },
+        "env" => %{},
+        "captured_at" => "not-a-date"
+      }
+
+      before = DateTime.utc_now()
+      {status, body, _conn} = post_raw_event(payload)
+      after_time = DateTime.utc_now()
+
+      assert status == 201
+      assert body["ok"] == true
+
+      events = Ash.read!(ShellCommandEvent)
+      assert length(events) == 1
+
+      event = hd(events)
+      assert event.command == "echo hi"
+      # captured_at should fall back to server time
+      assert DateTime.compare(event.captured_at, before) in [:gt, :eq]
+      assert DateTime.compare(event.captured_at, after_time) in [:lt, :eq]
     end
   end
 end
