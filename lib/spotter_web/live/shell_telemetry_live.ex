@@ -7,6 +7,10 @@ defmodule SpotterWeb.ShellTelemetryLive do
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
+  @telemetry_topic_prefix "shell_telemetry:project:"
+
+  def telemetry_topic(project_id), do: @telemetry_topic_prefix <> to_string(project_id)
+
   @windows %{
     "last_24h" => :last_24h,
     "last_7d" => :last_7d,
@@ -14,6 +18,7 @@ defmodule SpotterWeb.ShellTelemetryLive do
     "all" => :all
   }
   @command_truncate_length 80
+  @debounce_ms 300
 
   @impl true
   def mount(_params, _session, socket) do
@@ -26,15 +31,21 @@ defmodule SpotterWeb.ShellTelemetryLive do
           []
       end
 
-    if connected?(socket), do: :timer.send_interval(1000, :tick)
+    first_pid = first_project_id(projects)
+
+    if connected?(socket) do
+      :timer.send_interval(1000, :tick)
+      if first_pid, do: subscribe_telemetry(first_pid)
+    end
 
     {:ok,
      assign(socket,
        projects: projects,
-       selected_project_id: first_project_id(projects),
+       selected_project_id: first_pid,
        selected_window: :last_7d,
        commands: [],
-       summary: empty_summary()
+       summary: empty_summary(),
+       debounce_ref: nil
      )}
   end
 
@@ -44,6 +55,12 @@ defmodule SpotterWeb.ShellTelemetryLive do
       normalize_project_id(socket.assigns.projects, parse_project_id(params["project_id"]))
 
     window = parse_window(params["window"])
+    old_pid = socket.assigns.selected_project_id
+
+    if connected?(socket) and project_id != old_pid do
+      if old_pid, do: unsubscribe_telemetry(old_pid)
+      if project_id, do: subscribe_telemetry(project_id)
+    end
 
     socket =
       socket
@@ -70,27 +87,44 @@ defmodule SpotterWeb.ShellTelemetryLive do
     {:noreply, load_data(socket)}
   end
 
+  def handle_info({:shell_telemetry_updated, %{project_id: pid}}, socket) do
+    if pid == socket.assigns.selected_project_id do
+      if socket.assigns.debounce_ref do
+        {:noreply, schedule_debounce(socket)}
+      else
+        socket =
+          Tracer.with_span "spotter.shell_telemetry.live_refresh" do
+            load_data(socket)
+          end
+
+        {:noreply, schedule_debounce(socket)}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(:debounced_refresh, socket) do
+    {:noreply, socket |> assign(debounce_ref: nil) |> load_data()}
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # --- Data Loading ---
 
   defp load_data(socket) do
-    Tracer.with_span "spotter.shell_telemetry_live.load_data" do
-      %{selected_project_id: pid, selected_window: window} = socket.assigns
+    %{selected_project_id: pid, selected_window: window} = socket.assigns
 
-      commands =
-        if pid do
-          ShellCommandTelemetryQuery.snapshot(pid, window: window)
-        else
-          []
-        end
+    commands =
+      if pid do
+        ShellCommandTelemetryQuery.snapshot(pid, window: window)
+      else
+        []
+      end
 
-      summary = compute_summary(commands)
+    summary = compute_summary(commands)
 
-      Tracer.set_attribute("spotter.command_count", length(commands))
-
-      assign(socket, commands: commands, summary: summary)
-    end
+    assign(socket, commands: commands, summary: summary)
   end
 
   defp compute_summary([]), do: empty_summary()
@@ -117,6 +151,22 @@ defmodule SpotterWeb.ShellTelemetryLive do
 
   defp empty_summary do
     %{mean_ms: nil, median_ms: nil, p50_ms: nil, p90_ms: nil, p95_ms: nil, error_rate: 0.0}
+  end
+
+  # --- PubSub ---
+
+  defp subscribe_telemetry(project_id) do
+    Phoenix.PubSub.subscribe(Spotter.PubSub, telemetry_topic(project_id))
+  end
+
+  defp unsubscribe_telemetry(project_id) do
+    Phoenix.PubSub.unsubscribe(Spotter.PubSub, telemetry_topic(project_id))
+  end
+
+  defp schedule_debounce(socket) do
+    if socket.assigns.debounce_ref, do: Process.cancel_timer(socket.assigns.debounce_ref)
+    ref = Process.send_after(self(), :debounced_refresh, @debounce_ms)
+    assign(socket, debounce_ref: ref)
   end
 
   # --- Helpers ---

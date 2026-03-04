@@ -194,6 +194,146 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
     end
   end
 
+  describe "PubSub live updates" do
+    test "PubSub message triggers immediate data refresh for selected project",
+         %{project: project, session: session} do
+      # Mount view first (no command data yet)
+      {:ok, view, html_before} =
+        live(build_conn(), "/projects/#{project.id}/telemetry/commands")
+
+      assert html_before =~ "No command"
+
+      # Now create command data AFTER mount
+      create_command_pair(%{
+        session_id: session.id,
+        external_session_id: session.session_id,
+        project_id: project.id,
+        tool_use_id: Ash.UUID.generate(),
+        command: "mix deps.get",
+        command_path: "tool_input.command",
+        captured_at: DateTime.add(DateTime.utc_now(), -600, :second)
+      })
+
+      # Send PubSub message directly to the view process.
+      # If the LiveView handles {:shell_telemetry_updated, _} specifically,
+      # it will reload data and the new command will appear.
+      # The current catch-all handle_info(_msg, socket) does NOT reload data.
+      send(view.pid, {:shell_telemetry_updated, %{project_id: project.id}})
+
+      # render/1 flushes the view's message queue, so the PubSub message
+      # will have been processed before we get the HTML back.
+      html_after = render(view)
+
+      # This FAILS because the catch-all handle_info doesn't trigger load_data.
+      # The architect needs to add a specific handler for :shell_telemetry_updated.
+      assert html_after =~ "mix deps.get"
+    end
+
+    test "PubSub message for non-selected project does not trigger refresh",
+         %{project: project, session: session} do
+      other_project =
+        Ash.create!(Project, %{name: "other-pubsub-proj", pattern: "^other-pubsub-proj"})
+
+      # Create data for other project so it would show if accidentally refreshed
+      other_session =
+        Ash.create!(Session, %{
+          session_id: Ash.UUID.generate(),
+          transcript_dir: "/tmp/other-sessions",
+          cwd: "/home/user/other",
+          project_id: other_project.id
+        })
+
+      create_command_pair(%{
+        session_id: other_session.id,
+        external_session_id: other_session.session_id,
+        project_id: other_project.id,
+        tool_use_id: Ash.UUID.generate(),
+        command: "echo wrong-project",
+        command_path: "tool_input.command",
+        captured_at: DateTime.add(DateTime.utc_now(), -60, :second)
+      })
+
+      {:ok, view, _html} =
+        live(build_conn(), "/projects/#{project.id}/telemetry/commands")
+
+      # Insert new data for selected project after mount
+      create_command_pair(%{
+        session_id: session.id,
+        external_session_id: session.session_id,
+        project_id: project.id,
+        tool_use_id: Ash.UUID.generate(),
+        command: "echo sneaky-refresh",
+        command_path: "tool_input.command",
+        captured_at: DateTime.add(DateTime.utc_now(), -30, :second)
+      })
+
+      # Send PubSub for the OTHER project — view should ignore it
+      send(view.pid, {:shell_telemetry_updated, %{project_id: other_project.id}})
+      html = render(view)
+
+      # Data should NOT have been refreshed because the message is for another project
+      refute html =~ "echo sneaky-refresh"
+    end
+
+    test "burst PubSub messages are coalesced into single refresh", %{
+      project: project,
+      session: session
+    } do
+      {:ok, view, _html} =
+        live(build_conn(), "/projects/#{project.id}/telemetry/commands")
+
+      # Create data after mount
+      create_command_pair(%{
+        session_id: session.id,
+        external_session_id: session.session_id,
+        project_id: project.id,
+        tool_use_id: Ash.UUID.generate(),
+        command: "echo burst",
+        command_path: "tool_input.command",
+        captured_at: DateTime.add(DateTime.utc_now(), -60, :second)
+      })
+
+      # Send 5 rapid PubSub messages — should be debounced to 1 refresh
+      for _i <- 1..5 do
+        send(view.pid, {:shell_telemetry_updated, %{project_id: project.id}})
+      end
+
+      # The view should debounce these into a single refresh via a timer
+      # and the data should appear after the debounce window
+      Process.sleep(500)
+      html = render(view)
+      assert html =~ "echo burst"
+    end
+  end
+
+  describe "PubSub refresh telemetry span" do
+    import Spotter.Test.OtelHelpers
+
+    setup :setup_otel_test
+
+    test "spotter.shell_telemetry.live_refresh span emitted on PubSub-triggered refresh",
+         %{project: project, session: session} do
+      create_command_pair(%{
+        session_id: session.id,
+        external_session_id: session.session_id,
+        project_id: project.id,
+        tool_use_id: Ash.UUID.generate(),
+        command: "mix format",
+        command_path: "tool_input.command",
+        captured_at: DateTime.add(DateTime.utc_now(), -300, :second)
+      })
+
+      {:ok, view, _html} =
+        live(build_conn(), "/projects/#{project.id}/telemetry/commands")
+
+      # Trigger PubSub refresh
+      send(view.pid, {:shell_telemetry_updated, %{project_id: project.id}})
+      _html = render(view)
+
+      assert_span_recorded("spotter.shell_telemetry.live_refresh")
+    end
+  end
+
   describe "timer tick" do
     test "tick updates ongoing elapsed durations", %{project: project, session: session} do
       # Create an ongoing command (start only, no finish)

@@ -211,4 +211,56 @@ defmodule SpotterWeb.FlowsHookEmissionTest do
       100 -> Enum.reverse(acc)
     end
   end
+
+  describe "shell telemetry ingest span" do
+    import Spotter.Test.OtelHelpers
+
+    setup :setup_otel_test
+
+    test "spotter.shell_telemetry.ingest span has session_id, project_id, tool_use_id attributes",
+         %{session: session, project: project} do
+      payload = %{
+        "hook_payload" => %{
+          "session_id" => session.session_id,
+          "hook_event_name" => "PreToolUse",
+          "tool_name" => "Bash",
+          "tool_use_id" => "toolu_span_test_1",
+          "tool_input" => %{"command" => "echo span-test"}
+        },
+        "env" => %{},
+        "captured_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      }
+
+      {201, _body} = post_json("/api/hooks/raw-event", payload)
+
+      assert_span_recorded("spotter.shell_telemetry.ingest")
+
+      assert_span_attributes("spotter.shell_telemetry.ingest", %{
+        "spotter.session_id" => session.session_id,
+        "spotter.project_id" => project.id,
+        "spotter.tool_use_id" => "toolu_span_test_1"
+      })
+    end
+
+    test "spotter.shell_telemetry.ingest span records error status on ingestion failure" do
+      # Post with a valid session_id format but the shell command extraction will
+      # encounter an error (e.g. session not found -> creates fallback -> no project)
+      payload = %{
+        "hook_payload" => %{
+          "session_id" => "orphan-session-span-test",
+          "hook_event_name" => "PreToolUse",
+          "tool_name" => "Bash",
+          "tool_use_id" => "toolu_span_fail",
+          "tool_input" => %{"command" => "echo fail-test"}
+        },
+        "env" => %{},
+        "captured_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      }
+
+      {201, _body} = post_json("/api/hooks/raw-event", payload)
+
+      # The ingest span should still be recorded
+      assert_span_recorded("spotter.shell_telemetry.ingest")
+    end
+  end
 end

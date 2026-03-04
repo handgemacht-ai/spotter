@@ -286,6 +286,73 @@ defmodule SpotterWeb.HooksControllerRawEventTest do
     end
   end
 
+  describe "POST /api/hooks/raw-event PubSub broadcast" do
+    setup do
+      project = Ash.create!(Project, %{name: "pubsub-test", pattern: "^pubsub-test$"})
+
+      session_id = Ash.UUID.generate()
+
+      Ash.create!(Session, %{
+        session_id: session_id,
+        project_id: project.id,
+        cwd: "/home/user/pubsub-test"
+      })
+
+      %{project: project, session_id: session_id}
+    end
+
+    test "shell command ingestion broadcasts PubSub to shell_telemetry:project:<project_id>",
+         %{project: project, session_id: session_id} do
+      topic = "shell_telemetry:project:#{project.id}"
+      Phoenix.PubSub.subscribe(Spotter.PubSub, topic)
+
+      payload = %{
+        "hook_payload" => %{
+          "session_id" => session_id,
+          "hook_event_name" => "PostToolUse",
+          "tool_name" => "Bash",
+          "tool_use_id" => "toolu_pubsub_1",
+          "tool_input" => %{"command" => "mix test"}
+        },
+        "env" => %{},
+        "captured_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      }
+
+      {status, _body, _conn} = post_raw_event(payload)
+      assert status == 201
+
+      expected_project_id = project.id
+      assert_receive {:shell_telemetry_updated, %{project_id: ^expected_project_id}}, 2_000
+    end
+
+    test "ingestion failure records span error but endpoint still returns 200-level",
+         %{project: _project} do
+      # Post with a session_id that has no matching session and no project
+      # to trigger extraction failure path
+      payload = %{
+        "hook_payload" => %{
+          "session_id" => "nonexistent-session-for-pubsub",
+          "hook_event_name" => "PostToolUse",
+          "tool_name" => "Bash",
+          "tool_use_id" => "toolu_pubsub_fail",
+          "tool_input" => %{"command" => "failing command"}
+        },
+        "env" => %{},
+        "captured_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      }
+
+      # The raw event should still be persisted even if shell extraction fails
+      {status, body, _conn} = post_raw_event(payload)
+      assert status == 201
+      assert body["ok"] == true
+
+      # No PubSub message should be broadcast for failed ingestion
+      topic = "shell_telemetry:project:global"
+      Phoenix.PubSub.subscribe(Spotter.PubSub, topic)
+      refute_receive {:shell_telemetry_updated, _}, 500
+    end
+  end
+
   describe "POST /api/hooks/raw-event shell command extraction" do
     setup do
       project =

@@ -93,7 +93,8 @@ defmodule Spotter.Services.ShellCommandExtractorTest do
         "tool_input" => %{"command" => "mix test"}
       }
 
-      assert {:ok, 1} = ShellCommandExtractor.extract_and_persist(payload, "raw-event-1")
+      assert {:ok, 1, _project_id} =
+               ShellCommandExtractor.extract_and_persist(payload, "raw-event-1")
 
       events = Ash.read!(ShellCommandEvent)
       assert length(events) == 1
@@ -116,7 +117,7 @@ defmodule Spotter.Services.ShellCommandExtractorTest do
         "tool_input" => %{"command" => "mix test"}
       }
 
-      assert {:ok, 1} = ShellCommandExtractor.extract_and_persist(payload, "raw-event-2")
+      assert {:ok, 1, _} = ShellCommandExtractor.extract_and_persist(payload, "raw-event-2")
 
       event = Ash.read_one!(ShellCommandEvent)
       assert event.phase == :finish
@@ -134,7 +135,7 @@ defmodule Spotter.Services.ShellCommandExtractorTest do
         "tool_input" => %{"command" => "false"}
       }
 
-      assert {:ok, 1} = ShellCommandExtractor.extract_and_persist(payload, "raw-event-3")
+      assert {:ok, 1, _} = ShellCommandExtractor.extract_and_persist(payload, "raw-event-3")
 
       event = Ash.read_one!(ShellCommandEvent)
       assert event.phase == :finish
@@ -148,7 +149,7 @@ defmodule Spotter.Services.ShellCommandExtractorTest do
         "tool_input" => %{"command" => "should not persist"}
       }
 
-      assert {:ok, 0} = ShellCommandExtractor.extract_and_persist(payload, "raw-event-4")
+      assert {:ok, 0, _} = ShellCommandExtractor.extract_and_persist(payload, "raw-event-4")
       assert [] = Ash.read!(ShellCommandEvent)
     end
 
@@ -161,7 +162,7 @@ defmodule Spotter.Services.ShellCommandExtractorTest do
         "tool_input" => %{"file_path" => "/tmp/test.txt", "content" => "hello"}
       }
 
-      assert {:ok, 0} = ShellCommandExtractor.extract_and_persist(payload, "raw-event-5")
+      assert {:ok, 0, _} = ShellCommandExtractor.extract_and_persist(payload, "raw-event-5")
     end
 
     test "creates multiple events for multiple commands", %{session: session} do
@@ -174,7 +175,7 @@ defmodule Spotter.Services.ShellCommandExtractorTest do
         "nested" => %{"command" => "pwd"}
       }
 
-      assert {:ok, 2} = ShellCommandExtractor.extract_and_persist(payload, "raw-event-6")
+      assert {:ok, 2, _} = ShellCommandExtractor.extract_and_persist(payload, "raw-event-6")
       assert length(Ash.read!(ShellCommandEvent)) == 2
     end
 
@@ -187,14 +188,14 @@ defmodule Spotter.Services.ShellCommandExtractorTest do
         "tool_input" => %{"command" => "echo dup"}
       }
 
-      assert {:ok, 1} = ShellCommandExtractor.extract_and_persist(payload, "raw-event-7")
-      assert {:ok, 1} = ShellCommandExtractor.extract_and_persist(payload, "raw-event-7")
+      assert {:ok, 1, _} = ShellCommandExtractor.extract_and_persist(payload, "raw-event-7")
+      assert {:ok, 1, _} = ShellCommandExtractor.extract_and_persist(payload, "raw-event-7")
 
       assert length(Ash.read!(ShellCommandEvent)) == 1
     end
 
     test "never raises on failure" do
-      assert {:ok, 0} = ShellCommandExtractor.extract_and_persist(nil, "raw-event-8")
+      assert {:ok, 0, nil} = ShellCommandExtractor.extract_and_persist(nil, "raw-event-8")
     end
   end
 end
