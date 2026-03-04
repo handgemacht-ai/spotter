@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2026-03-04
+
+- New command telemetry page shows how long shell commands take, how often they fail, and which ones are still running — updated live as new data arrives.
+
 ## 2026-02-27
 
 - You can now browse and rate agent retrospectives in a dedicated Retros page, filtered by project, with expandable cards showing categorized observations and quick rating buttons.
