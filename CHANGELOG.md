@@ -8,6 +8,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- `ShellCommandEvent` Ash resource — append-only event log extracted from raw hook payloads (spotter-nqk.1)
+  - `ShellCommandExtractor` service with recursive command extraction from hook payloads, depth-limited traversal, phase mapping (PreToolUse/PostToolUse/PostToolUseFailure), and fail-safe persistence
+  - Upsert identity for idempotent event ingestion
+  - Integrated into `HooksController` with OTel span `spotter.shell_telemetry.ingest`
+  - Files: `lib/spotter/transcripts/shell_command_event.ex`, `lib/spotter/services/shell_command_extractor.ex`, `lib/spotter_web/controllers/hooks_controller.ex`
+- `ShellCommandTelemetryQuery` service for run folding, percentiles, and error rates (spotter-nqk.2)
+  - `snapshot/2` and `snapshot_all_projects/1` fold events into runs by {tool_use_id, command, command_path}
+  - Per-command metrics: p50/p90/p95 latency, error rate, mean/median duration
+  - Time window filtering: `:last_24h`, `:last_7d`, `:last_30d`, `:all`
+  - Files: `lib/spotter/services/shell_command_telemetry_query.ex`
+- `ShellTelemetryLive` LiveView at `/telemetry/commands` (spotter-nqk.3)
+  - Project and time-window selectors
+  - Summary metrics row: mean, median, p50, p90, p95, error rate
+  - Per-command table sorted by median_ms DESC with ongoing elapsed timer
+  - Sidebar navigation link and documentation
+  - Files: `lib/spotter_web/live/shell_telemetry_live.ex`, `lib/spotter_web/router.ex`, `lib/spotter_web/components/layouts/root.html.heex`, `docs/telemetry/command-telemetry-page.md`
+- PubSub live updates for telemetry page (spotter-nqk.4)
+  - Broadcast on shell command ingestion with centralized `telemetry_topic/1` (single source of truth)
+  - LiveView subscription with 300ms debounce coalescing (immediate first load + timer-gated bursts)
+  - OTel spans for ingest and live refresh paths
+  - Ingestion failures remain fail-safe (rescue around PubSub)
+  - Files: `lib/spotter/transcripts/shell_command_event.ex`, `lib/spotter_web/live/shell_telemetry_live.ex`
+
+### Changed
+
+- Disabled Ash auto-tracing in `test.exs` to prevent OTel processor contention (spotter-nqk.4)
+- Removed duplicate `config :opentelemetry` that silently overrode exporter config (spotter-nqk.4)
+
+### Fixed
+
+- UTF-8 safe string truncation — replaced `binary_part` (byte-indexed) with `String.slice` (codepoint-aware) to prevent splitting multi-byte characters
+
+### Added
+
 - Retro LiveView at `/retros` with project-filtered retrospective submission browser (spotter-gw2)
   - `SpotterWeb.RetrosLive` LiveView following ReviewsLive patterns with `project_id` query param
   - Project filter chips with submission counts, auto-select first project, empty state handling
