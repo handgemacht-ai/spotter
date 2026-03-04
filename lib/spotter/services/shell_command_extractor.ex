@@ -92,7 +92,7 @@ defmodule Spotter.Services.ShellCommandExtractor do
   defp append_path(path, key), do: "#{path}.#{key}"
 
   defp truncate_command(command) when byte_size(command) > @max_command_length do
-    binary_part(command, 0, @max_command_length) <> "[truncated]"
+    String.slice(command, 0, @max_command_length) <> "[truncated]"
   end
 
   defp truncate_command(command), do: command
