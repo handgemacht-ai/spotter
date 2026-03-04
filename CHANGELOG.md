@@ -40,7 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - UTF-8 safe string truncation — replaced `binary_part` (byte-indexed) with `String.slice` (codepoint-aware) to prevent splitting multi-byte characters
 
-### Added
+### Added (spotter-gw2)
 
 - Retro LiveView at `/retros` with project-filtered retrospective submission browser (spotter-gw2)
   - `SpotterWeb.RetrosLive` LiveView following ReviewsLive patterns with `project_id` query param

@@ -249,7 +249,7 @@ defmodule Spotter.Services.ShellCommandTelemetryQueryTest do
         raw_hook_event_id: "err-ongoing-start"
       })
 
-      snapshot = ShellCommandTelemetryQuery.snapshot(project.id)
+      snapshot = ShellCommandTelemetryQuery.snapshot(project.id, window: :all)
 
       cmd_stats = Enum.find(snapshot, &(&1.command == "mix test"))
       assert cmd_stats != nil
@@ -294,7 +294,7 @@ defmodule Spotter.Services.ShellCommandTelemetryQueryTest do
         })
       end
 
-      snapshot = ShellCommandTelemetryQuery.snapshot(project.id)
+      snapshot = ShellCommandTelemetryQuery.snapshot(project.id, window: :all)
 
       commands = Enum.map(snapshot, & &1.command)
       assert "mix test" in commands
@@ -311,9 +311,11 @@ defmodule Spotter.Services.ShellCommandTelemetryQueryTest do
   describe "snapshot/2 — integration" do
     test "snapshot(project_id) returns correct per-command metrics for mixed events",
          %{session: session, project: project} do
+      base_time = DateTime.add(DateTime.utc_now(), -3600, :second)
+
       for {duration_ms, idx} <- [{100, 1}, {200, 2}, {500, 3}, {1000, 4}] do
         tool_use_id = "toolu_snap_#{idx}"
-        start_time = ~U[2026-03-04 10:00:00.000000Z]
+        start_time = DateTime.add(base_time, idx, :second)
         finish_time = DateTime.add(start_time, duration_ms, :millisecond)
 
         create_event(session, %{
@@ -528,7 +530,7 @@ defmodule Spotter.Services.ShellCommandTelemetryQueryTest do
         raw_hook_event_id: "proj-b-finish"
       })
 
-      result = ShellCommandTelemetryQuery.snapshot_all_projects()
+      result = ShellCommandTelemetryQuery.snapshot_all_projects(window: :all)
 
       # Each result should include project_id
       project_ids = Enum.map(result, & &1.project_id) |> Enum.uniq()
@@ -542,6 +544,8 @@ defmodule Spotter.Services.ShellCommandTelemetryQueryTest do
 
     test "default sort: median_ms DESC, p95_ms DESC, count DESC",
          %{session: session, project: project} do
+      base_time = DateTime.add(DateTime.utc_now(), -3600, :second)
+
       # Create a fast command (100ms)
       create_event(session, %{
         tool_use_id: "toolu_sort_fast",
@@ -549,7 +553,7 @@ defmodule Spotter.Services.ShellCommandTelemetryQueryTest do
         command_path: "tool_input.command",
         phase: :start,
         hook_event_name: "PreToolUse",
-        captured_at: ~U[2026-03-04 10:00:00.000000Z],
+        captured_at: base_time,
         raw_hook_event_id: "sort-fast-start"
       })
 
@@ -560,7 +564,7 @@ defmodule Spotter.Services.ShellCommandTelemetryQueryTest do
         phase: :finish,
         finish_status: :ok,
         hook_event_name: "PostToolUse",
-        captured_at: ~U[2026-03-04 10:00:00.100000Z],
+        captured_at: DateTime.add(base_time, 100, :millisecond),
         raw_hook_event_id: "sort-fast-finish"
       })
 
@@ -571,7 +575,7 @@ defmodule Spotter.Services.ShellCommandTelemetryQueryTest do
         command_path: "tool_input.command",
         phase: :start,
         hook_event_name: "PreToolUse",
-        captured_at: ~U[2026-03-04 10:00:00.000000Z],
+        captured_at: DateTime.add(base_time, 1, :second),
         raw_hook_event_id: "sort-slow-start"
       })
 
@@ -582,7 +586,7 @@ defmodule Spotter.Services.ShellCommandTelemetryQueryTest do
         phase: :finish,
         finish_status: :ok,
         hook_event_name: "PostToolUse",
-        captured_at: ~U[2026-03-04 10:00:05.000000Z],
+        captured_at: DateTime.add(base_time, 6, :second),
         raw_hook_event_id: "sort-slow-finish"
       })
 

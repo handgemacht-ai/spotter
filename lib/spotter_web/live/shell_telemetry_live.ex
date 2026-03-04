@@ -24,7 +24,7 @@ defmodule SpotterWeb.ShellTelemetryLive do
   def mount(_params, _session, socket) do
     projects =
       try do
-        Project |> Ash.read!()
+        Project |> Ash.Query.sort(name: :asc) |> Ash.read!()
       rescue
         e ->
           Logger.warning("Failed to load projects: #{Exception.message(e)}")
@@ -89,23 +89,19 @@ defmodule SpotterWeb.ShellTelemetryLive do
 
   def handle_info({:shell_telemetry_updated, %{project_id: pid}}, socket) do
     if pid == socket.assigns.selected_project_id do
-      if socket.assigns.debounce_ref do
-        {:noreply, schedule_debounce(socket)}
-      else
-        socket =
-          Tracer.with_span "spotter.shell_telemetry.live_refresh" do
-            load_data(socket)
-          end
-
-        {:noreply, schedule_debounce(socket)}
-      end
+      {:noreply, schedule_debounce(socket)}
     else
       {:noreply, socket}
     end
   end
 
   def handle_info(:debounced_refresh, socket) do
-    {:noreply, socket |> assign(debounce_ref: nil) |> load_data()}
+    socket =
+      Tracer.with_span "spotter.shell_telemetry.live_refresh" do
+        socket |> assign(debounce_ref: nil) |> load_data()
+      end
+
+    {:noreply, socket}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}

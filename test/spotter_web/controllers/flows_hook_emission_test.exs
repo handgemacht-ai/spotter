@@ -242,7 +242,7 @@ defmodule SpotterWeb.FlowsHookEmissionTest do
       })
     end
 
-    test "spotter.shell_telemetry.ingest span records error status on ingestion failure" do
+    test "spotter.shell_telemetry.ingest span is recorded on ingestion failure" do
       # Post with a valid session_id format but the shell command extraction will
       # encounter an error (e.g. session not found -> creates fallback -> no project)
       payload = %{
