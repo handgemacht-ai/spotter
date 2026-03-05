@@ -15,6 +15,7 @@ import { initGlobalSearchPalette } from "./global_search_palette"
 import LaneDrag from "./hooks/lane_drag"
 import SortableColumns from "./hooks/sortable_columns"
 import ConnectorOverlay from "./hooks/connector_overlay"
+import TranscriptTaskRail from "./hooks/transcript_task_rail"
 
 hljs.registerLanguage("elixir", elixir)
 hljs.registerLanguage("javascript", javascript)
@@ -266,6 +267,22 @@ Hooks.TranscriptHighlighter = {
 
       // Allow the LiveView DOM patch (tab switch + editor insertion) to land.
       requestAnimationFrame(() => tick(2))
+    })
+
+    // Scroll-to-line events
+    this.handleEvent("scroll_to_transcript_marker", ({ marker_id }) => {
+      if (typeof marker_id !== "string" || marker_id.length === 0) {
+        throw new Error("[TranscriptHighlighter] scroll_to_transcript_marker requires marker_id")
+      }
+
+      const el = this.el.querySelector(`[data-marker-id="${marker_id}"]`)
+      if (!el) {
+        throw new Error(`[TranscriptHighlighter] marker row not found: ${marker_id}`)
+      }
+
+      el.scrollIntoView({ behavior: "smooth", block: "center" })
+      el.classList.add("is-jump-highlight")
+      setTimeout(() => el.classList.remove("is-jump-highlight"), 2000)
     })
 
     // Scroll-to-line events
@@ -535,6 +552,7 @@ Hooks.SnippetHighlighter = {
 Hooks.LaneDrag = LaneDrag
 Hooks.SortableColumns = SortableColumns
 Hooks.ConnectorOverlay = ConnectorOverlay
+Hooks.TranscriptTaskRail = TranscriptTaskRail
 
 const csrfToken = document.querySelector("meta[name='csrf-token']")?.getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {

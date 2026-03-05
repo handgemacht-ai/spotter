@@ -51,6 +51,38 @@ defmodule SpotterWeb.SessionLiveTest do
       refute html =~ "terminal-container"
       refute html =~ "terminal-connecting"
       refute html =~ ~s(phx-hook="Terminal")
+      refute html =~ ~s(phx-hook="TranscriptTaskRail")
+    end
+
+    test "renders task rail when TodoWrite actions are present", %{
+      session: session,
+      session_id: session_id
+    } do
+      create_message(session, %{
+        content: %{
+          "blocks" => [
+            %{
+              "type" => "tool_use",
+              "name" => "TodoWrite",
+              "id" => "toolu_todo_rail",
+              "input" => %{
+                "todos" => [
+                  %{"id" => "todo-1", "content" => "Investigate", "status" => "completed"},
+                  %{"id" => "todo-2", "content" => "Implement", "status" => "in_progress"}
+                ]
+              }
+            }
+          ]
+        }
+      })
+
+      {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}")
+
+      assert html =~ ~s(phx-hook="TranscriptTaskRail")
+      assert html =~ ~s(data-testid="transcript-task-rail")
+      assert html =~ ~s(data-marker-id="tool-use:toolu_todo_rail")
+      assert html =~ ~s(data-task-actions=)
+      assert html =~ "tool-use:toolu_todo_rail"
     end
   end
 
