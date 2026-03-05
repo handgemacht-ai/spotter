@@ -9,7 +9,7 @@ defmodule SpotterWeb.SessionLive do
   import SpotterWeb.AnnotationComponents
   import SpotterWeb.LanesComponents
 
-  alias Spotter.Services.{ReviewUpdates, TranscriptFileLinks}
+  alias Spotter.Services.{ReviewUpdates, TranscriptFileLinks, TranscriptTaskActions}
   alias Spotter.Transcripts.ParallelLanes
 
   alias Spotter.Transcripts.{
@@ -410,18 +410,12 @@ defmodule SpotterWeb.SessionLive do
     end
   end
 
-  defp jump_to_tool_use(socket, tool_use_id) do
-    line_index =
-      Enum.find_index(socket.assigns.transcript_view_rendered_lines, fn line ->
-        line[:tool_use_id] == tool_use_id
-      end)
-
-    if line_index do
-      push_event(socket, "scroll_to_transcript_line", %{index: line_index})
-    else
-      socket
-    end
+  defp jump_to_tool_use(socket, tool_use_id) when is_binary(tool_use_id) and tool_use_id != "" do
+    marker_id = TranscriptTaskActions.marker_id(tool_use_id)
+    push_event(socket, "scroll_to_transcript_marker", %{marker_id: marker_id})
   end
+
+  defp jump_to_tool_use(socket, _tool_use_id), do: socket
 
   defp create_message_refs(annotation, socket) do
     message_ids =
@@ -632,20 +626,56 @@ defmodule SpotterWeb.SessionLive do
               </span>
             </div>
 
-            <.transcript_panel
-              rendered_lines={@transcript_view_visible_lines}
-              all_rendered_lines={@transcript_view_rendered_lines}
-              expanded_tool_groups={@transcript_view_expanded_tool_groups}
-              expanded_hook_groups={@transcript_view_expanded_hook_groups}
-              current_message_id={@current_message_id}
-              clicked_subagent={@clicked_subagent}
-              session_id={@session_id}
-              subagent_labels={@subagent_labels}
-              show_debug={@transcript_view_show_debug}
-              project_id={@transcript_link_project_id}
-              existing_files={@transcript_link_fileset}
-              empty_message="No transcript available for this session."
-            />
+            <%= if @transcript_view_task_actions == [] do %>
+              <.transcript_panel
+                rendered_lines={@transcript_view_visible_lines}
+                all_rendered_lines={@transcript_view_rendered_lines}
+                expanded_tool_groups={@transcript_view_expanded_tool_groups}
+                expanded_hook_groups={@transcript_view_expanded_hook_groups}
+                current_message_id={@current_message_id}
+                clicked_subagent={@clicked_subagent}
+                session_id={@session_id}
+                subagent_labels={@subagent_labels}
+                show_debug={@transcript_view_show_debug}
+                project_id={@transcript_link_project_id}
+                existing_files={@transcript_link_fileset}
+                empty_message="No transcript available for this session."
+              />
+            <% else %>
+              <div
+                id="transcript-shell"
+                class="transcript-shell"
+                phx-hook="TranscriptTaskRail"
+                data-task-actions={encode_task_actions(@transcript_view_task_actions)}
+              >
+                <aside class="transcript-task-rail" data-testid="transcript-task-rail">
+                  <div class="task-rail-heading">
+                    <h4>Task list</h4>
+                    <span class="task-rail-count" data-task-rail-count>0</span>
+                  </div>
+                  <p class="task-rail-subtitle" data-task-rail-subtitle>
+                    Scroll the transcript to replay task updates.
+                  </p>
+                  <ol class="task-rail-list" data-task-rail-list></ol>
+                </aside>
+                <div class="transcript-shell-main">
+                  <.transcript_panel
+                    rendered_lines={@transcript_view_visible_lines}
+                    all_rendered_lines={@transcript_view_rendered_lines}
+                    expanded_tool_groups={@transcript_view_expanded_tool_groups}
+                    expanded_hook_groups={@transcript_view_expanded_hook_groups}
+                    current_message_id={@current_message_id}
+                    clicked_subagent={@clicked_subagent}
+                    session_id={@session_id}
+                    subagent_labels={@subagent_labels}
+                    show_debug={@transcript_view_show_debug}
+                    project_id={@transcript_link_project_id}
+                    existing_files={@transcript_link_fileset}
+                    empty_message="No transcript available for this session."
+                  />
+                </div>
+              </div>
+            <% end %>
           </div>
         <% end %>
         <div class="session-sidebar">
@@ -826,5 +856,9 @@ defmodule SpotterWeb.SessionLive do
       _ ->
         []
     end
+  end
+
+  defp encode_task_actions(task_actions) do
+    Jason.encode!(task_actions)
   end
 end

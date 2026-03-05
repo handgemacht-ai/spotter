@@ -7,7 +7,7 @@ defmodule SpotterWeb.Live.TranscriptComputers do
   """
   use AshComputer
 
-  alias Spotter.Services.TranscriptRenderer
+  alias Spotter.Services.{TranscriptRenderer, TranscriptTaskActions}
 
   computer :transcript_view do
     input :messages do
@@ -52,6 +52,21 @@ defmodule SpotterWeb.Live.TranscriptComputers do
       end)
 
       depends_on([:rendered_lines, :expanded_tool_groups, :expanded_hook_groups])
+    end
+
+    val :task_actions do
+      compute(fn %{messages: messages, rendered_lines: rendered_lines} ->
+        case TranscriptTaskActions.extract(messages, rendered_lines) do
+          {:ok, task_actions} ->
+            task_actions
+
+          {:error, reason} ->
+            raise ArgumentError,
+                  "Transcript task action extraction failed: #{inspect(reason)}"
+        end
+      end)
+
+      depends_on([:messages, :rendered_lines])
     end
 
     event :toggle_tool_result_group do

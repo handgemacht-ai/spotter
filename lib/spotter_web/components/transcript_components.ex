@@ -112,12 +112,14 @@ defmodule SpotterWeb.TranscriptComponents do
       data-message-id={@line.message_id}
       data-line-number={@line.line_number}
       data-render-mode={to_string(@line[:render_mode] || "plain")}
-        data-tool-name={@line[:tool_name]}
-        data-command-status={if @line[:command_status], do: to_string(@line[:command_status])}
-        data-thread-key={@line.thread_key}
-        class={row_classes(@line, @current_message_id, @clicked_subagent) <>
-               if(has_row_meta?(@line, @tool_hook_controls), do: " is-meta-row", else: "")}
-      >
+      data-tool-name={@line[:tool_name]}
+      data-tool-use-id={@line[:tool_use_id]}
+      data-marker-id={marker_id_for_line(@line)}
+      data-command-status={if @line[:command_status], do: to_string(@line[:command_status])}
+      data-thread-key={@line.thread_key}
+      class={row_classes(@line, @current_message_id, @clicked_subagent) <>
+             if(has_row_meta?(@line, @tool_hook_controls), do: " is-meta-row", else: "")}
+    >
       <div class="row-main">
         <span class="row-content">
           <%= if @line[:subagent_invocation?] == true and is_binary(@line[:subagent_ref]) and is_binary(@session_id) and @current_agent_id != @line.subagent_ref do %>
@@ -442,6 +444,14 @@ defmodule SpotterWeb.TranscriptComponents do
       :error -> "is-error"
       :pending -> "is-pending"
       _ -> "is-default"
+    end
+  end
+
+  defp marker_id_for_line(line) do
+    if line[:kind] == :tool_use and is_binary(line[:tool_use_id]) and line[:tool_use_id] != "" do
+      "tool-use:" <> line[:tool_use_id]
+    else
+      nil
     end
   end
 end
