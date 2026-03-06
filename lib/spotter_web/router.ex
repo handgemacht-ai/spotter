@@ -47,9 +47,11 @@ defmodule SpotterWeb.Router do
     live("/sessions/:session_id/agents/:agent_id", SubagentLive)
     live("/file-metrics", FileMetricsLive)
     live("/telemetry/commands", ShellTelemetryLive)
+    live("/telemetry/instructions", InstructionsTelemetryLive)
     get("/projects/:project_id/review", ReviewsRedirectController, :show)
     live("/projects/:project_id/file-metrics", FileMetricsLive)
     live("/projects/:project_id/telemetry/commands", ShellTelemetryLive)
+    live("/projects/:project_id/telemetry/instructions", InstructionsTelemetryLive)
     live("/projects/:project_id/files/*relative_path", FileDetailLive)
   end
 end

@@ -126,5 +126,6 @@ defmodule Spotter.Transcripts do
     resource Spotter.Transcripts.RetroSubmission
     resource Spotter.Transcripts.RetroItem
     resource Spotter.Transcripts.ShellCommandEvent
+    resource Spotter.Transcripts.InstructionsLoadedEvent
   end
 end
