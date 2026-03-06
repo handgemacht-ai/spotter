@@ -8,6 +8,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- `DashboardLive` at `/` — ongoing-only session view with live start/finish updates (spotter-05g.3)
+  - PubSub-driven real-time updates via `SessionActivityBroadcaster` (extracted service)
+  - Subscribes to session started/finished events, adds/removes cards without page reload
+  - OTel spans: `spotter.dashboard.mount`, `spotter.dashboard.session_started`, `spotter.dashboard.session_finished`
+  - Files: `lib/spotter_web/live/dashboard_live.ex`, `lib/spotter/services/session_activity_broadcaster.ex`
+- `SessionsLive` at `/sessions` — full session list with project filter sidebar (spotter-05g.2)
+  - Project filter chips, session table with status/duration/message count columns
+  - Sidebar navigation link in root layout
+  - README navigation table and QUICKSTART guide
+  - Files: `lib/spotter_web/live/sessions_live.ex`, `lib/spotter_web/components/layouts/root.html.heex`, `lib/spotter_web/router.ex`
+- E2E tests for dashboard ongoing sessions and sessions page (spotter-05g.2, spotter-05g.3)
+  - Files: `e2e/tests/session.smoke.spec.ts`, `e2e/tests/dashboard.smoke.spec.ts`
+
+### Changed
+
+- Renamed `hook_ended_at` to `session_ended_at` across the entire stack (spotter-05g.1)
+  - True column rename migration (not drop+add)
+  - Updated Ash resource attribute, finalizer, controllers, rollup queries
+  - Files: `priv/repo/migrations/*_rename_hook_ended_at.exs`, `lib/spotter/transcripts/session.ex`, `lib/spotter/services/session_rollup.ex`, `lib/spotter_web/controllers/hooks_controller.ex`
+- Dashboard route moved from full session list to ongoing-only view; session list moved to `/sessions` (spotter-05g.2, spotter-05g.3)
+- Replaced `String.to_existing_atom` with explicit `case` match for sort field parsing (review finding)
+
+### Added
+
 - `ShellCommandEvent` Ash resource — append-only event log extracted from raw hook payloads (spotter-nqk.1)
   - `ShellCommandExtractor` service with recursive command extraction from hook payloads, depth-limited traversal, phase mapping (PreToolUse/PostToolUse/PostToolUseFailure), and fail-safe persistence
   - Upsert identity for idempotent event ingestion

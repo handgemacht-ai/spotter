@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2026-03-06
+
+- The home page now shows only your currently running sessions with live status updates, so you can see at a glance what's active right now.
+- All sessions — past and present — have moved to a dedicated Sessions page, filterable by project from a new sidebar link.
+- The "session ended" timestamp is now labeled more clearly throughout the app.
+
 ## 2026-03-04
 
 - New command telemetry page shows how long shell commands take, how often they fail, and which ones are still running — updated live as new data arrives.
