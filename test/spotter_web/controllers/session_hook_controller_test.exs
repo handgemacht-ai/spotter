@@ -203,7 +203,7 @@ defmodule SpotterWeb.SessionHookControllerTest do
       assert body2["ok"] == true
     end
 
-    test "duplicate SessionEnd preserves session_ended_at" do
+    test "duplicate SessionEnd still sets session_ended_at" do
       project =
         Ash.create!(Project, %{name: "idempotent-end", pattern: "^idempotent-end$"})
 
