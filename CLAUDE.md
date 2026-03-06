@@ -1,13 +1,6 @@
 # Product
 Spotter helps to review Claude Code sessions and generated code. 
 
-# Architecture
-Ash, Phoenix, LiveView, xterm.js, tmux
-
-The prototype runs on localhost, and has no authentication.
-
-This project is greenfield. No legacy fallbacks, backwards compatability or similar is needed.
-
 # Local Runtime (just)
 
 Use `just` recipes from the repository root for day-to-day local runtime control:
@@ -86,15 +79,6 @@ Any Oban worker that calls git or LLM must implement `c:timeout/1`.
 - Never call `System.cmd("git", ...)` directly
 - Use `Spotter.Services.GitRunner` (Port-based, timeout-safe) when available
 - All repo content used for analysis must be read at the analyzed commit (git-backed), not from the working tree
-
-# Canonical Span Naming
-
-| Domain | Prefix | Example |
-|---|---|---|
-| Hotspot analysis | `spotter.commit_hotspots.*` | `spotter.commit_hotspots.create` |
-| Claude queries | `spotter.claude_code.*` | `spotter.claude_code.query` |
-| Git operations | `spotter.git.*` | `spotter.git.run` |
-| File detail | `spotter.file_detail.*` | `spotter.file_detail.load_file_content` |
 
 # Agent Instructions
 
