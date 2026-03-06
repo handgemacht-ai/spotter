@@ -3,7 +3,7 @@ defmodule Spotter.Transcripts.SessionsTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Spotter.Test.OtelHelpers
-  alias Spotter.Transcripts.{Project, Sessions}
+  alias Spotter.Transcripts.{Project, Session, Sessions}
 
   require Ash.Query
 
@@ -160,6 +160,47 @@ defmodule Spotter.Transcripts.SessionsTest do
 
       project = Project |> Ash.Query.filter(id == ^session.project_id) |> Ash.read_one!()
       assert project.name == "app-mobile"
+    end
+  end
+
+  describe "ended_at vs session_ended_at semantics" do
+    test "ended_at alone does not mark session as hook-finished" do
+      project = create_project!("ended-at-test", "^ended-at-test$")
+      session_id = Ash.UUID.generate()
+
+      session =
+        Ash.create!(Session, %{
+          session_id: session_id,
+          project_id: project.id,
+          cwd: "/home/user/ended-at-test",
+          ended_at: DateTime.utc_now()
+        })
+
+      assert session.ended_at != nil
+      assert session.session_ended_at == nil
+    end
+  end
+
+  describe "hook_ended_at removal" do
+    test "no runtime references to hook_ended_at remain in lib/" do
+      {output, 0} =
+        System.cmd("grep", [
+          "-r",
+          "--include=*.ex",
+          "-l",
+          "hook_ended_at",
+          Path.expand("../../../lib", __DIR__)
+        ])
+        |> case do
+          {output, 0} -> {output, 0}
+          {_, 1} -> {"", 0}
+          other -> other
+        end
+
+      files = output |> String.trim() |> String.split("\n", trim: true)
+
+      assert files == [],
+             "Expected no runtime references to hook_ended_at in lib/, found: #{Enum.join(files, ", ")}"
     end
   end
 end

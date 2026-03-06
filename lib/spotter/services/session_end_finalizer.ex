@@ -53,7 +53,7 @@ defmodule Spotter.Services.SessionEndFinalizer do
     cwd = map_value(params, "cwd")
 
     with {:ok, session} <- fetch_or_create_session(session_id, cwd),
-         {:ok, _updated} <- Ash.update(session, %{hook_ended_at: DateTime.utc_now()}) do
+         {:ok, _updated} <- Ash.update(session, %{session_ended_at: DateTime.utc_now()}) do
       :ok
     else
       {:error, :session_not_found} ->

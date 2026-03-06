@@ -187,7 +187,7 @@ defmodule SpotterWeb.HooksControllerRawEventTest do
         |> Ash.read!()
         |> Enum.find(&(&1.session_id == session_id))
 
-      assert ended_session.hook_ended_at != nil
+      assert ended_session.session_ended_at != nil
     end
 
     test "handles Notification payload" do

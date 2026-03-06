@@ -209,7 +209,7 @@ Only links with `confidence >= 0.60` are persisted.
 
 - `Stop` is not authoritative for session completion. It is used for per-response lifecycle behavior (for example waiting-overlay cleanup) and may not fire if a response is interrupted.
 - `SessionEnd` is the authoritative end-of-session trigger. Spotter runs `notify-session-end.sh` and `raw-event-forward.sh` on this event.
-- Backend finalization on SessionEnd stops any active tail worker, runs per-session transcript sync, marks `hook_ended_at`, and enqueues follow-up ingest jobs when project context exists.
+- Backend finalization on SessionEnd stops any active tail worker, runs per-session transcript sync, marks `session_ended_at`, and enqueues follow-up ingest jobs when project context exists.
 - Manual transcript import remains available for backfill/historical recovery, but normal session completion should not require manual import.
 
 ### Known limitations
