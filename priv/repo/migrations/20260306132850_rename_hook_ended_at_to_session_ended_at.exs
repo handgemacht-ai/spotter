@@ -8,10 +8,23 @@ defmodule Spotter.Repo.Migrations.RenameHookEndedAtToSessionEndedAt do
   use Ecto.Migration
 
   def up do
-    rename table(:sessions), :hook_ended_at, to: :session_ended_at
+    # Only rename if old column exists (fresh DBs already have session_ended_at)
+    %{rows: rows} =
+      repo().query!("SELECT name FROM pragma_table_info('sessions') WHERE name = 'hook_ended_at'")
+
+    if rows != [] do
+      rename(table(:sessions), :hook_ended_at, to: :session_ended_at)
+    end
   end
 
   def down do
-    rename table(:sessions), :session_ended_at, to: :hook_ended_at
+    %{rows: rows} =
+      repo().query!(
+        "SELECT name FROM pragma_table_info('sessions') WHERE name = 'session_ended_at'"
+      )
+
+    if rows != [] do
+      rename(table(:sessions), :session_ended_at, to: :hook_ended_at)
+    end
   end
 end

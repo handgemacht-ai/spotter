@@ -65,7 +65,7 @@ defmodule Spotter.Services.SubagentLifecycleIngestor do
           started_at: captured_at
         }
 
-        {:ok, _} = Ash.create!(Subagent, attrs)
+        Ash.create!(Subagent, attrs)
         {:ok, %{status: :created, session_id: session.session_id, agent_id: agent_id}}
 
       existing ->
@@ -89,7 +89,7 @@ defmodule Spotter.Services.SubagentLifecycleIngestor do
           ended_at: captured_at
         }
 
-        {:ok, _} = Ash.create!(Subagent, attrs)
+        Ash.create!(Subagent, attrs)
         {:ok, %{status: :created, session_id: session.session_id, agent_id: agent_id}}
 
       existing ->

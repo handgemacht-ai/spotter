@@ -5,6 +5,7 @@ defmodule SpotterWeb.HooksController do
   alias Spotter.Observability.ErrorReport
   alias Spotter.Observability.FlowHub
   alias Spotter.Observability.FlowKeys
+  alias Spotter.Services.InstructionsLoadedExtractor
   alias Spotter.Services.SessionEndFinalizer
   alias Spotter.Services.ShellCommandExtractor
   alias Spotter.Services.SubagentLifecycleIngestor
@@ -768,6 +769,7 @@ defmodule SpotterWeb.HooksController do
   defp handle_raw_event_result(conn, meta, hook_payload, {:ok, event}) do
     maybe_finalize_session_end(hook_payload)
     maybe_extract_shell_commands(hook_payload, event)
+    maybe_extract_instructions_loaded(hook_payload, event)
     maybe_ingest_subagent_lifecycle(hook_payload, event)
     emit_hook_outcome("raw_event", :ok, meta.flow_keys)
 
@@ -850,6 +852,30 @@ defmodule SpotterWeb.HooksController do
   rescue
     error ->
       Logger.warning("Shell telemetry broadcast failed: #{Exception.message(error)}")
+      :ok
+  end
+
+  defp maybe_extract_instructions_loaded(hook_payload, event) do
+    OtelTraceHelpers.with_span "spotter.instructions_telemetry.ingest", %{
+      "spotter.session_id" => hook_payload["session_id"] || "unknown",
+      "spotter.hook.event" => hook_payload["hook_event_name"] || "unknown"
+    } do
+      case InstructionsLoadedExtractor.extract_and_persist(hook_payload, to_string(event.id)) do
+        {:ok, project_id} when is_binary(project_id) ->
+          OpenTelemetry.Tracer.set_attribute("spotter.project_id", project_id)
+
+        {:ok, _} ->
+          :ok
+
+        {:error, reason} ->
+          OtelTraceHelpers.set_error("instructions_telemetry_ingest_failed", %{
+            "error.details" => inspect(reason)
+          })
+      end
+    end
+  rescue
+    error ->
+      Logger.warning("Instructions loaded extraction failed: #{Exception.message(error)}")
       :ok
   end
 
