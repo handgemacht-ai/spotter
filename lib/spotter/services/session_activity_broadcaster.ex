@@ -1,6 +1,8 @@
 defmodule Spotter.Services.SessionActivityBroadcaster do
   @moduledoc false
 
+  require Logger
+
   @topic "session_activity"
 
   def broadcast_started(session_id) do
@@ -18,6 +20,8 @@ defmodule Spotter.Services.SessionActivityBroadcaster do
       {:session_activity, %{session_id: session_id, status: status}}
     )
   rescue
-    _ -> :ok
+    e ->
+      Logger.debug("SessionActivityBroadcaster: broadcast failed: #{Exception.message(e)}")
+      :ok
   end
 end
