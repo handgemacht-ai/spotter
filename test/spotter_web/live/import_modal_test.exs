@@ -17,7 +17,7 @@ defmodule SpotterWeb.ImportModalTest do
 
   describe "Import button on dashboard" do
     test "dashboard renders an Import button" do
-      {:ok, _view, html} = live(build_conn(), "/")
+      {:ok, _view, html} = live(build_conn(), "/sessions")
 
       assert html =~ ~s(data-testid="import-button")
       assert html =~ "Import"
@@ -26,7 +26,7 @@ defmodule SpotterWeb.ImportModalTest do
 
   describe "modal open/close" do
     test "clicking Import button opens the import modal with title" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       html =
         view
@@ -38,7 +38,7 @@ defmodule SpotterWeb.ImportModalTest do
     end
 
     test "close button dismisses the modal" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       # Open modal
       view
@@ -55,7 +55,7 @@ defmodule SpotterWeb.ImportModalTest do
     end
 
     test "pressing Escape closes the modal" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -67,7 +67,7 @@ defmodule SpotterWeb.ImportModalTest do
     end
 
     test "clicking backdrop closes the modal" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -82,7 +82,7 @@ defmodule SpotterWeb.ImportModalTest do
 
   describe "transcript table in modal" do
     test "shows empty state when no transcripts found" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       html =
         view
@@ -94,7 +94,7 @@ defmodule SpotterWeb.ImportModalTest do
     end
 
     test "renders transcript rows with project name, message count, and last updated" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       # Open modal then push transcript data into assigns
       view
@@ -128,7 +128,7 @@ defmodule SpotterWeb.ImportModalTest do
 
     @tag :import_bug
     test "project name is formatted as human-readable path, not raw dir name" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -161,7 +161,7 @@ defmodule SpotterWeb.ImportModalTest do
 
     @tag :import_bug
     test "session column shows custom_title, summary, or first_prompt as label" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -213,7 +213,7 @@ defmodule SpotterWeb.ImportModalTest do
 
     @tag :import_bug
     test "handle_info destructures TranscriptListing map into entries and pagination" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -261,7 +261,7 @@ defmodule SpotterWeb.ImportModalTest do
     end
 
     test "already-imported rows have distinct styling and disabled checkbox" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -292,7 +292,7 @@ defmodule SpotterWeb.ImportModalTest do
     end
 
     test "team session rows show team indicator" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -326,7 +326,7 @@ defmodule SpotterWeb.ImportModalTest do
 
   describe "filter, sort, and pagination controls" do
     test "modal renders project filter dropdown with All Projects default" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       html =
         view
@@ -339,7 +339,7 @@ defmodule SpotterWeb.ImportModalTest do
     end
 
     test "modal renders sort dropdown with Last Updated, Message Count, and Project Name options" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -365,7 +365,7 @@ defmodule SpotterWeb.ImportModalTest do
     end
 
     test "selecting a project filter updates displayed transcripts" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -418,7 +418,7 @@ defmodule SpotterWeb.ImportModalTest do
     end
 
     test "pagination renders when total exceeds per_page" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -435,7 +435,7 @@ defmodule SpotterWeb.ImportModalTest do
     end
 
     test "clicking page 2 updates the active page" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -458,7 +458,7 @@ defmodule SpotterWeb.ImportModalTest do
     end
 
     test "pagination is hidden when results fit on one page" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -472,7 +472,7 @@ defmodule SpotterWeb.ImportModalTest do
     end
 
     test "changing sort order re-sorts displayed transcripts" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -528,7 +528,7 @@ defmodule SpotterWeb.ImportModalTest do
 
   describe "selection and select-all" do
     setup do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -714,7 +714,7 @@ defmodule SpotterWeb.ImportModalTest do
 
   describe "import action" do
     setup do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -881,7 +881,7 @@ defmodule SpotterWeb.ImportModalTest do
 
       on_exit(fn -> File.rm_rf!(fixture_dir) end)
 
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -952,7 +952,7 @@ defmodule SpotterWeb.ImportModalTest do
 
   describe "Import Team bulk action (s0p.1)" do
     test "Import Team button appears for team sessions" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -1005,7 +1005,7 @@ defmodule SpotterWeb.ImportModalTest do
     end
 
     test "clicking Import Team selects all team members automatically" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -1077,7 +1077,7 @@ defmodule SpotterWeb.ImportModalTest do
     end
 
     test "Import Team skips already-imported team members in bulk selection" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))

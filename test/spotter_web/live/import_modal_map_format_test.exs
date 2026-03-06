@@ -27,7 +27,7 @@ defmodule SpotterWeb.ImportModalMapFormatTest do
 
   describe "handle_info with TranscriptListing map format" do
     test "assigns entries list (not raw map) to import_transcripts" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -71,7 +71,7 @@ defmodule SpotterWeb.ImportModalMapFormatTest do
     end
 
     test "extracts pagination metadata into import_pagination assign" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -95,7 +95,7 @@ defmodule SpotterWeb.ImportModalMapFormatTest do
     end
 
     test "renders entries as transcript rows after receiving map format" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       view
       |> element(~s([data-testid="import-button"]))
@@ -190,7 +190,7 @@ defmodule SpotterWeb.ImportModalMapFormatTest do
     end
 
     test "clicking Import loads real transcripts through TranscriptListing.list() pipeline" do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       # Click Import — this triggers the real path:
       # open_import_modal → Task.start → TranscriptListing.list() → handle_info
