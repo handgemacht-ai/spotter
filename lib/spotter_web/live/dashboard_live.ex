@@ -55,8 +55,10 @@ defmodule SpotterWeb.DashboardLive do
 
   @impl true
   def handle_event("refresh", _params, socket) do
-    sessions = load_ongoing_sessions()
-    {:noreply, assign(socket, sessions: sessions, finished_ids: MapSet.new())}
+    Tracer.with_span "spotter.dashboard.refresh" do
+      sessions = load_ongoing_sessions()
+      {:noreply, assign(socket, sessions: sessions, finished_ids: MapSet.new())}
+    end
   end
 
   defp load_ongoing_sessions do
@@ -127,9 +129,9 @@ defmodule SpotterWeb.DashboardLive do
                   <% end %>
                 </td>
                 <td>
-                  <a href={"/sessions/#{session.session_id}"} class="btn btn-success">
+                  <.link navigate={"/sessions/#{session.session_id}"} class="btn btn-success">
                     Review
-                  </a>
+                  </.link>
                 </td>
               </tr>
             <% end %>
