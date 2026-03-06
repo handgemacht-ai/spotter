@@ -23,6 +23,7 @@ defmodule Spotter.Services.SessionEndFinalizer do
       SyncTranscripts.sync_session_by_id(session_id, trace_context: trace_context)
 
     mark_result = mark_ended(session_id, params)
+    if mark_result == :ok, do: broadcast_session_activity(session_id, :finished)
     ingest_enqueued = maybe_enqueue_ingest_for_session(session_id, trace_context)
 
     %{
@@ -115,6 +116,16 @@ defmodule Spotter.Services.SessionEndFinalizer do
   end
 
   defp map_value(_map, _key), do: nil
+
+  defp broadcast_session_activity(session_id, status) do
+    Phoenix.PubSub.broadcast(
+      Spotter.PubSub,
+      "session_activity",
+      {:session_activity, %{session_id: session_id, status: status}}
+    )
+  rescue
+    _ -> :ok
+  end
 
   defp normalize_trace_context(context) when is_map(context), do: context
   defp normalize_trace_context(_), do: %{}
