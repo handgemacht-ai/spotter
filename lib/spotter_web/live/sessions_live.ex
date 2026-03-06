@@ -188,7 +188,12 @@ defmodule SpotterWeb.SessionsLive do
         %{"project-id" => project_id, "visibility" => visibility},
         socket
       ) do
-    visibility = String.to_existing_atom(visibility)
+    visibility =
+      case visibility do
+        "visible" -> :visible
+        "hidden" -> :hidden
+      end
+
     {:noreply, append_session_page(socket, project_id, visibility)}
   end
 
