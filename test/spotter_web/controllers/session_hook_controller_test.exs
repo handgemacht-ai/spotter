@@ -114,6 +114,16 @@ defmodule SpotterWeb.SessionHookControllerTest do
       assert status == 200
       assert body["ok"] == true
     end
+
+    test "broadcasts session_activity :started on success" do
+      Phoenix.PubSub.subscribe(Spotter.PubSub, "session_activity")
+
+      params = valid_params()
+      {200, %{"ok" => true}, _conn} = post_session_start(params)
+
+      assert_receive {:session_activity, %{session_id: sid, status: :started}}, 1000
+      assert sid == params["session_id"]
+    end
   end
 
   describe "POST /api/hooks/waiting-summary" do
