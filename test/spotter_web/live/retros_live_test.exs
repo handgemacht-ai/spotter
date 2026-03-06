@@ -36,7 +36,7 @@ defmodule SpotterWeb.RetrosLiveTest do
     })
   end
 
-  defp create_item(submission, opts \\ []) do
+  defp create_item(submission, opts) do
     Ash.create!(RetroItem, %{
       retro_submission_id: submission.id,
       category: Keyword.get(opts, :category, :knowledge_gained),

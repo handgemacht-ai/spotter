@@ -14,10 +14,30 @@ LIB_DIR="${SCRIPT_DIR}/lib"
 
 INPUT="$(cat)"
 
-SESSION_ID="$(echo "$INPUT" | jq -r '.session_id // empty')"
-[ -z "$SESSION_ID" ] && exit 0
-
 HOOK_EVENT="$(echo "$INPUT" | jq -r '.hook_event_name // empty')"
+
+# Enrich InstructionsLoaded with file metrics
+if [ "$HOOK_EVENT" = "InstructionsLoaded" ]; then
+  FILE_PATH="$(echo "$INPUT" | jq -r '.file_path // empty')"
+  if [ -n "$FILE_PATH" ] && [ -f "$FILE_PATH" ]; then
+    BYTES_LOADED="$(wc -c < "$FILE_PATH" 2>/dev/null || echo 0)"
+    LINES_LOADED="$(wc -l < "$FILE_PATH" 2>/dev/null || echo 0)"
+    SIZE_STATUS="ok"
+  elif [ -n "$FILE_PATH" ]; then
+    BYTES_LOADED=0
+    LINES_LOADED=0
+    SIZE_STATUS="unreadable"
+  else
+    BYTES_LOADED=0
+    LINES_LOADED=0
+    SIZE_STATUS="missing"
+  fi
+  INPUT="$(echo "$INPUT" | jq \
+    --argjson bytes "$BYTES_LOADED" \
+    --argjson lines "$LINES_LOADED" \
+    --arg status "$SIZE_STATUS" \
+    '.spotter_instruction_metrics = {bytes_loaded: $bytes, lines_loaded: $lines, size_status: $status}')"
+fi
 
 # Generate trace context (fail gracefully if unavailable)
 TRACEPARENT="$(spotter_generate_traceparent 2>/dev/null || true)"

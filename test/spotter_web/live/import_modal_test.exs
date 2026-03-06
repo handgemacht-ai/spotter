@@ -669,7 +669,7 @@ defmodule SpotterWeb.ImportModalTest do
     test "import button is disabled when 0 selected and enabled with count when selected", %{
       view: view
     } do
-      html = render(view)
+      _html = render(view)
 
       # With no selection, import action button should be disabled
       assert has_element?(view, ~s([data-testid="import-action-button"][disabled]))
