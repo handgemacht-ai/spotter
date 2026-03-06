@@ -135,7 +135,8 @@ defmodule SpotterWeb.SessionHookController do
         "spotter.session_end.sync_status" => to_string(result.sync_status),
         "spotter.session_end.ingested_messages" => result.ingested_messages,
         "spotter.session_end.marked_ended" => to_string(result.marked_ended),
-        "spotter.session_end.ingest_enqueued" => result.ingest_enqueued
+        "spotter.session_end.ingest_enqueued" => result.ingest_enqueued,
+        "spotter.session_end.marked_finished" => result.marked_ended == :ok
       })
 
       emit_hook_outcome("session_end", :ok, flow_keys)

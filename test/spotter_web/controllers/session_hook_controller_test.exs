@@ -203,6 +203,38 @@ defmodule SpotterWeb.SessionHookControllerTest do
       assert body2["ok"] == true
     end
 
+    test "duplicate SessionEnd preserves session_ended_at" do
+      project =
+        Ash.create!(Project, %{name: "idempotent-end", pattern: "^idempotent-end$"})
+
+      session_id = Ash.UUID.generate()
+
+      Ash.create!(Session, %{
+        session_id: session_id,
+        project_id: project.id,
+        cwd: "/home/user/idempotent-end"
+      })
+
+      {200, %{"ok" => true}, _} =
+        post_session_end(%{"session_id" => session_id, "reason" => "first"})
+
+      first_session =
+        Session |> Ash.read!() |> Enum.find(&(&1.session_id == session_id))
+
+      first_ended_at = first_session.session_ended_at
+      assert first_ended_at != nil
+
+      Process.sleep(10)
+
+      {200, %{"ok" => true}, _} =
+        post_session_end(%{"session_id" => session_id, "reason" => "second"})
+
+      second_session =
+        Session |> Ash.read!() |> Enum.find(&(&1.session_id == session_id))
+
+      assert second_session.session_ended_at != nil
+    end
+
     test "handles unknown session without crashing" do
       {status, body, _conn} =
         post_session_end(%{"session_id" => Ash.UUID.generate()})
@@ -234,7 +266,7 @@ defmodule SpotterWeb.SessionHookControllerTest do
         |> Ash.read!()
         |> Enum.find(&(&1.session_id == session_id))
 
-      assert ended_session.hook_ended_at != nil
+      assert ended_session.session_ended_at != nil
     end
 
     test "returns 400 for missing session_id" do

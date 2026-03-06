@@ -5,7 +5,7 @@ defmodule Spotter.Services.ProjectPeriodRollupPack do
   Builds a pack from a project and its qualifying sessions for a bucket.
 
   `sessions` should already be filtered to qualifying sessions with commit data attached.
-  Each session map should have: `:session_id`, `:hook_ended_at`, `:commit_hashes`, `:distilled_summary`.
+  Each session map should have: `:session_id`, `:session_ended_at`, `:commit_hashes`, `:distilled_summary`.
   """
   def build(project, sessions, opts \\ []) do
     bucket_kind = Keyword.fetch!(opts, :bucket_kind)
@@ -26,7 +26,7 @@ defmodule Spotter.Services.ProjectPeriodRollupPack do
         Enum.map(sessions, fn s ->
           %{
             session_id: s.session_id,
-            hook_ended_at: s.hook_ended_at,
+            session_ended_at: s.session_ended_at,
             commit_hashes: s.commit_hashes,
             distilled_summary: s.distilled_summary
           }

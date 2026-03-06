@@ -58,7 +58,7 @@ defmodule Spotter.Transcripts.Session do
         :first_prompt,
         :source_created_at,
         :source_modified_at,
-        :hook_ended_at,
+        :session_ended_at,
         :team_name,
         :agent_name
       ]
@@ -86,7 +86,7 @@ defmodule Spotter.Transcripts.Session do
         :distilled_status,
         :distilled_model_used,
         :distilled_at,
-        :hook_ended_at,
+        :session_ended_at,
         :team_name,
         :agent_name
       ]
@@ -164,7 +164,7 @@ defmodule Spotter.Transcripts.Session do
     attribute :distilled_summary, :string
     attribute :distilled_model_used, :string
     attribute :distilled_at, :utc_datetime_usec
-    attribute :hook_ended_at, :utc_datetime_usec
+    attribute :session_ended_at, :utc_datetime_usec
 
     attribute :team_name, :string, public?: true
     attribute :agent_name, :string, public?: true
