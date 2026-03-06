@@ -23,7 +23,7 @@ defmodule Spotter.Transcripts.RetroItemTest do
         project_id: project.id
       })
 
-    %{submission: submission}
+    %{project: project, session: session, submission: submission}
   end
 
   describe "create" do
@@ -140,6 +140,94 @@ defmodule Spotter.Transcripts.RetroItemTest do
           explanation: "exp"
         })
       end
+    end
+  end
+
+  describe "session traversal through retro_submission" do
+    test "loading :session on a retro item returns the originating session", %{
+      session: session,
+      submission: submission
+    } do
+      item =
+        Ash.create!(RetroItem, %{
+          category: :knowledge_gained,
+          observation: "Session link test",
+          explanation: "Verifies RetroItem -> Session traversal",
+          retro_submission_id: submission.id
+        })
+
+      loaded = Ash.load!(item, :session)
+      assert loaded.session.id == session.id
+      assert loaded.session.project_id == session.project_id
+    end
+
+    test "items from different submissions resolve to their respective sessions", %{
+      project: project
+    } do
+      session_a =
+        Ash.create!(Spotter.Transcripts.Session, %{
+          session_id: Ash.UUID.generate(),
+          project_id: project.id
+        })
+
+      session_b =
+        Ash.create!(Spotter.Transcripts.Session, %{
+          session_id: Ash.UUID.generate(),
+          project_id: project.id
+        })
+
+      sub_a =
+        Ash.create!(Spotter.Transcripts.RetroSubmission, %{
+          submitted_at: ~U[2026-03-01 10:00:00Z],
+          session_id: session_a.id,
+          project_id: project.id
+        })
+
+      sub_b =
+        Ash.create!(Spotter.Transcripts.RetroSubmission, %{
+          submitted_at: ~U[2026-03-01 11:00:00Z],
+          session_id: session_b.id,
+          project_id: project.id
+        })
+
+      item_a =
+        Ash.create!(RetroItem, %{
+          category: :knowledge_gained,
+          observation: "From session A",
+          explanation: "First session",
+          retro_submission_id: sub_a.id
+        })
+
+      item_b =
+        Ash.create!(RetroItem, %{
+          category: :gotcha,
+          observation: "From session B",
+          explanation: "Second session",
+          retro_submission_id: sub_b.id
+        })
+
+      [loaded_a, loaded_b] = Ash.load!([item_a, item_b], :session)
+      assert loaded_a.session.id == session_a.id
+      assert loaded_b.session.id == session_b.id
+    end
+
+    test "loaded session belongs to the same project as the submission", %{
+      project: project,
+      session: session,
+      submission: submission
+    } do
+      item =
+        Ash.create!(RetroItem, %{
+          category: :effective_strategy,
+          observation: "Scope check",
+          explanation: "Verifies project consistency",
+          retro_submission_id: submission.id
+        })
+
+      loaded = Ash.load!(item, [:session, :retro_submission])
+      assert loaded.session.project_id == project.id
+      assert loaded.retro_submission.project_id == project.id
+      assert loaded.session.id == session.id
     end
   end
 

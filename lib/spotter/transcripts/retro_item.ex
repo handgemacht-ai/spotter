@@ -97,5 +97,9 @@ defmodule Spotter.Transcripts.RetroItem do
     belongs_to :retro_submission, Spotter.Transcripts.RetroSubmission do
       allow_nil? false
     end
+
+    has_one :session, Spotter.Transcripts.Session do
+      manual Spotter.Transcripts.RetroItem.Relationships.SessionThrough
+    end
   end
 end

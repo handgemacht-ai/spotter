@@ -3,8 +3,13 @@ defmodule Spotter.Transcripts.Sessions do
   Shared helpers for finding or creating sessions from hook events.
   """
 
+  alias Spotter.Services.GitRunner
   alias Spotter.Transcripts.{Config, Project, Session}
+
   require Ash.Query
+  require OpenTelemetry.Tracer, as: Tracer
+
+  @worktree_path_pattern ~r|/\.claude/worktrees/[^/]+$|
 
   @doc """
   Finds an existing session by session_id, or creates a minimal stub.
@@ -28,8 +33,9 @@ defmodule Spotter.Transcripts.Sessions do
 
   defp create_stub(session_id, opts) do
     cwd = Keyword.get(opts, :cwd)
+    canonical_cwd = if is_binary(cwd), do: canonicalize_cwd(cwd), else: cwd
 
-    with {:ok, project} <- find_or_create_project(cwd) do
+    with {:ok, project} <- find_or_create_project(canonical_cwd) do
       Ash.create(Session, %{
         session_id: session_id,
         cwd: cwd,
@@ -113,6 +119,52 @@ defmodule Spotter.Transcripts.Sessions do
       {:ok, %Project{} = project} -> {:ok, project}
       {:ok, nil} -> Ash.create(Project, %{name: name, pattern: pattern})
       {:error, _} = error -> error
+    end
+  end
+
+  @doc """
+  Resolves a worktree cwd to its canonical main repository root.
+
+  Uses `git rev-parse --path-format=absolute --git-common-dir` when the
+  directory exists on disk. Falls back to path-based heuristic for
+  `.claude/worktrees/<name>` patterns. Returns the original cwd if
+  neither strategy applies.
+  """
+  @spec canonicalize_cwd(String.t()) :: String.t()
+  def canonicalize_cwd(cwd) when is_binary(cwd) do
+    Tracer.with_span "spotter.sessions.canonicalize_cwd" do
+      Tracer.set_attribute("spotter.sessions.original_cwd", cwd)
+      normalized = String.trim_trailing(cwd, "/")
+
+      canonical = try_git_canonicalize(normalized) || try_path_heuristic(normalized) || normalized
+
+      Tracer.set_attribute("spotter.sessions.canonical_cwd", canonical)
+      Tracer.set_attribute("spotter.sessions.cwd_changed", canonical != cwd)
+      canonical
+    end
+  end
+
+  defp try_git_canonicalize(cwd) do
+    with true <- File.dir?(cwd),
+         {:ok, output} <- git_common_dir(cwd),
+         true <- output |> String.trim() |> String.ends_with?("/.git") do
+      output |> String.trim() |> Path.dirname()
+    else
+      _ -> nil
+    end
+  end
+
+  defp git_common_dir(cwd) do
+    GitRunner.run(
+      ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+      cd: cwd,
+      timeout_ms: 5_000
+    )
+  end
+
+  defp try_path_heuristic(cwd) do
+    if Regex.match?(@worktree_path_pattern, cwd) do
+      String.replace(cwd, @worktree_path_pattern, "")
     end
   end
 end

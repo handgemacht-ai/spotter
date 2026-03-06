@@ -7,12 +7,14 @@
 set -euo pipefail
 
 # Source trace context helper (fail silently if unavailable)
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="${CLAUDE_PLUGIN_ROOT:+${CLAUDE_PLUGIN_ROOT}/scripts}"
+: "${SCRIPT_DIR:=$(cd "$(dirname "$0")" && pwd)}"
 LIB_DIR="${SCRIPT_DIR}/lib"
 [ -f "${LIB_DIR}/trace_context.sh" ] && . "${LIB_DIR}/trace_context.sh"
 [ -f "${LIB_DIR}/hook_timeouts.sh" ] && . "${LIB_DIR}/hook_timeouts.sh"
 [ -f "${LIB_DIR}/spotter_url.sh" ] && . "${LIB_DIR}/spotter_url.sh"
 [ -f "${LIB_DIR}/hook_http.sh" ] && . "${LIB_DIR}/hook_http.sh"
+[ -f "${LIB_DIR}/canonical_dir.sh" ] && . "${LIB_DIR}/canonical_dir.sh"
 
 # Read the session JSON from stdin
 INPUT="$(cat)"
@@ -24,6 +26,12 @@ CWD="$(echo "$INPUT" | jq -r '.cwd // empty')"
 # Persist session_id for MCP tools via CLAUDE_ENV_FILE
 if [ -n "${CLAUDE_ENV_FILE:-}" ] && [ -n "${SESSION_ID:-}" ]; then
   echo "export SPOTTER_SESSION_ID=\"${SESSION_ID}\"" >> "$CLAUDE_ENV_FILE"
+fi
+
+# Resolve canonical project dir and persist for MCP header interpolation
+if [ -n "${CLAUDE_ENV_FILE:-}" ] && [ -n "${CWD:-}" ] && type resolve_canonical_dir >/dev/null 2>&1; then
+  CANONICAL_DIR="$(resolve_canonical_dir "$CWD")"
+  printf 'export SPOTTER_PROJECT_DIR=%q\n' "${CANONICAL_DIR}" >> "$CLAUDE_ENV_FILE"
 fi
 
 if [ -z "${SESSION_ID:-}" ] || [ -z "${TMUX_PANE:-}" ]; then
