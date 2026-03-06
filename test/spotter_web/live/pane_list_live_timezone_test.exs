@@ -19,13 +19,13 @@ defmodule SpotterWeb.PaneListLiveTimezoneTest do
 
   describe "timezone editor" do
     test "renders timezone input with default value", %{project: _project} do
-      {:ok, _view, html} = live(build_conn(), "/")
+      {:ok, _view, html} = live(build_conn(), "/sessions")
       assert html =~ "Etc/UTC"
       assert html =~ "Save TZ"
     end
 
     test "updates timezone with valid value", %{project: project} do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       html =
         view
@@ -39,7 +39,7 @@ defmodule SpotterWeb.PaneListLiveTimezoneTest do
     end
 
     test "shows error for invalid timezone", %{project: project} do
-      {:ok, view, _html} = live(build_conn(), "/")
+      {:ok, view, _html} = live(build_conn(), "/sessions")
 
       # Select the tz-live-test project so its form is rendered
       render_click(view, "filter_project", %{"project-id" => project.id})
