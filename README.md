@@ -2,6 +2,21 @@
 
 Spotter reviews Claude Code sessions and generated code. It links Claude sessions to Git commits using deterministic hook capture plus asynchronous enrichment so each session can be traced to concrete repository changes. The runtime stack is Phoenix/LiveView for the app, xterm.js for terminal rendering, and tmux-integrated hook scripts for session event capture.
 
+## Navigation
+
+| Route | Page | Purpose |
+|-------|------|---------|
+| `/` | Dashboard | Ongoing sessions across all projects |
+| `/sessions` | Sessions | Project-filtered session browsing with import, hide/unhide, and pagination |
+| `/sessions/:id` | Session detail | Transcript review for a single session |
+| `/reviews` | Reviews | Open review annotations |
+| `/retros` | Retros | Session retrospectives |
+| `/history` | History | Commit history and detail views |
+| `/file-metrics` | File metrics | Heatmap and co-change analysis |
+| `/telemetry/commands` | Telemetry | Shell command telemetry |
+
+The sidebar highlights the active page. The Sessions link covers both `/sessions` and `/sessions/:id`.
+
 ## Local Development Runtime
 
 **Scope:** local-dev only. No installer or production deployment support in this contract.

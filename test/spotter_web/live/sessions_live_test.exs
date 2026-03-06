@@ -45,4 +45,54 @@ defmodule SpotterWeb.SessionsLiveTest do
       assert html =~ "Session Transcripts"
     end
   end
+
+  describe "project filter chips on /sessions" do
+    setup do
+      proj_a = Ash.create!(Project, %{name: "proj-alpha", pattern: "^proj-alpha"})
+      proj_b = Ash.create!(Project, %{name: "proj-beta", pattern: "^proj-beta"})
+
+      Ash.create!(Session, %{
+        session_id: Ash.UUID.generate(),
+        transcript_dir: "/tmp/test-alpha",
+        cwd: "/home/user/alpha",
+        project_id: proj_a.id
+      })
+
+      Ash.create!(Session, %{
+        session_id: Ash.UUID.generate(),
+        transcript_dir: "/tmp/test-beta",
+        cwd: "/home/user/beta",
+        project_id: proj_b.id
+      })
+
+      %{proj_a: proj_a, proj_b: proj_b}
+    end
+
+    test "filters sessions when project chip is clicked", %{proj_b: proj_b} do
+      {:ok, view, _html} = live(build_conn(), "/sessions")
+
+      html = render_click(view, "filter_project", %{"project-id" => proj_b.id})
+
+      assert html =~ ~s(class="project-name">proj-beta</span>)
+      refute html =~ ~s(class="project-name">proj-alpha</span>)
+    end
+  end
+
+  describe "/sessions/:session_id still resolves" do
+    test "session detail page mounts for existing session", %{session: session} do
+      {:ok, _view, html} = live(build_conn(), "/sessions/#{session.session_id}")
+
+      assert html =~ ~s(data-testid="session-root")
+    end
+  end
+
+  describe "sidebar contains Sessions link" do
+    test "sidebar renders Sessions nav link on /sessions page" do
+      {:ok, _view, html} = live(build_conn(), "/sessions")
+
+      assert html =~ ~s(href="/sessions")
+      assert html =~ ~s(data-nav-path="/sessions")
+      assert html =~ "Sessions"
+    end
+  end
 end
