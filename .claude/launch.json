@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "spotter",
+      "runtimeExecutable": "just",
+      "runtimeArgs": [
+        "up"
+      ],
+      "port": 1100
+    }
+  ]
+}
