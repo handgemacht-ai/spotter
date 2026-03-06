@@ -178,10 +178,41 @@ defmodule SpotterWeb.RetrosLiveTest do
       assert html =~ "My detailed retro"
       # Timestamp
       assert html =~ "2026-02-27"
-      # Session label (short session_id)
-      assert html =~ String.slice(session.session_id, 0, 8)
+      # Session link with href
+      assert html =~ ~s(href="/sessions/#{session.session_id}")
       # Item count
       assert html =~ "2 items"
+    end
+  end
+
+  describe "session links" do
+    test "session label links to session detail page" do
+      project = create_project("alpha")
+      session = create_session(project)
+      create_submission(project, session, summary: "Link test")
+
+      {:ok, _view, html} = live(build_conn(), "/retros?project_id=#{project.id}")
+
+      assert html =~ ~s(href="/sessions/#{session.session_id}")
+    end
+
+    test "session link shows meaningful label from SessionPresenter" do
+      project = create_project("alpha")
+
+      session =
+        Ash.create!(Session, %{
+          session_id: Ash.UUID.generate(),
+          transcript_dir: "test-dir",
+          project_id: project.id,
+          custom_title: "Fix worktree scoping"
+        })
+
+      create_submission(project, session, summary: "Label test")
+
+      {:ok, _view, html} = live(build_conn(), "/retros?project_id=#{project.id}")
+
+      # Should show custom_title, not truncated session_id
+      assert html =~ "Fix worktree scoping"
     end
   end
 

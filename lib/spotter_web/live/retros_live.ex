@@ -1,7 +1,7 @@
 defmodule SpotterWeb.RetrosLive do
   use Phoenix.LiveView
 
-  alias Spotter.Transcripts.{Project, RetroItem, RetroSubmission}
+  alias Spotter.Transcripts.{Project, RetroItem, RetroSubmission, SessionPresenter}
   require Ash.Query
   require OpenTelemetry.Tracer, as: Tracer
 
@@ -155,10 +155,6 @@ defmodule SpotterWeb.RetrosLive do
   defp category_label(:struggle), do: "Struggle"
   defp category_label(other), do: to_string(other)
 
-  defp session_label(session) do
-    session.slug || String.slice(session.session_id, 0, 8)
-  end
-
   @impl true
   def render(assigns) do
     ~H"""
@@ -205,10 +201,16 @@ defmodule SpotterWeb.RetrosLive do
       >
         <div class="flex items-center gap-2 mb-2">
           <span class="text-xs">{if MapSet.member?(@expanded_ids, sub.id), do: "▾", else: "▸"}</span>
-          <span class="text-sm"><strong>{sub.summary}</strong></span>
-          <span :if={sub.session} class="text-muted text-xs">
-            {session_label(sub.session)}
-          </span>
+          <span class="text-sm" style="flex: 1;"><strong>{sub.summary}</strong></span>
+          <a
+            :if={sub.session}
+            href={"/sessions/#{sub.session.session_id}"}
+            class="retro-session-link"
+            onclick="event.stopPropagation()"
+          >
+            <span class="retro-session-icon">↗</span>
+            {SessionPresenter.primary_label(sub.session)}
+          </a>
         </div>
         <div class="flex items-center gap-2">
           <span class="text-muted text-xs">

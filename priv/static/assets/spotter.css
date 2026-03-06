@@ -423,6 +423,39 @@ button:hover {
 .retro-category-requirements_clarity { background: rgba(167, 139, 250, 0.15); color: var(--accent-purple); }
 .retro-category-struggle { background: rgba(232, 84, 84, 0.15); color: var(--accent-red); }
 
+/* --- Retro session link --- */
+.retro-session-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  text-decoration: none;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.retro-session-link:hover {
+  color: var(--accent-blue);
+  background: rgba(91, 156, 245, 0.1);
+  border-color: rgba(91, 156, 245, 0.25);
+}
+
+.retro-session-icon {
+  font-size: 0.7em;
+  opacity: 0.6;
+}
+
+.retro-session-link:hover .retro-session-icon {
+  opacity: 1;
+}
+
 /* --- Retro item cards --- */
 .retro-item {
   padding: var(--space-2) var(--space-3);
