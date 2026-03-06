@@ -6,6 +6,7 @@ defmodule SpotterWeb.SessionHookController do
   alias Spotter.Observability.ErrorReport
   alias Spotter.Observability.FlowHub
   alias Spotter.Observability.FlowKeys
+  alias Spotter.Services.SessionActivityBroadcaster
   alias Spotter.Services.SessionEndFinalizer
   alias Spotter.Services.TranscriptTailSupervisor
   alias Spotter.Telemetry.TraceContext
@@ -40,7 +41,7 @@ defmodule SpotterWeb.SessionHookController do
           maybe_bootstrap_sync(session)
           enqueue_ingest(session.project_id)
           maybe_start_tail_worker(session_id, params["cwd"])
-          broadcast_session_activity(session_id, :started)
+          SessionActivityBroadcaster.broadcast_started(session_id)
 
         {:error, reason} ->
           Logger.warning("Failed to create session #{session_id}: #{inspect(reason)}")
@@ -223,16 +224,6 @@ defmodule SpotterWeb.SessionHookController do
   end
 
   # --- Private helpers ---
-
-  defp broadcast_session_activity(session_id, status) do
-    Phoenix.PubSub.broadcast(
-      Spotter.PubSub,
-      "session_activity",
-      {:session_activity, %{session_id: session_id, status: status}}
-    )
-  rescue
-    _ -> :ok
-  end
 
   defp enqueue_ingest(project_id) do
     %{project_id: project_id}

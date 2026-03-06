@@ -29,8 +29,17 @@ defmodule SpotterWeb.DashboardLive do
   def handle_info({:session_activity, %{session_id: session_id, status: :started}}, socket) do
     Tracer.with_span "spotter.dashboard.handle_activity",
                      %{attributes: %{"session_id" => session_id, "status" => "started"}} do
-      sessions = load_ongoing_sessions()
-      {:noreply, assign(socket, sessions: sessions)}
+      case Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one() do
+        {:ok, %Session{} = new_session} ->
+          sessions =
+            [new_session | Enum.reject(socket.assigns.sessions, &(&1.session_id == session_id))]
+            |> Enum.sort_by(& &1.started_at, {:desc, DateTime})
+
+          {:noreply, assign(socket, sessions: sessions)}
+
+        _ ->
+          {:noreply, socket}
+      end
     end
   end
 
