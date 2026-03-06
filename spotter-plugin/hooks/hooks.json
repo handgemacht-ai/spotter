@@ -242,6 +242,18 @@
         ]
       }
     ],
+    "InstructionsLoaded": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/raw-event-forward.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
     "PreCompact": [
       {
         "matcher": "",

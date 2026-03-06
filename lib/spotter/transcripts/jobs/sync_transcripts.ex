@@ -858,28 +858,46 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   end
 
   defp upsert_subagent!(session, parsed, subagent_type) do
-    update_attrs = %{
-      slug: parsed.slug,
-      subagent_type: subagent_type,
-      started_at: parsed.started_at,
-      ended_at: parsed.ended_at,
-      message_count: length(parsed.messages)
-    }
+    parsed_message_count = length(parsed.messages)
 
     case Spotter.Transcripts.Subagent
          |> Ash.Query.filter(session_id == ^session.id and agent_id == ^parsed.agent_id)
          |> Ash.read!() do
-      [subagent] ->
-        Ash.update!(subagent, update_attrs)
+      [existing] ->
+        update_attrs = %{
+          slug: first_non_empty(parsed.slug, existing.slug),
+          subagent_type: first_non_empty(subagent_type, existing.subagent_type),
+          started_at: earliest_non_nil(existing.started_at, parsed.started_at),
+          ended_at: latest_non_nil(existing.ended_at, parsed.ended_at),
+          message_count: max(existing.message_count || 0, parsed_message_count)
+        }
+
+        Ash.update!(existing, update_attrs)
 
       [] ->
-        create_attrs =
-          Map.merge(update_attrs, %{
-            agent_id: parsed.agent_id,
-            session_id: session.id
-          })
+        create_attrs = %{
+          agent_id: parsed.agent_id,
+          session_id: session.id,
+          slug: parsed.slug,
+          subagent_type: subagent_type,
+          started_at: parsed.started_at,
+          ended_at: parsed.ended_at,
+          message_count: parsed_message_count
+        }
 
         Ash.create!(Spotter.Transcripts.Subagent, create_attrs)
     end
   end
+
+  defp first_non_empty(nil, existing), do: existing
+  defp first_non_empty("", existing), do: existing
+  defp first_non_empty(new, _existing), do: new
+
+  defp earliest_non_nil(nil, b), do: b
+  defp earliest_non_nil(a, nil), do: a
+  defp earliest_non_nil(a, b), do: if(DateTime.compare(a, b) in [:lt, :eq], do: a, else: b)
+
+  defp latest_non_nil(nil, b), do: b
+  defp latest_non_nil(a, nil), do: a
+  defp latest_non_nil(a, b), do: if(DateTime.compare(a, b) in [:gt, :eq], do: a, else: b)
 end

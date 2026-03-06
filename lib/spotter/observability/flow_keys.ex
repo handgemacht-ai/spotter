@@ -22,6 +22,10 @@ defmodule Spotter.Observability.FlowKeys do
   @spec oban(String.t() | integer()) :: String.t()
   def oban(job_id), do: "oban:#{job_id}"
 
+  @doc "Build a subagent flow key."
+  @spec subagent(String.t()) :: String.t()
+  def subagent(id) when is_binary(id), do: "subagent:#{id}"
+
   @doc "Build an agent run flow key."
   @spec agent_run(String.t()) :: String.t()
   def agent_run(run_id) when is_binary(run_id), do: "agent_run:#{run_id}"

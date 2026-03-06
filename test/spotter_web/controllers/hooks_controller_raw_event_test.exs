@@ -65,10 +65,10 @@ defmodule SpotterWeb.HooksControllerRawEventTest do
       assert event.env["USER"] == "testuser"
     end
 
-    test "returns 400 for missing session_id in hook_payload" do
+    test "persists raw event with synthetic session_id when session_id is missing" do
       payload = %{
         "hook_payload" => %{
-          "hook_event_name" => "PostToolUse",
+          "hook_event_name" => "InstructionsLoaded",
           "tool_name" => "Write"
         },
         "env" => %{}
@@ -76,8 +76,12 @@ defmodule SpotterWeb.HooksControllerRawEventTest do
 
       {status, body, _conn} = post_raw_event(payload)
 
-      assert status == 400
-      assert body["error"] =~ "session_id is required"
+      assert status == 201
+      assert body["ok"] == true
+
+      event = RawHookEvent |> Ash.read_one!()
+      assert String.starts_with?(event.session_id, "synthetic-")
+      assert event.hook_event_name == "InstructionsLoaded"
     end
 
     test "returns 400 for missing hook_payload" do

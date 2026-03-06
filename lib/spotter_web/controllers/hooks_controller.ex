@@ -7,6 +7,7 @@ defmodule SpotterWeb.HooksController do
   alias Spotter.Observability.FlowKeys
   alias Spotter.Services.SessionEndFinalizer
   alias Spotter.Services.ShellCommandExtractor
+  alias Spotter.Services.SubagentLifecycleIngestor
   alias Spotter.Telemetry.TraceContext
   alias Spotter.Transcripts.Commit
   alias Spotter.Transcripts.FileSnapshot
@@ -27,7 +28,7 @@ defmodule SpotterWeb.HooksController do
   @max_commit_hashes 50
   @hash_pattern ~r/\A[0-9a-fA-F]{40}\z/
   @max_field_size 10_240
-  @preserved_keys ~w(session_id tool_use_id file_path transcript_path cwd hook_event_name tool_name error)
+  @preserved_keys ~w(session_id tool_use_id file_path transcript_path cwd hook_event_name tool_name error agent_id agent_type)
   @max_truncation_depth 10
 
   def commit_event(conn, %{"session_id" => session_id, "new_commit_hashes" => hashes} = params)
@@ -767,23 +768,13 @@ defmodule SpotterWeb.HooksController do
   defp handle_raw_event_result(conn, meta, hook_payload, {:ok, event}) do
     maybe_finalize_session_end(hook_payload)
     maybe_extract_shell_commands(hook_payload, event)
+    maybe_ingest_subagent_lifecycle(hook_payload, event)
     emit_hook_outcome("raw_event", :ok, meta.flow_keys)
 
     conn
     |> put_status(:created)
     |> OtelTraceHelpers.put_trace_response_header()
     |> json(%{ok: true})
-  end
-
-  defp handle_raw_event_result(conn, meta, _hook_payload, {:error, :missing_session_id}) do
-    respond_raw_event_error(
-      conn,
-      meta,
-      "invalid_params",
-      "session_id is required in hook_payload",
-      :bad_request,
-      400
-    )
   end
 
   defp handle_raw_event_result(conn, meta, _hook_payload, {:error, changeset}) do
@@ -862,6 +853,31 @@ defmodule SpotterWeb.HooksController do
       :ok
   end
 
+  defp maybe_ingest_subagent_lifecycle(hook_payload, event) do
+    OtelTraceHelpers.with_span "spotter.subagent_lifecycle.ingest", %{
+      "spotter.session_id" => hook_payload["session_id"] || "unknown",
+      "spotter.agent_id" => hook_payload["agent_id"] || "unknown",
+      "spotter.hook.event" => hook_payload["hook_event_name"] || "unknown"
+    } do
+      case SubagentLifecycleIngestor.ingest(hook_payload, event) do
+        {:ok, %{status: status}} ->
+          OpenTelemetry.Tracer.set_attribute(
+            "spotter.subagent_lifecycle.status",
+            to_string(status)
+          )
+
+        {:error, reason} ->
+          OtelTraceHelpers.set_error("subagent_lifecycle_ingest_failed", %{
+            "error.details" => inspect(reason)
+          })
+      end
+    end
+  rescue
+    error ->
+      Logger.warning("Subagent lifecycle ingest failed: #{Exception.message(error)}")
+      :ok
+  end
+
   defp maybe_finalize_session_end(
          %{"hook_event_name" => "SessionEnd", "session_id" => session_id} = payload
        )
@@ -882,22 +898,39 @@ defmodule SpotterWeb.HooksController do
 
   defp persist_raw_event(hook_payload, env, raw_captured_at) do
     session_id = hook_payload["session_id"]
+    captured_at = parse_captured_at(raw_captured_at)
 
-    if is_nil(session_id) or session_id == "" do
-      {:error, :missing_session_id}
-    else
-      attrs = %{
-        session_id: session_id,
-        hook_event_name: hook_payload["hook_event_name"] || "unknown",
-        tool_name: hook_payload["tool_name"],
-        tool_use_id: hook_payload["tool_use_id"],
-        hook_payload: truncate_large_strings(hook_payload, @max_field_size, 0),
-        env: normalize_env(env),
-        captured_at: parse_captured_at(raw_captured_at)
-      }
+    effective_session_id =
+      if is_nil(session_id) or session_id == "" do
+        synthetic_session_id(hook_payload, captured_at)
+      else
+        session_id
+      end
 
-      Ash.create(RawHookEvent, attrs, action: :upsert)
+    is_synthetic = effective_session_id != session_id
+
+    if is_synthetic do
+      OpenTelemetry.Tracer.set_attribute("spotter.raw_event.synthetic_session_id", true)
     end
+
+    attrs = %{
+      session_id: effective_session_id,
+      hook_event_name: hook_payload["hook_event_name"] || "unknown",
+      tool_name: hook_payload["tool_name"],
+      tool_use_id: hook_payload["tool_use_id"],
+      hook_payload: truncate_large_strings(hook_payload, @max_field_size, 0),
+      env: normalize_env(env),
+      captured_at: captured_at
+    }
+
+    Ash.create(RawHookEvent, attrs, action: :upsert)
+  end
+
+  defp synthetic_session_id(hook_payload, captured_at) do
+    hook_event = hook_payload["hook_event_name"] || "unknown"
+    ts = DateTime.to_iso8601(captured_at)
+    hash = :crypto.hash(:sha256, "#{hook_event}:#{ts}") |> Base.encode16(case: :lower)
+    "synthetic-#{String.slice(hash, 0, 16)}"
   end
 
   defp parse_captured_at(value) when is_binary(value) do
