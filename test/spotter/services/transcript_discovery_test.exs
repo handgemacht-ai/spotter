@@ -406,6 +406,180 @@ defmodule Spotter.Services.TranscriptDiscoveryTest do
     end
   end
 
+  describe "discover/1 multi-root scanning" do
+    test "scans multiple roots and returns results from all of them", %{tmp_dir: tmp_dir} do
+      root_a = Path.join(tmp_dir, "root_claude")
+      root_b = Path.join(tmp_dir, "root_agents")
+
+      project_a = Path.join(root_a, "my-project")
+      project_b = Path.join(root_b, "other-project")
+      File.mkdir_p!(project_a)
+      File.mkdir_p!(project_b)
+
+      id_a = Ash.UUID.generate()
+      id_b = Ash.UUID.generate()
+
+      write_jsonl_file(project_a, id_a)
+      write_sessions_index(project_a, id_a)
+      write_jsonl_file(project_b, id_b)
+      write_sessions_index(project_b, id_b)
+
+      results = TranscriptDiscovery.discover(transcript_roots: [root_a, root_b])
+
+      assert length(results) == 2
+
+      session_ids = Enum.map(results, & &1.session_id) |> MapSet.new()
+      assert MapSet.member?(session_ids, id_a)
+      assert MapSet.member?(session_ids, id_b)
+
+      project_names = Enum.map(results, & &1.project_name) |> MapSet.new()
+      assert MapSet.member?(project_names, "my-project")
+      assert MapSet.member?(project_names, "other-project")
+    end
+
+    test "same project dir name under multiple roots returns sessions from both", %{
+      tmp_dir: tmp_dir
+    } do
+      root_a = Path.join(tmp_dir, "root_claude")
+      root_b = Path.join(tmp_dir, "root_agents")
+
+      # Same project name "shared-project" in both roots
+      project_a = Path.join(root_a, "shared-project")
+      project_b = Path.join(root_b, "shared-project")
+      File.mkdir_p!(project_a)
+      File.mkdir_p!(project_b)
+
+      id_a = Ash.UUID.generate()
+      id_b = Ash.UUID.generate()
+
+      write_jsonl_file(project_a, id_a)
+      write_sessions_index(project_a, id_a)
+      write_jsonl_file(project_b, id_b)
+      write_sessions_index(project_b, id_b)
+
+      results = TranscriptDiscovery.discover(transcript_roots: [root_a, root_b])
+
+      assert length(results) == 2
+
+      # Both sessions should have the same project_name
+      assert Enum.all?(results, &(&1.project_name == "shared-project"))
+
+      # But different project_dir paths (distinguishing which root they came from)
+      dirs = Enum.map(results, & &1.project_dir) |> MapSet.new()
+      assert MapSet.size(dirs) == 2
+      assert MapSet.member?(dirs, project_a)
+      assert MapSet.member?(dirs, project_b)
+    end
+
+    test "sessions-index metadata in one root but missing in another", %{tmp_dir: tmp_dir} do
+      root_a = Path.join(tmp_dir, "root_with_index")
+      root_b = Path.join(tmp_dir, "root_without_index")
+
+      project_a = Path.join(root_a, "indexed-project")
+      project_b = Path.join(root_b, "bare-project")
+      File.mkdir_p!(project_a)
+      File.mkdir_p!(project_b)
+
+      id_a = Ash.UUID.generate()
+      id_b = Ash.UUID.generate()
+
+      write_jsonl_file(project_a, id_a)
+      write_sessions_index(project_a, id_a)
+
+      # Root B has a JSONL file but NO sessions-index.json
+      write_jsonl_file(project_b, id_b)
+
+      results = TranscriptDiscovery.discover(transcript_roots: [root_a, root_b])
+
+      assert length(results) == 2
+
+      indexed = Enum.find(results, &(&1.session_id == id_a))
+      bare = Enum.find(results, &(&1.session_id == id_b))
+
+      # Session from root with index has metadata
+      assert indexed.custom_title == "My Session"
+      assert indexed.summary == "Did stuff"
+
+      # Session from root without index has nil metadata
+      assert bare.custom_title == nil
+      assert bare.summary == nil
+    end
+
+    test "deduplicates when same session_id appears under multiple roots, preferring first root",
+         %{tmp_dir: tmp_dir} do
+      root_a = Path.join(tmp_dir, "root_primary")
+      root_b = Path.join(tmp_dir, "root_secondary")
+
+      project_a = Path.join(root_a, "dup-project")
+      project_b = Path.join(root_b, "dup-project")
+      File.mkdir_p!(project_a)
+      File.mkdir_p!(project_b)
+
+      # Same session_id written to both roots
+      shared_id = Ash.UUID.generate()
+
+      write_jsonl_file(project_a, shared_id)
+      write_sessions_index(project_a, shared_id)
+      write_jsonl_file(project_b, shared_id)
+      write_sessions_index(project_b, shared_id)
+
+      results = TranscriptDiscovery.discover(transcript_roots: [root_a, root_b])
+
+      # Same session_id in two roots — discovery should deduplicate
+      matching = Enum.filter(results, &(&1.session_id == shared_id))
+
+      assert length(matching) == 1,
+             "Expected deduplication of same session_id across roots, " <>
+               "got #{length(matching)} entries"
+
+      # Deterministic ordering: first-configured root wins
+      [kept] = matching
+
+      assert kept.project_dir == project_a,
+             "Expected entry from first-configured root (#{project_a}), " <>
+               "got #{kept.project_dir}"
+    end
+
+    test "nonexistent root is silently skipped", %{tmp_dir: tmp_dir} do
+      real_root = Path.join(tmp_dir, "real_root")
+      project = Path.join(real_root, "real-project")
+      File.mkdir_p!(project)
+
+      id = Ash.UUID.generate()
+      write_jsonl_file(project, id)
+      write_sessions_index(project, id)
+
+      bogus_root = Path.join(tmp_dir, "does_not_exist")
+
+      results = TranscriptDiscovery.discover(transcript_roots: [real_root, bogus_root])
+
+      assert length(results) == 1
+      assert hd(results).session_id == id
+    end
+  end
+
+  describe "discover/0 defaults to config transcript_roots" do
+    test "reads transcript_roots from DB setting when no opts given", %{tmp_dir: tmp_dir} do
+      project_dir = Path.join(tmp_dir, "config-project")
+      File.mkdir_p!(project_dir)
+
+      id = Ash.UUID.generate()
+      write_jsonl_file(project_dir, id)
+      write_sessions_index(project_dir, id)
+
+      # Set transcript_roots in DB so discover/0 picks it up
+      Ash.create!(Spotter.Config.Setting, %{
+        key: "transcript_roots",
+        value: Jason.encode!([tmp_dir])
+      })
+
+      results = TranscriptDiscovery.discover()
+
+      matching = Enum.filter(results, &(&1.session_id == id))
+      assert length(matching) == 1, "Expected discover/0 to use transcript_roots from DB config"
+    end
+  end
+
   # --- Fixture helpers ---
 
   defp write_jsonl_file(dir, session_id) do

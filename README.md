@@ -111,7 +111,7 @@ Spotter discovers transcripts from multiple root directories configured via `tra
 | TOML (`priv/spotter.toml`) | TOML array | `transcript_roots = ["~/.claude/projects"]` |
 | Default | — | `~/.claude/projects`, `~/.claude_agents/projects` |
 
-Paths are normalized: `~` is expanded, relative paths are made absolute, duplicates are removed.
+Paths are normalized: `~` is expanded, relative paths are made absolute, duplicates are removed. Discovery and import scan all configured roots and deduplicate by session ID, preferring the first root in configuration order.
 
 For live container mode, set `SPOTTER_LIVE_TRANSCRIPT_ROOTS` (colon-separated paths) before running `mix spotter.live.configure`. When unset, both default roots are written.
 

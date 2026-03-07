@@ -41,6 +41,7 @@ defmodule Spotter.Services.TranscriptDiscovery do
         previews =
           roots
           |> Enum.flat_map(&scan_root/1)
+          |> dedupe_by_session_id()
           |> maybe_filter_project(project_filter)
           |> mark_already_imported()
           |> Enum.sort_by(& &1.last_modified, {:desc, DateTime})
@@ -182,6 +183,8 @@ defmodule Spotter.Services.TranscriptDiscovery do
       true -> false
     end
   end
+
+  defp dedupe_by_session_id(previews), do: Enum.uniq_by(previews, & &1.session_id)
 
   defp maybe_filter_project(previews, nil), do: previews
 

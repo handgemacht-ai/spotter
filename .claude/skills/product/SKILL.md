@@ -42,7 +42,7 @@ Spotter reviews Claude Code sessions and generated code. It links sessions to Gi
 
 ### Transcript Roots Configuration
 
-Spotter discovers transcripts from multiple root directories via `transcript_roots`. Precedence: DB setting (JSON array) → TOML (`priv/spotter.toml`) → defaults (`~/.claude/projects`, `~/.claude_agents/projects`). Paths are normalized (trim, dedupe, expand `~`, make absolute). The former `transcripts_dir` single-path setting is no longer accepted.
+Spotter discovers transcripts from multiple root directories via `transcript_roots`. Precedence: DB setting (JSON array) → TOML (`priv/spotter.toml`) → defaults (`~/.claude/projects`, `~/.claude_agents/projects`). Paths are normalized (trim, dedupe, expand `~`, make absolute). Discovery and import deduplicate by session ID, preferring the first configured root. The former `transcripts_dir` single-path setting is no longer accepted.
 
 ## References
 
