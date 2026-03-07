@@ -22,6 +22,7 @@ SESSION_ID="$(echo "$INPUT" | jq -r '.session_id // empty')"
 HOOK_EVENT="$(echo "$INPUT" | jq -r '.hook_event_name // "SessionEnd"')"
 REASON="$(echo "$INPUT" | jq -r '.reason // empty')"
 CWD="$(echo "$INPUT" | jq -r '.cwd // empty')"
+TRANSCRIPT_PATH="$(echo "$INPUT" | jq -r '.transcript_path // empty')"
 
 if [ -z "${SESSION_ID:-}" ]; then
   exit 0
@@ -76,10 +77,12 @@ REQUEST_BODY="$(jq -n \
   --arg session_id "$SESSION_ID" \
   --arg reason "$REASON" \
   --arg cwd "$CWD" \
+  --arg transcript_path "$TRANSCRIPT_PATH" \
   '{
     session_id: $session_id
   }
   + (if $reason == "" then {} else {reason: $reason} end)
-  + (if $cwd == "" then {} else {cwd: $cwd} end)')"
+  + (if $cwd == "" then {} else {cwd: $cwd} end)
+  + (if $transcript_path == "" then {} else {transcript_path: $transcript_path} end)')"
 
 send_to_spotter "$REQUEST_BODY" "$HOOK_EVENT" || true

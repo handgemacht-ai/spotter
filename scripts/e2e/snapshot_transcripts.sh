@@ -4,7 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 
-SOURCE_ROOT="${1:-${HOME}/.claude/projects}"
+DEFAULT_ROOTS="${HOME}/.claude/projects:${HOME}/.claude_agents/projects"
+SOURCE_ROOTS="${SNAPSHOT_TRANSCRIPT_ROOTS:-${1:-${DEFAULT_ROOTS}}}"
 DEST_ROOT="${2:-${REPO_ROOT}/test/fixtures/transcripts}"
 MAX_FILES="${MAX_FILES:-6}"
 
@@ -17,24 +18,26 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ ! -d "${SOURCE_ROOT}" ]]; then
-  echo "source directory not found: ${SOURCE_ROOT}" >&2
-  exit 1
-fi
-
 if ! [[ "${MAX_FILES}" =~ ^[0-9]+$ ]] || [[ "${MAX_FILES}" -lt 1 ]]; then
   echo "MAX_FILES must be a positive integer, got: ${MAX_FILES}" >&2
   exit 1
 fi
 
-mapfile -t project_dirs < <(
-  find "${SOURCE_ROOT}" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' \
-    | grep -E "${SPOTTER_DIR_PATTERN}|${SPOTTER_WORKTREES_PATTERN}" \
-    | sort
-)
+# Split colon-separated roots and collect existing ones
+IFS=':' read -ra root_list <<< "${SOURCE_ROOTS}"
+active_roots=()
+for root in "${root_list[@]}"; do
+  root="${root%/}"
+  [[ -z "${root}" ]] && continue
+  if [[ -d "${root}" ]]; then
+    active_roots+=("${root}")
+  else
+    echo "skipping missing root: ${root}" >&2
+  fi
+done
 
-if [[ "${#project_dirs[@]}" -eq 0 ]]; then
-  echo "no spotter project directories found under ${SOURCE_ROOT}" >&2
+if [[ "${#active_roots[@]}" -eq 0 ]]; then
+  echo "no valid source roots found in: ${SOURCE_ROOTS}" >&2
   exit 1
 fi
 
@@ -44,37 +47,46 @@ sorted_file="${tmp_dir}/sorted.tsv"
 
 touch "${candidate_file}"
 
-for project_dir in "${project_dirs[@]}"; do
-  while IFS= read -r session_file; do
-    [[ -f "${session_file}" ]] || continue
+# Scan all roots for spotter project directories
+for source_root in "${active_roots[@]}"; do
+  mapfile -t project_dirs < <(
+    find "${source_root}" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' \
+      | grep -E "${SPOTTER_DIR_PATTERN}|${SPOTTER_WORKTREES_PATTERN}" \
+      | sort
+  )
 
-    line_count="$(wc -l < "${session_file}" | tr -d ' ')"
-    session_id="$(
-      grep -m1 -oE '"sessionId":"[^"]+"' "${session_file}" \
-        | sed -E 's/.*"sessionId":"([^"]+)".*/\1/' \
-        || true
-    )"
+  for project_dir in "${project_dirs[@]}"; do
+    while IFS= read -r session_file; do
+      [[ -f "${session_file}" ]] || continue
 
-    if [[ -z "${session_id}" ]]; then
-      session_id="$(basename "${session_file}" .jsonl)"
-    fi
+      line_count="$(wc -l < "${session_file}" | tr -d ' ')"
+      session_id="$(
+        grep -m1 -oE '"sessionId":"[^"]+"' "${session_file}" \
+          | sed -E 's/.*"sessionId":"([^"]+)".*/\1/' \
+          || true
+      )"
 
-    has_subagent=0
-    subagents_dir="$(dirname "${session_file}")/${session_id}/subagents"
+      if [[ -z "${session_id}" ]]; then
+        session_id="$(basename "${session_file}" .jsonl)"
+      fi
 
-    if compgen -G "${subagents_dir}/*.jsonl" >/dev/null 2>&1; then
-      has_subagent=1
-    elif grep -qiE 'subagent|agent_id|agent-' "${session_file}"; then
-      has_subagent=1
-    fi
+      has_subagent=0
+      subagents_dir="$(dirname "${session_file}")/${session_id}/subagents"
 
-    rel_path="${session_file#${SOURCE_ROOT}/}"
-    printf '%s\t%s\t%s\t%s\n' \
-      "${line_count}" \
-      "${has_subagent}" \
-      "${rel_path}" \
-      "${session_id}" >> "${candidate_file}"
-  done < <(find "${SOURCE_ROOT}/${project_dir}" -maxdepth 1 -type f -name '*.jsonl' | sort)
+      if compgen -G "${subagents_dir}/*.jsonl" >/dev/null 2>&1; then
+        has_subagent=1
+      elif grep -qiE 'subagent|agent_id|agent-' "${session_file}"; then
+        has_subagent=1
+      fi
+
+      # Store absolute path for copy phase, rel_path for display
+      printf '%s\t%s\t%s\t%s\n' \
+        "${line_count}" \
+        "${has_subagent}" \
+        "${session_file}" \
+        "${session_id}" >> "${candidate_file}"
+    done < <(find "${source_root}/${project_dir}" -maxdepth 1 -type f -name '*.jsonl' | sort)
+  done
 done
 
 if [[ ! -s "${candidate_file}" ]]; then
@@ -125,8 +137,7 @@ sanitize_jsonl() {
 copied_sessions=0
 copied_subagent_files=0
 
-while IFS=$'\t' read -r _line_count _has_subagent rel_path session_id; do
-  source_file="${SOURCE_ROOT}/${rel_path}"
+while IFS=$'\t' read -r _line_count _has_subagent source_file session_id; do
   target_file="${DEST_ROOT}/${session_id}.jsonl"
 
   if [[ -e "${target_file}" ]]; then
@@ -158,8 +169,8 @@ manifest_path="${DEST_ROOT}/README.md"
   echo "# Transcript Fixtures"
   echo
   echo "- Snapshot date: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-  echo "- Source root: ${SOURCE_ROOT}"
-  echo "- Included projects: ${project_dirs[*]}"
+  echo "- Source roots: ${SOURCE_ROOTS}"
+  echo "- Active roots: ${active_roots[*]}"
   echo "- Selected sessions: ${copied_sessions}"
   echo "- Selected subagent files: ${copied_subagent_files}"
   echo "- Selection rule: top ${MAX_FILES} by line count, force at least one subagent-capable session when available"
@@ -167,15 +178,15 @@ manifest_path="${DEST_ROOT}/README.md"
   echo
   echo "## Selected Sessions"
   echo
-  while IFS=$'\t' read -r line_count has_subagent rel_path session_id; do
+  while IFS=$'\t' read -r line_count has_subagent source_file session_id; do
     if [[ -f "${DEST_ROOT}/${session_id}.jsonl" ]]; then
-      echo "- \`${session_id}.jsonl\` from \`${rel_path}\` (${line_count} lines, subagent_hint=${has_subagent})"
+      echo "- \`${session_id}.jsonl\` from \`${source_file}\` (${line_count} lines, subagent_hint=${has_subagent})"
     fi
   done < "${selected_file}"
 } > "${manifest_path}"
 
 echo "snapshot complete:"
-echo "  source: ${SOURCE_ROOT}"
+echo "  roots:  ${SOURCE_ROOTS}"
 echo "  dest:   ${DEST_ROOT}"
 echo "  copied sessions: ${copied_sessions}"
 echo "  copied subagent files: ${copied_subagent_files}"

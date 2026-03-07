@@ -7,7 +7,7 @@ mix local.hex --force
 mix local.rebar --force
 
 # Ensure Claude home dirs exist
-mkdir -p "${HOME}/.claude/projects"
+mkdir -p "${HOME}/.claude/projects" "${HOME}/.claude_agents/projects"
 
 # Ensure frontend assets exist (self-heal if missing/empty)
 ASSET_PATH="/app/priv/static/assets/app.js"
