@@ -38,7 +38,7 @@ defmodule SpotterWeb.SessionHookController do
 
       case Sessions.find_or_create(session_id, cwd: params["cwd"]) do
         {:ok, session} ->
-          maybe_bootstrap_sync(session)
+          maybe_bootstrap_sync(session, params["transcript_path"])
           enqueue_ingest(session.project_id)
           maybe_start_tail_worker(session_id, params["cwd"], params["transcript_path"])
           SessionActivityBroadcaster.broadcast_started(session_id)
@@ -275,7 +275,7 @@ defmodule SpotterWeb.SessionHookController do
 
   @env Application.compile_env(:spotter, :env, :prod)
 
-  defp maybe_bootstrap_sync(session) do
+  defp maybe_bootstrap_sync(session, transcript_path) do
     cond do
       @env == :test ->
         :ok
@@ -284,8 +284,15 @@ defmodule SpotterWeb.SessionHookController do
         trace_ctx = OtelTraceHelpers.maybe_add_trace_context(%{})
         session_id = session.session_id
 
+        sync_opts = [trace_context: trace_ctx]
+
+        sync_opts =
+          if is_binary(transcript_path) and transcript_path != "",
+            do: [{:transcript_path, transcript_path} | sync_opts],
+            else: sync_opts
+
         Task.start(fn ->
-          SyncTranscripts.sync_session_by_id(session_id, trace_context: trace_ctx)
+          SyncTranscripts.sync_session_by_id(session_id, sync_opts)
         end)
 
       true ->

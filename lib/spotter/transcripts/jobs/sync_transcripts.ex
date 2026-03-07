@@ -45,6 +45,8 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
 
       case find_transcript_file(session_id, transcript_path, transcript_roots) do
         {:ok, file_path} ->
+          source = if file_path == transcript_path, do: "direct", else: "root_search"
+          Tracer.set_attribute("spotter.transcript_path.source", source)
           sync_session_file(file_path, opts)
 
         :not_found ->
@@ -676,7 +678,14 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   defp resolve_transcript_path(""), do: :skip
 
   defp resolve_transcript_path(path) when is_binary(path) do
-    if File.exists?(path), do: {:ok, path}, else: :skip
+    expanded = Path.expand(path)
+
+    if File.exists?(expanded) do
+      {:ok, expanded}
+    else
+      Logger.debug("transcript_path hint not found on disk: #{expanded}")
+      :skip
+    end
   end
 
   defp search_transcript_roots(session_id, roots_override) do
