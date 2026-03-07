@@ -28,10 +28,6 @@ if [ -z "${SESSION_ID:-}" ]; then
   exit 0
 fi
 
-if [ -z "${HOOK_EVENT:-}" ]; then
-  HOOK_EVENT="SessionEnd"
-fi
-
 # Generate trace context (fail gracefully if unavailable)
 TRACEPARENT="$(spotter_generate_traceparent 2>/dev/null || true)"
 
