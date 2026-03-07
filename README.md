@@ -160,7 +160,9 @@ Spotter discovers transcripts from multiple root directories configured via `tra
 
 Paths are normalized: `~` is expanded, relative paths are made absolute, duplicates are removed.
 
-For live container mode, set `SPOTTER_LIVE_TRANSCRIPT_ROOTS` (colon-separated paths) before running `mix spotter.live.configure`.
+For live container mode, set `SPOTTER_LIVE_TRANSCRIPT_ROOTS` (colon-separated paths) before running `mix spotter.live.configure`. When unset, both default roots are written.
+
+The Docker entrypoint and e2e runtime scripts create both default root directories automatically. Plugin session notifiers (`notify-session.sh`, `notify-session-end.sh`) forward `transcript_path` from hook payloads when present, enabling path-based transcript resolution.
 
 ## Showcase quickstart (one command)
 
@@ -325,16 +327,17 @@ Spotter includes a local-only E2E harness that runs:
 
 ### Refresh transcript fixtures from host Claude sessions
 
-Fixture snapshot source is restricted to:
+Fixture snapshot source is restricted to spotter project directories matching:
 
-- `~/.claude/projects/-home-*-projects-spotter`
-- `~/.claude/projects/-home-*-projects-spotter-worktrees*`
+- `-home-*-projects-spotter`
+- `-home-*-projects-spotter-worktrees*`
 
-Run:
+The script scans multiple roots by default (`~/.claude/projects` and `~/.claude_agents/projects`). Override with `SNAPSHOT_TRANSCRIPT_ROOTS` (colon-separated) or a single positional argument:
 
 ```bash
-scripts/e2e/snapshot_transcripts.sh
-scripts/e2e/scan_fixtures_secrets.sh
+scripts/e2e/snapshot_transcripts.sh                          # both default roots
+SNAPSHOT_TRANSCRIPT_ROOTS=/custom/root scripts/e2e/snapshot_transcripts.sh  # custom root
+scripts/e2e/scan_fixtures_secrets.sh                         # verify no secrets leaked
 ```
 
 The snapshot script selects longer sessions (line-count based), forces subagent coverage when available, sanitizes data, and writes metadata to `test/fixtures/transcripts/README.md`.
