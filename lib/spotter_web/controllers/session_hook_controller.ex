@@ -245,23 +245,22 @@ defmodule SpotterWeb.SessionHookController do
 
   defp maybe_start_tail_worker(session_id, _cwd, transcript_path)
        when is_binary(transcript_path) and transcript_path != "" do
-    TranscriptTailSupervisor.ensure_worker(session_id, transcript_path)
-  rescue
-    error ->
-      Logger.debug("Failed to start tail worker for #{session_id}: #{inspect(error)}")
-      :ok
+    start_tail_worker(session_id, transcript_path)
   end
 
   defp maybe_start_tail_worker(session_id, cwd, _transcript_path) when is_binary(cwd) do
-    path = live_transcript_path(cwd, session_id)
+    start_tail_worker(session_id, live_transcript_path(cwd, session_id))
+  end
+
+  defp maybe_start_tail_worker(_session_id, _cwd, _transcript_path), do: :ok
+
+  defp start_tail_worker(session_id, path) do
     TranscriptTailSupervisor.ensure_worker(session_id, path)
   rescue
     error ->
       Logger.debug("Failed to start tail worker for #{session_id}: #{inspect(error)}")
       :ok
   end
-
-  defp maybe_start_tail_worker(_session_id, _cwd, _transcript_path), do: :ok
 
   defp live_transcript_path(cwd, session_id) do
     {candidate_roots, _source} = Runtime.transcript_roots()
