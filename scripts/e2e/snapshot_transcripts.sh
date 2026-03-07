@@ -180,7 +180,8 @@ manifest_path="${DEST_ROOT}/README.md"
   echo
   while IFS=$'\t' read -r line_count has_subagent source_file session_id; do
     if [[ -f "${DEST_ROOT}/${session_id}.jsonl" ]]; then
-      echo "- \`${session_id}.jsonl\` from \`${source_file}\` (${line_count} lines, subagent_hint=${has_subagent})"
+      sanitized_path="$(echo "${source_file}" | sed -E 's|/home/[A-Za-z0-9._-]+/|/home/USER/|g')"
+      echo "- \`${session_id}.jsonl\` from \`${sanitized_path}\` (${line_count} lines, subagent_hint=${has_subagent})"
     fi
   done < "${selected_file}"
 } > "${manifest_path}"

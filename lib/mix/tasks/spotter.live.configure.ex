@@ -34,8 +34,8 @@ defmodule Mix.Tasks.Spotter.Live.Configure do
     upsert_setting("transcript_roots", Jason.encode!(transcript_roots))
     Mix.shell().info("transcript_roots = #{inspect(transcript_roots)}")
 
-    # Compute project pattern from repo dir
-    # /workspace/myrepo -> -workspace-myrepo -> pattern ^-workspace-myrepo (escaped)
+    # Convert repo path to transcript directory prefix and build a regex pattern.
+    # Example: /workspace/myrepo -> ^\\-workspace\\-myrepo
     prefix = String.replace(repo_dir, "/", "-")
     pattern = "^" <> Regex.escape(prefix)
 
