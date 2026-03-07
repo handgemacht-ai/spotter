@@ -75,7 +75,8 @@ defmodule Mix.Tasks.Spotter.E2e.Seed do
     fixture_root = fixture_root()
     ensure_e2e_project!()
     config = Config.read!()
-    target_dir = Path.join(config.transcripts_dir, @fixture_project_dir)
+    [first_root | _] = config.transcript_roots
+    target_dir = Path.join(first_root, @fixture_project_dir)
 
     source_dir =
       case scenario do
@@ -214,7 +215,7 @@ defmodule Mix.Tasks.Spotter.E2e.Seed do
           args: %{
             "project_name" => project_name,
             "pattern" => Regex.source(pattern),
-            "transcripts_dir" => config.transcripts_dir,
+            "transcript_roots" => config.transcript_roots,
             "run_id" => run_id,
             "enqueue_downstream_jobs" => false
           }

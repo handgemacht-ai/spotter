@@ -17,7 +17,7 @@ defmodule Mix.Tasks.Spotter.Live.ConfigureTest do
       on_exit(fn ->
         System.delete_env("SPOTTER_LIVE_REPO_DIR")
         System.delete_env("SPOTTER_LIVE_PROJECT_NAME")
-        System.delete_env("SPOTTER_LIVE_TRANSCRIPTS_DIR")
+        System.delete_env("SPOTTER_LIVE_TRANSCRIPT_ROOTS")
       end)
 
       Configure.run([])
@@ -28,21 +28,23 @@ defmodule Mix.Tasks.Spotter.Live.ConfigureTest do
 
     @tag :slow
     @tag timeout: 5_000
-    test "upserts transcripts_dir when SPOTTER_LIVE_TRANSCRIPTS_DIR is set" do
+    test "upserts transcript_roots when SPOTTER_LIVE_TRANSCRIPT_ROOTS is set" do
       System.put_env("SPOTTER_LIVE_REPO_DIR", "/workspace/myrepo")
       System.put_env("SPOTTER_LIVE_PROJECT_NAME", "myrepo")
-      System.put_env("SPOTTER_LIVE_TRANSCRIPTS_DIR", "/custom/transcripts")
+      System.put_env("SPOTTER_LIVE_TRANSCRIPT_ROOTS", "/custom/transcripts:/other/root")
 
       on_exit(fn ->
         System.delete_env("SPOTTER_LIVE_REPO_DIR")
         System.delete_env("SPOTTER_LIVE_PROJECT_NAME")
-        System.delete_env("SPOTTER_LIVE_TRANSCRIPTS_DIR")
+        System.delete_env("SPOTTER_LIVE_TRANSCRIPT_ROOTS")
       end)
 
       Configure.run([])
 
-      setting = Setting |> Ash.Query.filter(key == "transcripts_dir") |> Ash.read_one!()
-      assert setting.value == "/custom/transcripts"
+      setting = Setting |> Ash.Query.filter(key == "transcript_roots") |> Ash.read_one!()
+      roots = Jason.decode!(setting.value)
+      assert "/custom/transcripts" in roots
+      assert "/other/root" in roots
     end
   end
 end

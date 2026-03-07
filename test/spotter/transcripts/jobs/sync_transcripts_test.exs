@@ -393,7 +393,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscriptsTest do
         args: %{
           "project_name" => "test-proj",
           "pattern" => "^my-project",
-          "transcripts_dir" => tmp_dir,
+          "transcript_roots" => [tmp_dir],
           "run_id" => run_id
         }
       }
@@ -437,7 +437,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscriptsTest do
         args: %{
           "project_name" => "multi-proj",
           "pattern" => "^multi-",
-          "transcripts_dir" => tmp_dir,
+          "transcript_roots" => [tmp_dir],
           "run_id" => run_id
         }
       }
@@ -463,7 +463,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscriptsTest do
         args: %{
           "project_name" => "empty-proj",
           "pattern" => "^nonexistent",
-          "transcripts_dir" => tmp_dir,
+          "transcript_roots" => [tmp_dir],
           "run_id" => run_id
         }
       }
@@ -497,7 +497,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscriptsTest do
         args: %{
           "project_name" => "compat-proj",
           "pattern" => "^compat-project",
-          "transcripts_dir" => tmp_dir
+          "transcript_roots" => [tmp_dir]
         }
       }
 

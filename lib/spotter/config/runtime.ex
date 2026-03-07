@@ -10,23 +10,41 @@ defmodule Spotter.Config.Runtime do
 
   require Ash.Query
 
-  @default_transcripts_dir "~/.claude/projects"
+  @default_transcript_roots ["~/.claude/projects", "~/.claude_agents/projects"]
 
   @doc """
-  Returns the effective transcripts directory.
+  Returns the effective transcript roots as a normalized list of paths.
 
-  Precedence: DB override -> TOML `priv/spotter.toml` -> default `~/.claude/projects`.
-  The `~` is expanded to the user's home directory.
+  Precedence: DB override -> TOML `priv/spotter.toml` -> defaults.
+  Paths are expanded (`~` -> home), trimmed, deduped, and made absolute.
   """
-  @spec transcripts_dir() :: {String.t(), atom()}
-  def transcripts_dir do
-    case db_get("transcripts_dir") do
-      {:ok, val} -> {expand_path(val), :db}
-      :miss -> transcripts_dir_from_toml()
+  @spec transcript_roots() :: {[String.t()], atom()}
+  def transcript_roots do
+    case db_get_roots() do
+      {:ok, roots} -> {normalize_roots(roots), :db}
+      :miss -> transcript_roots_from_toml()
     end
   end
 
   # -- Private helpers --
+
+  defp db_get_roots do
+    case db_get("transcript_roots") do
+      {:ok, json} -> parse_json_roots(json)
+      :miss -> :miss
+    end
+  end
+
+  defp parse_json_roots(json) do
+    case Jason.decode(json) do
+      {:ok, roots} when is_list(roots) ->
+        roots = Enum.filter(roots, &is_binary/1)
+        if roots == [], do: :miss, else: {:ok, roots}
+
+      _ ->
+        :miss
+    end
+  end
 
   defp db_get(key) do
     case Setting
@@ -37,26 +55,36 @@ defmodule Spotter.Config.Runtime do
     end
   end
 
-  defp transcripts_dir_from_toml do
-    case read_toml_transcripts_dir() do
-      {:ok, dir} -> {expand_path(dir), :toml}
-      :error -> {expand_path(@default_transcripts_dir), :default}
+  defp transcript_roots_from_toml do
+    case read_toml_transcript_roots() do
+      {:ok, roots} -> {normalize_roots(roots), :toml}
+      :error -> {normalize_roots(@default_transcript_roots), :default}
     end
   end
 
-  defp read_toml_transcripts_dir do
+  defp read_toml_transcript_roots do
     path = Application.app_dir(:spotter, "priv/spotter.toml")
 
     with {:ok, content} <- File.read(path),
          {:ok, toml} <- Toml.decode(content),
-         %{"transcripts_dir" => dir} when is_binary(dir) <- toml do
-      {:ok, dir}
+         %{"transcript_roots" => roots} when is_list(roots) <- toml do
+      roots = Enum.filter(roots, &is_binary/1)
+      if roots == [], do: :error, else: {:ok, roots}
     else
       _ -> :error
     end
   end
 
-  defp expand_path(path) do
-    String.replace(path, "~", System.user_home!())
+  defp normalize_roots(roots) do
+    case roots |> Enum.map(&normalize_path/1) |> Enum.uniq() do
+      [] -> Enum.map(@default_transcript_roots, &normalize_path/1)
+      normalized -> normalized
+    end
+  end
+
+  defp normalize_path(path) do
+    path
+    |> String.trim()
+    |> Path.expand()
   end
 end

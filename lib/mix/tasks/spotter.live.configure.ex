@@ -3,7 +3,7 @@ defmodule Mix.Tasks.Spotter.Live.Configure do
   Configures Spotter for live container mode.
 
   Reads SPOTTER_LIVE_REPO_DIR and SPOTTER_LIVE_PROJECT_NAME from env,
-  upserts the transcripts_dir setting and a matching project.
+  upserts the transcript_roots setting and a matching project.
   """
   @shortdoc "Configure Spotter for live container mode"
   use Mix.Task
@@ -20,13 +20,15 @@ defmodule Mix.Tasks.Spotter.Live.Configure do
     repo_dir = System.fetch_env!("SPOTTER_LIVE_REPO_DIR")
     project_name = System.fetch_env!("SPOTTER_LIVE_PROJECT_NAME")
 
-    transcripts_dir =
-      System.get_env("SPOTTER_LIVE_TRANSCRIPTS_DIR") ||
-        Path.join(System.user_home!(), ".claude/projects")
+    transcript_roots =
+      case System.get_env("SPOTTER_LIVE_TRANSCRIPT_ROOTS") do
+        nil -> [Path.join(System.user_home!(), ".claude/projects")]
+        roots_str -> String.split(roots_str, ":", trim: true)
+      end
 
-    # Upsert transcripts_dir setting
-    upsert_setting("transcripts_dir", transcripts_dir)
-    Mix.shell().info("transcripts_dir = #{transcripts_dir}")
+    # Upsert transcript_roots setting
+    upsert_setting("transcript_roots", Jason.encode!(transcript_roots))
+    Mix.shell().info("transcript_roots = #{inspect(transcript_roots)}")
 
     # Compute project pattern from repo dir
     # /workspace/myrepo -> -workspace-myrepo -> pattern ^-workspace-myrepo (escaped)

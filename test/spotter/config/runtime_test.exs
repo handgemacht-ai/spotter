@@ -4,25 +4,24 @@ defmodule Spotter.Config.RuntimeTest do
   alias Spotter.Config.Runtime
   alias Spotter.Config.Setting
 
-  describe "transcripts_dir/0" do
+  describe "transcript_roots/0" do
     test "DB override beats TOML and default" do
-      Ash.create!(Setting, %{key: "transcripts_dir", value: "/custom/dir"})
+      Ash.create!(Setting, %{key: "transcript_roots", value: ~s(["/custom/dir"])})
 
-      assert {"/custom/dir", :db} = Runtime.transcripts_dir()
+      assert {["/custom/dir"], :db} = Runtime.transcript_roots()
     end
 
     test "falls back to TOML when DB absent" do
-      # TOML file exists with transcripts_dir, so should get :toml source
-      {dir, source} = Runtime.transcripts_dir()
+      {roots, source} = Runtime.transcript_roots()
 
-      assert is_binary(dir)
+      assert [_ | _] = roots
       assert source in [:toml, :default]
     end
 
     test "expands tilde in DB override" do
-      Ash.create!(Setting, %{key: "transcripts_dir", value: "~/my-transcripts"})
+      Ash.create!(Setting, %{key: "transcript_roots", value: ~s(["~/my-transcripts"])})
 
-      {dir, :db} = Runtime.transcripts_dir()
+      {[dir], :db} = Runtime.transcript_roots()
       refute String.starts_with?(dir, "~")
       assert String.ends_with?(dir, "/my-transcripts")
     end
@@ -30,9 +29,11 @@ defmodule Spotter.Config.RuntimeTest do
 
   describe "Setting resource" do
     test "creates valid setting" do
-      assert {:ok, setting} = Ash.create(Setting, %{key: "transcripts_dir", value: "test"})
-      assert setting.key == "transcripts_dir"
-      assert setting.value == "test"
+      assert {:ok, setting} =
+               Ash.create(Setting, %{key: "transcript_roots", value: ~s(["/test"])})
+
+      assert setting.key == "transcript_roots"
+      assert setting.value == ~s(["/test"])
     end
 
     test "rejects disallowed key" do
@@ -40,20 +41,20 @@ defmodule Spotter.Config.RuntimeTest do
     end
 
     test "enforces unique key" do
-      Ash.create!(Setting, %{key: "transcripts_dir", value: "v1"})
+      Ash.create!(Setting, %{key: "transcript_roots", value: ~s(["/v1"])})
 
-      assert {:error, _} = Ash.create(Setting, %{key: "transcripts_dir", value: "v2"})
+      assert {:error, _} = Ash.create(Setting, %{key: "transcript_roots", value: ~s(["/v2"])})
     end
 
     test "updates value" do
-      setting = Ash.create!(Setting, %{key: "transcripts_dir", value: "v1"})
-      updated = Ash.update!(setting, %{value: "v2"})
+      setting = Ash.create!(Setting, %{key: "transcript_roots", value: ~s(["/v1"])})
+      updated = Ash.update!(setting, %{value: ~s(["/v2"])})
 
-      assert updated.value == "v2"
+      assert updated.value == ~s(["/v2"])
     end
 
     test "destroys setting" do
-      setting = Ash.create!(Setting, %{key: "transcripts_dir", value: "v1"})
+      setting = Ash.create!(Setting, %{key: "transcript_roots", value: ~s(["/v1"])})
       assert :ok = Ash.destroy!(setting)
     end
   end

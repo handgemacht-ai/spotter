@@ -181,8 +181,8 @@ defmodule SpotterWeb.ImportModalMapFormatTest do
 
       File.write!(Path.join(project_dir, "sessions-index.json"), Jason.encode!(index))
 
-      # Point transcripts_dir to our temp dir via DB setting
-      Ash.create!(Setting, %{key: "transcripts_dir", value: tmp_dir})
+      # Point transcript_roots to our temp dir via DB setting
+      Ash.create!(Setting, %{key: "transcript_roots", value: Jason.encode!([tmp_dir])})
 
       on_exit(fn -> File.rm_rf!(tmp_dir) end)
 
