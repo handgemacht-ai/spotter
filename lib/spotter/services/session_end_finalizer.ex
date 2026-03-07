@@ -25,7 +25,9 @@ defmodule Spotter.Services.SessionEndFinalizer do
     sync_opts = [trace_context: trace_context]
 
     sync_opts =
-      if transcript_path, do: [{:transcript_path, transcript_path} | sync_opts], else: sync_opts
+      if is_binary(transcript_path) and transcript_path != "",
+        do: [{:transcript_path, transcript_path} | sync_opts],
+        else: sync_opts
 
     sync_result =
       SyncTranscripts.sync_session_by_id(session_id, sync_opts)
