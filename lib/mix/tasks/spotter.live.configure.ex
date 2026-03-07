@@ -22,8 +22,12 @@ defmodule Mix.Tasks.Spotter.Live.Configure do
 
     transcript_roots =
       case System.get_env("SPOTTER_LIVE_TRANSCRIPT_ROOTS") do
-        nil -> [Path.join(System.user_home!(), ".claude/projects")]
-        roots_str -> String.split(roots_str, ":", trim: true)
+        nil ->
+          home = System.user_home!()
+          [Path.join(home, ".claude/projects"), Path.join(home, ".claude_agents/projects")]
+
+        roots_str ->
+          String.split(roots_str, ":", trim: true)
       end
 
     # Upsert transcript_roots setting

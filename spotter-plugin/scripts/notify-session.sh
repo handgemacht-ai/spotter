@@ -22,6 +22,7 @@ INPUT="$(cat)"
 # Extract fields from the JSON input
 SESSION_ID="$(echo "$INPUT" | jq -r '.session_id // empty')"
 CWD="$(echo "$INPUT" | jq -r '.cwd // empty')"
+TRANSCRIPT_PATH="$(echo "$INPUT" | jq -r '.transcript_path // empty')"
 
 # Persist session_id for MCP tools via CLAUDE_ENV_FILE
 if [ -n "${CLAUDE_ENV_FILE:-}" ] && [ -n "${SESSION_ID:-}" ]; then
@@ -79,6 +80,12 @@ send_to_spotter() {
 }
 
 # POST the mapping to Spotter (fail silently)
-PAYLOAD="{\"session_id\": \"${SESSION_ID}\", \"pane_id\": \"${TMUX_PANE}\", \"cwd\": \"${CWD}\"}"
+PAYLOAD="$(jq -n \
+  --arg session_id "$SESSION_ID" \
+  --arg pane_id "$TMUX_PANE" \
+  --arg cwd "$CWD" \
+  --arg transcript_path "$TRANSCRIPT_PATH" \
+  '{session_id: $session_id, pane_id: $pane_id, cwd: $cwd}
+  + (if $transcript_path == "" then {} else {transcript_path: $transcript_path} end)')"
 
 send_to_spotter "$PAYLOAD" || true
