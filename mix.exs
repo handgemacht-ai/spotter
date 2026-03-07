@@ -27,6 +27,7 @@ defmodule Spotter.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:claude, "~> 0.5", only: [:dev], runtime: false},
       {:sourceror, "~> 1.8", only: [:dev, :test]},
       {:oban, "~> 2.0"},
       {:open_api_spex, "~> 3.0"},
