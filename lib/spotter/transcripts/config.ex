@@ -2,7 +2,7 @@ defmodule Spotter.Transcripts.Config do
   @moduledoc """
   Reads and resolves transcript configuration.
 
-  Uses DB-backed overrides (via `Spotter.Config.Runtime`) for `transcripts_dir`
+  Uses DB-backed overrides (via `Spotter.Config.Runtime`) for `transcript_roots`
   and DB-backed projects when available, falling back to `priv/spotter.toml`.
   """
 
@@ -14,14 +14,14 @@ defmodule Spotter.Transcripts.Config do
   @config_path "priv/spotter.toml"
 
   @spec read!() :: %{
-          transcripts_dir: String.t(),
+          transcript_roots: [String.t()],
           projects: %{String.t() => %{pattern: Regex.t()}}
         }
   def read! do
-    {transcripts_dir, _source} = Runtime.transcripts_dir()
+    {transcript_roots, _source} = Runtime.transcript_roots()
     projects = resolve_projects()
 
-    %{transcripts_dir: transcripts_dir, projects: projects}
+    %{transcript_roots: transcript_roots, projects: projects}
   end
 
   @doc """

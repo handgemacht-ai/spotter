@@ -18,10 +18,17 @@ defmodule Spotter.Services.SessionEndFinalizer do
   def finalize(session_id, params \\ %{}, opts \\ []) when is_binary(session_id) do
     trace_context = normalize_trace_context(Keyword.get(opts, :trace_context, %{}))
 
+    transcript_path = Keyword.get(opts, :transcript_path)
+
     stop_worker(session_id)
 
+    sync_opts = [trace_context: trace_context]
+
+    sync_opts =
+      if transcript_path, do: [{:transcript_path, transcript_path} | sync_opts], else: sync_opts
+
     sync_result =
-      SyncTranscripts.sync_session_by_id(session_id, trace_context: trace_context)
+      SyncTranscripts.sync_session_by_id(session_id, sync_opts)
 
     mark_result = mark_ended(session_id, params)
     if mark_result == :ok, do: SessionActivityBroadcaster.broadcast_finished(session_id)

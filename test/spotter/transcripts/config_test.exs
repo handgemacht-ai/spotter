@@ -8,9 +8,14 @@ defmodule Spotter.Transcripts.ConfigTest do
     test "reads and parses spotter.toml" do
       config = Config.read!()
 
-      assert %{transcripts_dir: dir, projects: projects} = config
-      assert is_binary(dir)
-      assert not String.contains?(dir, "~")
+      assert %{transcript_roots: roots, projects: projects} = config
+      assert [_ | _] = roots
+
+      Enum.each(roots, fn root ->
+        assert is_binary(root)
+        refute String.contains?(root, "~")
+      end)
+
       assert map_size(projects) > 0
 
       {_name, project} = Enum.at(projects, 0)
@@ -39,12 +44,16 @@ defmodule Spotter.Transcripts.ConfigTest do
     end
   end
 
-  describe "read!/0 transcripts_dir" do
-    test "returns a string path" do
+  describe "read!/0 transcript_roots" do
+    test "returns a list of expanded paths" do
       config = Config.read!()
 
-      assert is_binary(config.transcripts_dir)
-      refute String.starts_with?(config.transcripts_dir, "~")
+      assert [_ | _] = config.transcript_roots
+
+      Enum.each(config.transcript_roots, fn root ->
+        assert is_binary(root)
+        refute String.starts_with?(root, "~")
+      end)
     end
   end
 

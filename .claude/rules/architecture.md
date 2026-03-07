@@ -30,7 +30,7 @@ Localhost prototype, no authentication.
 | ComputedLaneCache, ParallelLanes | Parallel processing flow |
 | RawHookEvent | Raw hook event storage |
 
-Secondary domain: `Spotter.Config` (runtime settings).
+Secondary domain: `Spotter.Config` (runtime settings via `Setting` resource, `Runtime` accessor with DB → TOML → default precedence). `transcript_roots` is the authoritative config key for transcript discovery paths (JSON array string in DB, TOML array in `priv/spotter.toml`).
 
 ## Services Layer (`lib/spotter/services/`)
 

@@ -16,7 +16,7 @@ Spotter reviews Claude Code sessions and generated code. It links sessions to Gi
 | Domain | Purpose | Key Entities |
 |--------|---------|-------------|
 | Spotter.Transcripts | Session indexing, code analysis, review workflows | Project, Session, Message, Subagent, Commit, Annotation, FileSnapshot, ToolCall, FileHeatmap, CoChangeGroup, CommitHotspot, RetroSubmission, ShellCommandEvent, InstructionsLoadedEvent, Team |
-| Spotter.Config | Runtime configuration | Setting |
+| Spotter.Config | Runtime configuration (transcript_roots, settings) | Setting |
 
 ## Feature Index
 
@@ -40,6 +40,10 @@ Spotter reviews Claude Code sessions and generated code. It links sessions to Gi
 | Commit Linking | (background) | [commit-linking.md](references/features/commit-linking.md) |
 | Hook Ingestion | `POST /api/hooks/*` | [hook-ingestion.md](references/features/hook-ingestion.md) |
 | Global Project Selector | (sidebar, all pages) | [sidebar-project-selector.md](references/features/sidebar-project-selector.md) |
+
+### Transcript Roots Configuration
+
+Spotter discovers transcripts from multiple root directories via `transcript_roots`. Precedence: DB setting (JSON array) → TOML (`priv/spotter.toml`) → defaults (`~/.claude/projects`, `~/.claude_agents/projects`). Paths are normalized (trim, dedupe, expand `~`, make absolute). The former `transcripts_dir` single-path setting is no longer accepted.
 
 ## References
 

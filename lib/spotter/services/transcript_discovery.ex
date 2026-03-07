@@ -224,6 +224,6 @@ defmodule Spotter.Services.TranscriptDiscovery do
 
   defp transcript_roots_from_config do
     config = Config.read!()
-    [config.transcripts_dir]
+    config.transcript_roots
   end
 end

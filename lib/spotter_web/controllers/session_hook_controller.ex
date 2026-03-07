@@ -2,7 +2,7 @@ defmodule SpotterWeb.SessionHookController do
   @moduledoc false
   use Phoenix.Controller, formats: [:json]
 
-  alias Spotter.Config.Runtime, warn: false
+  alias Spotter.Config.Runtime
   alias Spotter.Observability.ErrorReport
   alias Spotter.Observability.FlowHub
   alias Spotter.Observability.FlowKeys
@@ -40,7 +40,7 @@ defmodule SpotterWeb.SessionHookController do
         {:ok, session} ->
           maybe_bootstrap_sync(session)
           enqueue_ingest(session.project_id)
-          maybe_start_tail_worker(session_id, params["cwd"])
+          maybe_start_tail_worker(session_id, params["cwd"], params["transcript_path"])
           SessionActivityBroadcaster.broadcast_started(session_id)
 
         {:error, reason} ->
@@ -131,7 +131,18 @@ defmodule SpotterWeb.SessionHookController do
       })
 
       trace_ctx = OtelTraceHelpers.maybe_add_trace_context(%{})
-      result = SessionEndFinalizer.finalize(session_id, params, trace_context: trace_ctx)
+      finalize_opts = [trace_context: trace_ctx]
+
+      finalize_opts =
+        case params["transcript_path"] do
+          path when is_binary(path) and path != "" ->
+            [{:transcript_path, path} | finalize_opts]
+
+          _ ->
+            finalize_opts
+        end
+
+      result = SessionEndFinalizer.finalize(session_id, params, finalize_opts)
 
       OtelTraceHelpers.set_attributes_safely(%{
         "spotter.session_end.sync_status" => to_string(result.sync_status),
@@ -232,8 +243,8 @@ defmodule SpotterWeb.SessionHookController do
     |> Oban.insert()
   end
 
-  defp maybe_start_tail_worker(session_id, cwd) when is_binary(cwd) do
-    transcript_path = live_transcript_path(cwd, session_id)
+  defp maybe_start_tail_worker(session_id, _cwd, transcript_path)
+       when is_binary(transcript_path) and transcript_path != "" do
     TranscriptTailSupervisor.ensure_worker(session_id, transcript_path)
   rescue
     error ->
@@ -241,34 +252,26 @@ defmodule SpotterWeb.SessionHookController do
       :ok
   end
 
-  defp maybe_start_tail_worker(_session_id, _cwd), do: :ok
+  defp maybe_start_tail_worker(session_id, cwd, _transcript_path) when is_binary(cwd) do
+    path = live_transcript_path(cwd, session_id)
+    TranscriptTailSupervisor.ensure_worker(session_id, path)
+  rescue
+    error ->
+      Logger.debug("Failed to start tail worker for #{session_id}: #{inspect(error)}")
+      :ok
+  end
+
+  defp maybe_start_tail_worker(_session_id, _cwd, _transcript_path), do: :ok
 
   defp live_transcript_path(cwd, session_id) do
-    {configured_transcripts_dir, _source} = Runtime.transcripts_dir()
-    dir_name = transcript_dir_name(cwd)
-    candidate_roots = transcript_search_roots(configured_transcripts_dir)
+    {candidate_roots, _source} = Runtime.transcript_roots()
+    dir_name = String.replace(cwd, "/", "-")
     fallback_root = List.first(candidate_roots)
 
     transcript_root =
       Enum.find(candidate_roots, &File.dir?(Path.join(&1, dir_name))) || fallback_root
 
     Path.join([transcript_root, dir_name, "#{session_id}.jsonl"])
-  end
-
-  defp transcript_search_roots(configured_transcripts_dir) do
-    configured_roots =
-      if is_binary(configured_transcripts_dir) and configured_transcripts_dir != "" do
-        [Path.expand(configured_transcripts_dir)]
-      else
-        []
-      end
-
-    (configured_roots ++ [Path.expand("~/.claude/projects")])
-    |> Enum.uniq()
-  end
-
-  defp transcript_dir_name(cwd) do
-    String.replace(cwd, "/", "-")
   end
 
   @env Application.compile_env(:spotter, :env, :prod)

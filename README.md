@@ -146,6 +146,22 @@ just otel-status
 - Production deployment
 - Remote/cloud runtime
 
+### Transcript Roots
+
+Spotter discovers transcripts from multiple root directories configured via `transcript_roots`. This replaces the former single-path `transcripts_dir` setting.
+
+**Precedence:** DB setting → TOML (`priv/spotter.toml`) → defaults.
+
+| Source | Format | Example |
+|--------|--------|---------|
+| DB setting (key: `transcript_roots`) | JSON array string | `["~/.claude/projects", "/custom/path"]` |
+| TOML (`priv/spotter.toml`) | TOML array | `transcript_roots = ["~/.claude/projects"]` |
+| Default | — | `~/.claude/projects`, `~/.claude_agents/projects` |
+
+Paths are normalized: `~` is expanded, relative paths are made absolute, duplicates are removed.
+
+For live container mode, set `SPOTTER_LIVE_TRANSCRIPT_ROOTS` (colon-separated paths) before running `mix spotter.live.configure`.
+
 ## Showcase quickstart (one command)
 
 Run Spotter + Claude Code + tmux in Docker without cloning this repo.
