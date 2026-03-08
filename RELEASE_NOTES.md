@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2026-03-08
+
+- Spotter now discovers and imports transcripts from multiple configurable root directories, with hook-provided path hints for faster resolution.
+
 ## 2026-03-06
 
 - The home page now shows only your currently running sessions with live status updates, so you can see at a glance what's active right now.

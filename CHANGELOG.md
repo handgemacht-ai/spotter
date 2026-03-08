@@ -8,6 +8,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- Multi-root transcript discovery via `transcript_roots` config key (spotter-j9d)
+  - `transcript_roots` replaces `transcripts_dir` as the single source of truth for transcript location
+  - DB storage as JSON array string, precedence: DB → TOML → defaults
+  - Defaults: `[~/.claude/projects, ~/.claude_agents/projects]`
+  - Path normalization: trim, dedupe, expand ~, make absolute, fallback to defaults if empty
+  - Files: `lib/spotter/config/runtime.ex`, `lib/spotter/config/setting.ex`, `lib/spotter/transcripts/config.ex`
+- `transcript_path` hint support for direct file resolution (spotter-j9d.2)
+  - `SyncTranscripts.sync_session_by_id/2` accepts `transcript_path` option
+  - `find_transcript_file` checks `transcript_path` first, falls back to multi-root search
+  - `SessionEndFinalizer` and `SessionHookController` forward `transcript_path`
+  - Trace attribute `spotter.transcript_path.source` ("direct" or "root_search")
+  - Files: `lib/spotter/transcripts/jobs/sync_transcripts.ex`, `lib/spotter/services/session_end_finalizer.ex`, `lib/spotter_web/controllers/session_hook_controller.ex`
+- Multi-root support in operational surfaces (spotter-j9d.3)
+  - `mix spotter.live.configure` writes `transcript_roots` with both default roots
+  - Shell scripts (`spotter_live_entrypoint.sh`, `prepare_runtime.sh`) create both root dirs
+  - `snapshot_transcripts.sh` supports multiple colon-separated roots via `SNAPSHOT_TRANSCRIPT_ROOTS`
+  - Hook scripts (`notify-session.sh`, `notify-session-end.sh`) forward `transcript_path`
+  - `SPOTTER_LIVE_TRANSCRIPT_ROOTS` env var supported
+- Cross-root deduplication in `TranscriptDiscovery` with first-root-wins ordering (spotter-j9d.4)
+  - Deduplicates by `session_id` across multiple roots
+  - 26 new tests across all beads
+  - Files: `lib/spotter/services/transcript_discovery.ex`
+
+### Changed
+
+- Replaced `transcripts_dir` with `transcript_roots` across Runtime, Setting, TOML, and Transcripts.Config (spotter-j9d.1)
+- Simplified hook scripts with consistent `SCRIPT_DIR` and removed dead guards (spotter-j9d.3)
+- Updated README, `architecture.md`, and `product/SKILL.md` with multi-root documentation (spotter-j9d.3, spotter-j9d.4)
+
+### Fixed
+
+- Sanitized user paths in snapshot manifest to prevent home directory leak (spotter-j9d.3)
+
+### Added
+
 - `DashboardLive` at `/` — ongoing-only session view with live start/finish updates (spotter-05g.3)
   - PubSub-driven real-time updates via `SessionActivityBroadcaster` (extracted service)
   - Subscribes to session started/finished events, adds/removes cards without page reload
