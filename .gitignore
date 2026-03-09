@@ -39,3 +39,7 @@ site/dist/
 e2e/screenshots
 e2e/traces
 test-results
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
