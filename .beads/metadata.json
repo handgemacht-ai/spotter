@@ -2,6 +2,7 @@
   "database": "dolt",
   "backend": "dolt",
   "dolt_mode": "server",
+  "dolt_server_port": 13665,
   "dolt_database": "beads_spotter",
   "project_id": "573e8505-e7c5-4ad7-b552-6c30e1e62110"
 }
