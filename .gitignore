@@ -43,3 +43,5 @@ test-results
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+# bd worktree
+test-bd/
