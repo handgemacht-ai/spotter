@@ -2,7 +2,6 @@ defmodule SpotterWeb.InstructionsTelemetryLive do
   use Phoenix.LiveView
 
   alias Spotter.Services.InstructionsTelemetryQuery
-  require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
   @telemetry_topic_prefix "instructions_telemetry:project:"
