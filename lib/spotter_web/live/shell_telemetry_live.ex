@@ -2,7 +2,6 @@ defmodule SpotterWeb.ShellTelemetryLive do
   use Phoenix.LiveView
 
   alias Spotter.Services.ShellCommandTelemetryQuery
-  require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
   @telemetry_topic_prefix "shell_telemetry:project:"

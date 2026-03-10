@@ -54,11 +54,10 @@ defmodule SpotterWeb.HistoryLive do
       filters = build_filters(socket.assigns)
 
       result = CommitHistory.list_commits_with_sessions(filters, %{after: cursor})
-      rows = enrich_with_delta_summaries(result.rows, socket.assigns.current_project_id)
 
       {:noreply,
        assign(socket,
-         rows: socket.assigns.rows ++ rows,
+         rows: socket.assigns.rows ++ result.rows,
          next_cursor: result.cursor,
          has_more: result.has_more
        )}
@@ -77,16 +76,12 @@ defmodule SpotterWeb.HistoryLive do
         _ -> %{rows: [], has_more: false, cursor: nil}
       end
 
-    rows = enrich_with_delta_summaries(result.rows, socket.assigns.current_project_id)
-
     assign(socket,
-      rows: rows,
+      rows: result.rows,
       next_cursor: result.cursor,
       has_more: result.has_more
     )
   end
-
-  defp enrich_with_delta_summaries(rows, _project_id), do: rows
 
   defp build_filters(assigns) do
     %{}
