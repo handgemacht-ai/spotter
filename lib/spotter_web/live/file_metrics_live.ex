@@ -424,7 +424,8 @@ defmodule SpotterWeb.FileMetricsLive do
   defp commit_subject(commit), do: commit.subject || ""
 
   defp selected_project(assigns) do
-    Enum.find(assigns.projects, &(&1.id == assigns.current_project_id))
+    projects = Map.get(assigns, :projects, [])
+    Enum.find(projects, &(&1.id == assigns.current_project_id))
   end
 
   defp strategy_label(metadata) when is_map(metadata) do
