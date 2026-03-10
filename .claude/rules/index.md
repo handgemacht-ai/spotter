@@ -31,6 +31,7 @@
 | `lib/spotter_web/channels/` | WebSocket channels (ReviewsChannel) |
 | `lib/spotter_web/plugs/` | Custom plugs (SpotterMcpPlug) |
 | `lib/spotter_web/telemetry/` | LiveView OTEL instrumentation |
+| `lib/spotter_web/project_helpers.ex` | Shared project selection helpers |
 | `lib/spotter_web/router.ex` | Phoenix routes |
 
 ## Frontend & Static
