@@ -3,7 +3,7 @@ defmodule SpotterWeb.FileMetricsLive do
 
   alias Spotter.Observability.ErrorReport
   alias Spotter.Services.{FileDetail, FileMetrics}
-  alias Spotter.Transcripts.{CoChangeGroupCommit, CoChangeGroupMemberStat, Commit, Project}
+  alias Spotter.Transcripts.{CoChangeGroupCommit, CoChangeGroupMemberStat, Commit}
   alias Spotter.Transcripts.Jobs.IngestRecentCommits
 
   require Ash.Query
@@ -19,17 +19,8 @@ defmodule SpotterWeb.FileMetricsLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    projects =
-      try do
-        Project |> Ash.read!()
-      rescue
-        _ -> []
-      end
-
     {:ok,
      assign(socket,
-       projects: projects,
-       selected_project_id: first_project_id(projects),
        active_tab: :heatmap,
        # Heat map state
        hm_min_score: 0,
@@ -57,28 +48,19 @@ defmodule SpotterWeb.FileMetricsLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    project_id =
-      normalize_project_id(socket.assigns.projects, parse_project_id(params["project_id"]))
-
     tab = parse_tab(params["tab"])
 
     socket =
       socket
-      |> assign(selected_project_id: project_id, active_tab: tab)
+      |> assign(active_tab: tab)
       |> load_active_tab()
 
     {:noreply, socket}
   end
 
   @impl true
-  def handle_event("filter_project", %{"project-id" => raw_id}, socket) do
-    project_id = normalize_project_id(socket.assigns.projects, parse_project_id(raw_id))
-    {:noreply, push_patch(socket, to: tab_path(project_id, socket.assigns.active_tab))}
-  end
-
   def handle_event("select_tab", %{"tab" => tab}, socket) do
-    {:noreply,
-     push_patch(socket, to: tab_path(socket.assigns.selected_project_id, parse_tab(tab)))}
+    {:noreply, push_patch(socket, to: tab_path(parse_tab(tab)))}
   end
 
   # Heat map events
@@ -119,12 +101,12 @@ defmodule SpotterWeb.FileMetricsLive do
      |> load_hotspots()}
   end
 
-  def handle_event("analyze_commits", _params, %{assigns: %{selected_project_id: nil}} = socket) do
+  def handle_event("analyze_commits", _params, %{assigns: %{current_project_id: nil}} = socket) do
     {:noreply, put_flash(socket, :error, "Select a project first.")}
   end
 
   def handle_event("analyze_commits", _params, socket) do
-    project_id = socket.assigns.selected_project_id
+    project_id = socket.assigns.current_project_id
 
     Tracer.with_span "spotter.file_metrics_live.analyze_commits" do
       Tracer.set_attribute("spotter.project_id", project_id)
@@ -225,10 +207,9 @@ defmodule SpotterWeb.FileMetricsLive do
   defp tab_to_param(:co_change), do: "co-change"
   defp tab_to_param(:file_size), do: "file-size"
 
-  defp tab_path(project_id, tab) do
-    base = if project_id, do: "/projects/#{project_id}/file-metrics", else: "/file-metrics"
+  defp tab_path(tab) do
     param = tab_to_param(tab)
-    if param == "heatmap", do: base, else: "#{base}?tab=#{param}"
+    if param == "heatmap", do: "/file-metrics", else: "/file-metrics?tab=#{param}"
   end
 
   defp load_active_tab(socket) do
@@ -241,17 +222,17 @@ defmodule SpotterWeb.FileMetricsLive do
   end
 
   defp load_heatmap(socket) do
-    %{selected_project_id: pid, hm_min_score: min, hm_sort_by: sort} = socket.assigns
+    %{current_project_id: pid, hm_min_score: min, hm_sort_by: sort} = socket.assigns
     assign(socket, heatmap_entries: FileMetrics.list_heatmap(pid, min, sort))
   end
 
   defp load_hotspots(socket) do
-    %{selected_project_id: pid, hs_min_score: min, hs_sort_by: sort} = socket.assigns
+    %{current_project_id: pid, hs_min_score: min, hs_sort_by: sort} = socket.assigns
     assign(socket, hotspot_entries: FileMetrics.list_hotspots(pid, min, sort))
   end
 
   defp load_co_change(socket) do
-    %{selected_project_id: pid, cc_scope: scope} = socket.assigns
+    %{current_project_id: pid, cc_scope: scope} = socket.assigns
 
     rows = FileMetrics.list_co_change_rows(pid, scope)
 
@@ -265,7 +246,7 @@ defmodule SpotterWeb.FileMetricsLive do
   end
 
   defp load_file_sizes(socket) do
-    %{selected_project_id: pid, fs_sort_by: sort_by} = socket.assigns
+    %{current_project_id: pid, fs_sort_by: sort_by} = socket.assigns
 
     rows = FileMetrics.list_file_sizes(pid)
 
@@ -319,7 +300,7 @@ defmodule SpotterWeb.FileMetricsLive do
   defp maybe_load_provenance(socket, nil), do: socket
 
   defp maybe_load_provenance(socket, member) do
-    %{selected_project_id: project_id, cc_scope: scope} = socket.assigns
+    %{current_project_id: project_id, cc_scope: scope} = socket.assigns
 
     stats =
       try do
@@ -383,26 +364,6 @@ defmodule SpotterWeb.FileMetricsLive do
 
   # --- Helpers ---
 
-  defp parse_project_id("all"), do: nil
-  defp parse_project_id(nil), do: nil
-  defp parse_project_id(""), do: nil
-  defp parse_project_id(id), do: id
-
-  defp normalize_project_id(projects, project_id) do
-    first = first_project_id(projects)
-
-    case project_id do
-      nil -> first
-      _ -> if project_exists?(projects, project_id), do: project_id, else: first
-    end
-  end
-
-  defp project_exists?(projects, project_id) do
-    Enum.any?(projects, &(&1.id == project_id))
-  end
-
-  defp first_project_id(projects), do: List.first(projects) |> then(&(&1 && &1.id))
-
   defp parse_min_score(raw) when is_binary(raw) do
     case Integer.parse(raw) do
       {n, _} -> max(0, min(n, 100))
@@ -463,7 +424,7 @@ defmodule SpotterWeb.FileMetricsLive do
   defp commit_subject(commit), do: commit.subject || ""
 
   defp selected_project(assigns) do
-    Enum.find(assigns.projects, &(&1.id == assigns.selected_project_id))
+    Enum.find(assigns.projects, &(&1.id == assigns.current_project_id))
   end
 
   defp strategy_label(metadata) when is_map(metadata) do
@@ -569,23 +530,6 @@ defmodule SpotterWeb.FileMetricsLive do
         <h1>File metrics</h1>
       </div>
 
-      <%!-- Shared project filter --%>
-      <div class="filter-section">
-        <div>
-          <label class="filter-label">Project</label>
-          <div class="filter-bar">
-          <button
-            :for={project <- @projects}
-            phx-click="filter_project"
-            phx-value-project-id={project.id}
-            class={"filter-btn#{if @selected_project_id == project.id, do: " is-active"}"}
-          >
-            {project.name}
-          </button>
-          </div>
-        </div>
-      </div>
-
       <%!-- Tab bar --%>
       <div class="tab-bar" role="tablist">
         <button
@@ -680,7 +624,7 @@ defmodule SpotterWeb.FileMetricsLive do
       <div :if={@active_tab == :hotspots} class="section" data-testid="hotspots-section">
         <div class="section-header">
           <h2 class="section-heading">Hotspots</h2>
-          <button :if={@selected_project_id} phx-click="analyze_commits" class="btn">
+          <button :if={@current_project_id} phx-click="analyze_commits" class="btn">
             Analyze recent commits
           </button>
         </div>
@@ -722,7 +666,7 @@ defmodule SpotterWeb.FileMetricsLive do
 
         <%= if @hotspot_entries == [] do %>
           <div class="empty-state">
-            <%= if @selected_project_id && selected_project(assigns) do %>
+            <%= if @current_project_id && selected_project(assigns) do %>
               No commit hotspots for {selected_project(assigns).name} yet.
             <% else %>
               No commit hotspots yet.
@@ -859,7 +803,7 @@ defmodule SpotterWeb.FileMetricsLive do
           </div>
         </div>
 
-        <%= if @selected_project_id == nil do %>
+        <%= if @current_project_id == nil do %>
           <div class="empty-state">Select a project to view co-change groups.</div>
         <% else %>
           <%= if @cc_rows == [] do %>
@@ -904,8 +848,8 @@ defmodule SpotterWeb.FileMetricsLive do
                         aria-label={"Expand details for #{row.member}"}
                       >
                         <span class="expand-icon">{if @cc_expanded_member == row.member, do: "\u25BE", else: "\u25B8"}</span>
-                        <%= if @selected_project_id && @cc_scope == :file do %>
-                          <a href={"/projects/#{@selected_project_id}/files/#{row.member}"} class="file-link">{row.member}</a>
+                        <%= if @current_project_id && @cc_scope == :file do %>
+                          <a href={"/projects/#{@current_project_id}/files/#{row.member}"} class="file-link">{row.member}</a>
                         <% else %>
                           {row.member}
                         <% end %>
@@ -936,8 +880,8 @@ defmodule SpotterWeb.FileMetricsLive do
                                 <% else %>
                                   <div class="cochange-member-list">
                                     <div :for={stat <- stats} class="cochange-member-item">
-                                      <%= if file_link(@selected_project_id, stat.member_path) do %>
-                                        <a href={file_link(@selected_project_id, stat.member_path)} class="cochange-member-path">{stat.member_path}</a>
+                                      <%= if file_link(@current_project_id, stat.member_path) do %>
+                                        <a href={file_link(@current_project_id, stat.member_path)} class="cochange-member-path">{stat.member_path}</a>
                                       <% else %>
                                         <span class="cochange-member-path">{stat.member_path}</span>
                                       <% end %>

@@ -115,7 +115,7 @@ defmodule SpotterWeb.CommitDetailLiveTest do
     test "shows history link in breadcrumb", %{commit: commit} do
       {:ok, _view, html} = live(build_conn(), "/history/commits/#{commit.id}")
 
-      assert html =~ ~s(href="/history")
+      assert html =~ ~s(href="/history?project=)
       assert html =~ "History"
     end
   end

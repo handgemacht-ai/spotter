@@ -6,16 +6,13 @@ defmodule SpotterWeb.HistoryLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    %{projects: projects, branches: branches, default_branch: default_branch} =
+    %{branches: branches, default_branch: default_branch} =
       CommitHistory.list_filter_options()
 
     {:ok,
-     socket
-     |> assign(
-       projects: projects,
+     assign(socket,
        branches: branches,
        default_branch: default_branch,
-       selected_project_id: first_project_id(projects),
        selected_branch: default_branch,
        rows: [],
        next_cursor: nil,
@@ -25,9 +22,6 @@ defmodule SpotterWeb.HistoryLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    project_id =
-      normalize_project_id(socket.assigns.projects, parse_project_id(params["project_id"]))
-
     branch =
       if Map.has_key?(params, "branch") do
         parse_branch(params["branch"], socket.assigns.branches)
@@ -37,28 +31,19 @@ defmodule SpotterWeb.HistoryLive do
 
     socket =
       socket
-      |> assign(selected_project_id: project_id, selected_branch: branch)
+      |> assign(selected_branch: branch)
       |> load_page()
 
     {:noreply, socket}
   end
 
   @impl true
-  def handle_event("filter_project", %{"project-id" => raw_id}, socket) do
-    project_id = normalize_project_id(socket.assigns.projects, parse_project_id(raw_id))
-
-    {:noreply,
-     push_patch(socket,
-       to: build_path(project_id, socket.assigns.selected_branch)
-     )}
-  end
-
   def handle_event("filter_branch", %{"branch" => raw_branch}, socket) do
     branch = parse_branch(raw_branch, socket.assigns.branches)
 
     {:noreply,
      push_patch(socket,
-       to: build_path(socket.assigns.selected_project_id, branch)
+       to: build_path(branch)
      )}
   end
 
@@ -69,7 +54,7 @@ defmodule SpotterWeb.HistoryLive do
       filters = build_filters(socket.assigns)
 
       result = CommitHistory.list_commits_with_sessions(filters, %{after: cursor})
-      rows = enrich_with_delta_summaries(result.rows, socket.assigns.selected_project_id)
+      rows = enrich_with_delta_summaries(result.rows, socket.assigns.current_project_id)
 
       {:noreply,
        assign(socket,
@@ -92,7 +77,7 @@ defmodule SpotterWeb.HistoryLive do
         _ -> %{rows: [], has_more: false, cursor: nil}
       end
 
-    rows = enrich_with_delta_summaries(result.rows, socket.assigns.selected_project_id)
+    rows = enrich_with_delta_summaries(result.rows, socket.assigns.current_project_id)
 
     assign(socket,
       rows: rows,
@@ -105,38 +90,15 @@ defmodule SpotterWeb.HistoryLive do
 
   defp build_filters(assigns) do
     %{}
-    |> maybe_put(:project_id, assigns.selected_project_id)
+    |> maybe_put(:project_id, assigns.current_project_id)
     |> maybe_put(:branch, assigns.selected_branch)
   end
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, val), do: Map.put(map, key, val)
 
-  defp build_path(project_id, branch) do
-    params = %{branch: branch || "all"}
-    params = if project_id, do: Map.put(params, :project_id, project_id), else: params
-
-    "/history?#{URI.encode_query(params)}"
-  end
-
-  defp parse_project_id("all"), do: nil
-  defp parse_project_id(nil), do: nil
-  defp parse_project_id(""), do: nil
-  defp parse_project_id(id), do: id
-
-  defp first_project_id(projects), do: List.first(projects) |> then(&(&1 && &1.id))
-
-  defp normalize_project_id(projects, project_id) do
-    first = first_project_id(projects)
-
-    case project_id do
-      nil -> first
-      _ -> if project_exists?(projects, project_id), do: project_id, else: first
-    end
-  end
-
-  defp project_exists?(projects, project_id) do
-    Enum.any?(projects, &(&1.id == project_id))
+  defp build_path(branch) do
+    "/history?#{URI.encode_query(%{branch: branch || "all"})}"
   end
 
   defp parse_branch(nil, _valid), do: nil
@@ -220,20 +182,6 @@ defmodule SpotterWeb.HistoryLive do
       </div>
 
       <div class="filter-section">
-        <div>
-          <label class="filter-label">Project</label>
-          <div class="filter-bar">
-            <button
-              :for={project <- @projects}
-              phx-click="filter_project"
-              phx-value-project-id={project.id}
-              class={"filter-btn#{if @selected_project_id == project.id, do: " is-active"}"}
-            >
-              {project.name}
-            </button>
-          </div>
-        </div>
-
         <div>
           <label class="filter-label">Branch</label>
           <div class="filter-bar">
