@@ -51,16 +51,19 @@ defmodule SpotterWeb.SessionsLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    {projects, current_project_id} =
+    {_projects, current_project_id} =
       SpotterWeb.ProjectHelpers.load_and_resolve(params["project"] || params["project_id"])
+
+    prev_project_id = socket.assigns[:current_project_id]
 
     socket =
       socket
-      |> assign(:projects, projects)
       |> assign(:current_project_id, current_project_id)
       |> load_session_data()
 
-    if connected?(socket), do: maybe_enqueue_commit_ingest(socket)
+    if connected?(socket) and prev_project_id != current_project_id do
+      maybe_enqueue_commit_ingest(socket)
+    end
 
     {:noreply, socket}
   end
@@ -511,15 +514,16 @@ defmodule SpotterWeb.SessionsLive do
         if p.id == project.id, do: updated_project, else: p
       end)
 
-    session_ids = extract_session_ids(updated_projects)
     new_ids = Enum.map(new_sessions, & &1.id)
     new_subagents = load_subagents_for_sessions(new_ids)
+    new_tool_stats = load_tool_call_stats(new_ids)
+    new_rework_stats = load_rework_stats(new_ids)
 
     socket
     |> assign(session_data_projects: updated_projects)
     |> assign(subagents_by_session: Map.merge(socket.assigns.subagents_by_session, new_subagents))
-    |> assign(tool_call_stats: load_tool_call_stats(session_ids))
-    |> assign(rework_stats: load_rework_stats(session_ids))
+    |> assign(tool_call_stats: Map.merge(socket.assigns.tool_call_stats, new_tool_stats))
+    |> assign(rework_stats: Map.merge(socket.assigns.rework_stats, new_rework_stats))
   end
 
   defp load_project_sessions(project_id, visibility, opts \\ []) do
