@@ -1,6 +1,8 @@
 defmodule SpotterWeb.Plugs.ProjectContext do
   @moduledoc "Loads projects and resolves current project from ?project= query param."
 
+  @behaviour Plug
+
   import Plug.Conn
 
   alias SpotterWeb.ProjectHelpers
