@@ -16,6 +16,7 @@ import LaneDrag from "./hooks/lane_drag"
 import SortableColumns from "./hooks/sortable_columns"
 import ConnectorOverlay from "./hooks/connector_overlay"
 import TranscriptTaskRail from "./hooks/transcript_task_rail"
+import { initProjectSelector } from "./project_selector"
 
 hljs.registerLanguage("elixir", elixir)
 hljs.registerLanguage("javascript", javascript)
@@ -100,6 +101,7 @@ function initReviewsBadge() {
 
 initReviewsBadge()
 initGlobalSearchPalette()
+initProjectSelector()
 
 const Hooks = {}
 

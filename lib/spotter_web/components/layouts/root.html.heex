@@ -19,38 +19,56 @@
           <div class="sidebar-logo">S</div>
           <span class="sidebar-title">Spotter</span>
         </div>
+        <div class="sidebar-project">
+          <span class="sidebar-section-label">PROJECT</span>
+          <div id="project-selector">
+            <button class="project-selector" type="button" aria-expanded="false" aria-haspopup="listbox">
+              <span class="project-dot"></span>
+              <span class="project-name"><%= project_display_name(@projects, @current_project_id) %></span>
+              <svg class="project-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l4 4 4-4"/></svg>
+            </button>
+            <div class="project-selector-dropdown" role="listbox" hidden>
+              <%= for project <- @projects do %>
+                <div class="project-selector-item" role="option" aria-selected={to_string(project.id == @current_project_id)} data-project-id={project.id}>
+                  <span><%= project.name %></span>
+                  <%= if project.id == @current_project_id do %><span class="project-check">&check;</span><% end %>
+                </div>
+              <% end %>
+            </div>
+          </div>
+        </div>
         <nav class="sidebar-nav">
-          <a href="/" class="sidebar-link" data-nav-path="/">
+          <a href={"/?project=#{@current_project_id}"} class="sidebar-link" data-nav-path="/">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>
             Dashboard
           </a>
-          <a href="/sessions" class="sidebar-link" data-nav-path="/sessions">
+          <a href={"/sessions?project=#{@current_project_id}"} class="sidebar-link" data-nav-path="/sessions">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h8"/></svg>
             Sessions
           </a>
           <% review_count = Spotter.Services.ReviewCounts.total_open_count() %>
-          <a href="/reviews" class="sidebar-link" id="reviews-sidebar-link" data-nav-path="/reviews">
+          <a href={"/reviews?project=#{@current_project_id}"} class="sidebar-link" id="reviews-sidebar-link" data-nav-path="/reviews">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h10v8H7l-3 3v-3H3z"/></svg>
             Reviews
             <span class="sidebar-badge" data-reviews-badge style={if review_count == 0, do: "display:none;"}><%= review_count %></span>
           </a>
-          <a href="/retros" class="sidebar-link" data-nav-path="/retros">
+          <a href={"/retros?project=#{@current_project_id}"} class="sidebar-link" data-nav-path="/retros">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v6l4 2"/><circle cx="8" cy="8" r="6"/><path d="M2 12l1-3h3"/></svg>
             Retros
           </a>
-          <a href="/history" class="sidebar-link" data-nav-path="/history">
+          <a href={"/history?project=#{@current_project_id}"} class="sidebar-link" data-nav-path="/history">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><polyline points="8,4 8,8 11,10"/></svg>
             History
           </a>
-          <a href="/file-metrics" class="sidebar-link" data-nav-path="/file-metrics">
+          <a href={"/file-metrics?project=#{@current_project_id}"} class="sidebar-link" data-nav-path="/file-metrics">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="4" height="4" rx="0.5"/><rect x="6" y="2" width="4" height="4" rx="0.5" opacity="0.7"/><rect x="10" y="2" width="4" height="4" rx="0.5" opacity="0.4"/><rect x="2" y="6" width="4" height="4" rx="0.5" opacity="0.7"/><rect x="6" y="6" width="4" height="4" rx="0.5" opacity="0.5"/><rect x="10" y="6" width="4" height="4" rx="0.5" opacity="0.3"/><rect x="2" y="10" width="4" height="4" rx="0.5" opacity="0.4"/><rect x="6" y="10" width="4" height="4" rx="0.5" opacity="0.3"/><rect x="10" y="10" width="4" height="4" rx="0.5" opacity="0.15"/></svg>
             File metrics
           </a>
-          <a href="/telemetry/commands" class="sidebar-link" data-nav-path="/telemetry/commands" data-nav-path-alt-contains="/telemetry/commands">
+          <a href={"/telemetry/commands?project=#{@current_project_id}"} class="sidebar-link" data-nav-path="/telemetry/commands" data-nav-path-alt-contains="/telemetry/commands">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 13V3"/><path d="M2 13h12"/><path d="M5 10l3-4 3 2 3-5"/></svg>
             Telemetry Commands
           </a>
-          <a href="/telemetry/instructions" class="sidebar-link" data-nav-path="/telemetry/instructions" data-nav-path-alt-contains="/telemetry/instructions">
+          <a href={"/telemetry/instructions?project=#{@current_project_id}"} class="sidebar-link" data-nav-path="/telemetry/instructions" data-nav-path-alt-contains="/telemetry/instructions">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 2h8l2 2v10H2V2z"/><path d="M5 6h6"/><path d="M5 9h4"/></svg>
             Telemetry Instructions
           </a>
