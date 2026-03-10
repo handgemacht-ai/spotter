@@ -11,9 +11,10 @@ defmodule SpotterWeb.Plugs.ProjectContext do
 
   def call(conn, _opts) do
     projects =
-      Spotter.Transcripts.Project
-      |> Ash.Query.sort(name: :asc)
-      |> Ash.read!()
+      case Spotter.Transcripts.Project |> Ash.Query.sort(name: :asc) |> Ash.read() do
+        {:ok, list} -> list
+        {:error, _} -> []
+      end
 
     raw_id = conn.query_params["project"] || conn.query_params["project_id"]
 
