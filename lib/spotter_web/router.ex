@@ -39,20 +39,24 @@ defmodule SpotterWeb.Router do
     pipe_through(:browser)
 
     live("/", DashboardLive)
-    live("/history", HistoryLive)
+
+    live_session :project_scoped, on_mount: [SpotterWeb.ProjectContext] do
+      live("/history", HistoryLive)
+      live("/reviews", ReviewsLive)
+      live("/retros", RetrosLive)
+      live("/sessions", SessionsLive)
+      live("/file-metrics", FileMetricsLive)
+      live("/telemetry/commands", ShellTelemetryLive)
+      live("/telemetry/instructions", InstructionsTelemetryLive)
+      live("/projects/:project_id/file-metrics", FileMetricsLive)
+      live("/projects/:project_id/telemetry/commands", ShellTelemetryLive)
+      live("/projects/:project_id/telemetry/instructions", InstructionsTelemetryLive)
+    end
+
     live("/history/commits/:commit_id", CommitDetailLive)
-    live("/reviews", ReviewsLive)
-    live("/retros", RetrosLive)
-    live("/sessions", SessionsLive)
     live("/sessions/:session_id", SessionLive)
     live("/sessions/:session_id/agents/:agent_id", SubagentLive)
-    live("/file-metrics", FileMetricsLive)
-    live("/telemetry/commands", ShellTelemetryLive)
-    live("/telemetry/instructions", InstructionsTelemetryLive)
     get("/projects/:project_id/review", ReviewsRedirectController, :show)
-    live("/projects/:project_id/file-metrics", FileMetricsLive)
-    live("/projects/:project_id/telemetry/commands", ShellTelemetryLive)
-    live("/projects/:project_id/telemetry/instructions", InstructionsTelemetryLive)
     live("/projects/:project_id/files/*relative_path", FileDetailLive)
   end
 end
