@@ -39,6 +39,7 @@ Spotter reviews Claude Code sessions and generated code. It links sessions to Gi
 | MCP Server | `POST /api/mcp` | [mcp-server.md](references/features/mcp-server.md) |
 | Commit Linking | (background) | [commit-linking.md](references/features/commit-linking.md) |
 | Hook Ingestion | `POST /api/hooks/*` | [hook-ingestion.md](references/features/hook-ingestion.md) |
+| Project Selector | (sidebar, all pages) | Global project selector dropdown in sidebar; nav links carry `?project=` param |
 
 ## References
 
