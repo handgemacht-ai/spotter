@@ -40,6 +40,7 @@
 | Path | Contents |
 |------|----------|
 | `assets/` | JS/CSS source (esbuild-compiled) |
+| `assets/js/project_selector.js` | Sidebar project selector dropdown (standalone init) |
 | `priv/static/` | Compiled static assets |
 
 ## Tests
