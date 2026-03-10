@@ -20,6 +20,7 @@ defmodule SpotterWeb.ProjectHelpers do
     Enum.any?(projects, fn
       %{id: id} -> id == project_id
       %{project_id: id} -> id == project_id
+      _ -> false
     end)
   end
 end
