@@ -10,9 +10,8 @@ A project-filtered session list with hide/unhide, cursor pagination (separate fo
 
 ## User Flow
 
-1. Navigate to Sessions via sidebar
-2. Select a project from the filter chips
-3. Browse sessions in reverse chronological order
+1. Navigate to Sessions via sidebar (project is pre-selected from sidebar project selector)
+2. Browse sessions in reverse chronological order
 4. Expand subagents inline to see agent details
 5. Hide irrelevant sessions (moves them to a collapsible "hidden" section)
 6. Click "Review" to navigate to session detail
@@ -20,7 +19,7 @@ A project-filtered session list with hide/unhide, cursor pagination (separate fo
 
 ## How It Works
 
-AshComputer-driven reactive queries load sessions scoped to the selected project. Cursor-based pagination loads more sessions on demand (separate cursors for visible and hidden). Tool call stats (total/failed counts) and rework stats are loaded per-session. Subagent data is lazily loaded on expansion.
+The shared ProjectContext on_mount hook provides the selected project from the sidebar. Sessions are loaded for the current project via handle_params (which re-resolves on URL changes). Cursor-based pagination loads more sessions on demand (separate cursors for visible and hidden). Tool call stats (total/failed counts) and rework stats are loaded per-session. Subagent data is lazily loaded on expansion.
 
 ## Routes & Endpoints
 
@@ -35,7 +34,7 @@ AshComputer-driven reactive queries load sessions scoped to the selected project
 
 ## Data Model
 
-Primary: `Session` (with `project_id` filter, `hidden_at` for hide/unhide). Related: `Project` for filter chips, `Subagent` for expansion, `ToolCall` for stats, `SessionRework` for rework counts.
+Primary: `Session` (with `project_id` filter, `hidden_at` for hide/unhide). Related: `Project` (selected via sidebar), `Subagent` for expansion, `ToolCall` for stats, `SessionRework` for rework counts.
 
 ## Constraints & Edge Cases
 
