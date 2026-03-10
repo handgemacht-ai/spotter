@@ -1,6 +1,5 @@
 defmodule SpotterWeb.SessionsLive do
   use Phoenix.LiveView
-  use AshComputer.LiveView
 
   alias Spotter.Transcripts.{
     ProjectIngestState,
@@ -19,83 +18,6 @@ defmodule SpotterWeb.SessionsLive do
   require Ash.Query
 
   @sessions_per_page 20
-
-  computer :project_filter do
-    input :selected_project_id do
-      initial nil
-    end
-
-    val :projects do
-      compute(fn _inputs ->
-        try do
-          Spotter.Transcripts.Project |> Ash.read!()
-        rescue
-          _ -> []
-        end
-      end)
-
-      depends_on([])
-    end
-  end
-
-  computer :session_data do
-    input :projects do
-      initial []
-    end
-  end
-
-  computer :tool_call_stats do
-    input :session_ids do
-      initial []
-    end
-
-    val :stats do
-      compute(fn %{session_ids: session_ids} ->
-        if session_ids == [] do
-          %{}
-        else
-          try do
-            ToolCall
-            |> Ash.Query.filter(session_id in ^session_ids)
-            |> Ash.read!()
-            |> Enum.group_by(& &1.session_id)
-            |> Map.new(fn {sid, calls} ->
-              failed = Enum.count(calls, & &1.is_error)
-              {sid, %{total: length(calls), failed: failed}}
-            end)
-          rescue
-            _ -> %{}
-          end
-        end
-      end)
-    end
-  end
-
-  computer :rework_stats do
-    input :session_ids do
-      initial []
-    end
-
-    val :stats do
-      compute(fn %{session_ids: session_ids} ->
-        if session_ids == [] do
-          %{}
-        else
-          try do
-            SessionRework
-            |> Ash.Query.filter(session_id in ^session_ids)
-            |> Ash.read!()
-            |> Enum.group_by(& &1.session_id)
-            |> Map.new(fn {sid, records} ->
-              {sid, %{count: length(records)}}
-            end)
-          rescue
-            _ -> %{}
-          end
-        end
-      end)
-    end
-  end
 
   @impl true
   def mount(_params, _session, socket) do
@@ -120,37 +42,30 @@ defmodule SpotterWeb.SessionsLive do
       |> assign(importing: false)
       |> assign(import_errors: [])
       |> assign(import_project_names: [])
-      |> mount_computers()
-      |> load_session_data()
-      |> ensure_default_project_filter()
-
-    if connected?(socket), do: maybe_enqueue_commit_ingest(socket)
+      |> assign(session_data_projects: [])
+      |> assign(tool_call_stats: %{})
+      |> assign(rework_stats: %{})
 
     {:ok, socket}
   end
 
   @impl true
-  def handle_event("filter_project", %{"project-id" => raw_id}, socket) do
-    Tracer.with_span "spotter.sessions_live.filter_project" do
-      parsed_id =
-        case raw_id do
-          "all" -> nil
-          nil -> nil
-          "" -> nil
-          id -> id
-        end
+  def handle_params(params, _uri, socket) do
+    {projects, current_project_id} =
+      SpotterWeb.ProjectHelpers.load_and_resolve(params["project"] || params["project_id"])
 
-      parsed_id = normalize_project_filter_id(socket.assigns.session_data_projects, parsed_id)
+    socket =
+      socket
+      |> assign(:projects, projects)
+      |> assign(:current_project_id, current_project_id)
+      |> load_session_data()
 
-      Tracer.set_attribute("spotter.project_id", parsed_id || "all")
+    if connected?(socket), do: maybe_enqueue_commit_ingest(socket)
 
-      socket =
-        update_computer_inputs(socket, :project_filter, %{selected_project_id: parsed_id})
-
-      {:noreply, socket}
-    end
+    {:noreply, socket}
   end
 
+  @impl true
   def handle_event("refresh", _params, socket) do
     {:noreply, load_session_data(socket)}
   end
@@ -452,28 +367,20 @@ defmodule SpotterWeb.SessionsLive do
   @ingest_cooldown_seconds 600
 
   defp maybe_enqueue_commit_ingest(socket) do
-    projects = socket.assigns.session_data_projects
-    selected = socket.assigns.project_filter_selected_project_id
+    project_id = socket.assigns.current_project_id
 
-    project_ids =
-      if selected do
-        [selected]
-      else
-        Enum.map(projects, & &1.id)
-      end
-
-    Enum.each(project_ids, fn pid ->
-      if should_enqueue_ingest?(pid) do
+    if project_id do
+      if should_enqueue_ingest?(project_id) do
         Ash.create(ProjectIngestState, %{
-          project_id: pid,
+          project_id: project_id,
           last_commit_ingest_at: DateTime.utc_now()
         })
 
-        %{project_id: pid}
+        %{project_id: project_id}
         |> IngestRecentCommits.new()
         |> Oban.insert()
       end
-    end)
+    end
   end
 
   defp should_enqueue_ingest?(project_id) do
@@ -505,69 +412,72 @@ defmodule SpotterWeb.SessionsLive do
   defp extract_timezone_error(_), do: "invalid timezone"
 
   defp load_session_data(socket) do
-    projects =
-      Spotter.Transcripts.Project
-      |> Ash.read!()
-      |> Enum.map(fn project ->
-        {visible, visible_meta} = load_project_sessions(project.id, :visible)
-        {hidden, hidden_meta} = load_project_sessions(project.id, :hidden)
+    project_id = socket.assigns.current_project_id
 
-        Map.merge(project, %{
-          visible_sessions: visible,
-          hidden_sessions: hidden,
-          visible_cursor: visible_meta.next_cursor,
-          visible_has_more: visible_meta.has_more,
-          hidden_cursor: hidden_meta.next_cursor,
-          hidden_has_more: hidden_meta.has_more
-        })
-      end)
+    projects =
+      if project_id do
+        case Ash.get(Spotter.Transcripts.Project, project_id) do
+          {:ok, project} ->
+            {visible, visible_meta} = load_project_sessions(project.id, :visible)
+            {hidden, hidden_meta} = load_project_sessions(project.id, :hidden)
+
+            [
+              Map.merge(project, %{
+                visible_sessions: visible,
+                hidden_sessions: hidden,
+                visible_cursor: visible_meta.next_cursor,
+                visible_has_more: visible_meta.has_more,
+                hidden_cursor: hidden_meta.next_cursor,
+                hidden_has_more: hidden_meta.has_more
+              })
+            ]
+
+          {:error, _} ->
+            []
+        end
+      else
+        []
+      end
 
     session_ids = extract_session_ids(projects)
-
     subagents_by_session = load_subagents_for_sessions(session_ids)
+    tool_call_stats = load_tool_call_stats(session_ids)
+    rework_stats = load_rework_stats(session_ids)
 
     socket
     |> assign(session_data_projects: projects)
-    |> ensure_default_project_filter_for_projects()
     |> assign(subagents_by_session: subagents_by_session)
-    |> update_computer_inputs(:session_data, %{projects: projects})
-    |> update_computer_inputs(:tool_call_stats, %{session_ids: session_ids})
-    |> update_computer_inputs(:rework_stats, %{session_ids: session_ids})
+    |> assign(tool_call_stats: tool_call_stats)
+    |> assign(rework_stats: rework_stats)
   end
 
-  defp ensure_default_project_filter(socket) do
-    socket
-    |> assign(session_data_projects: socket.assigns.session_data_projects || [])
-    |> ensure_default_project_filter_for_projects()
+  defp load_tool_call_stats([]), do: %{}
+
+  defp load_tool_call_stats(session_ids) do
+    ToolCall
+    |> Ash.Query.filter(session_id in ^session_ids)
+    |> Ash.read!()
+    |> Enum.group_by(& &1.session_id)
+    |> Map.new(fn {sid, calls} ->
+      failed = Enum.count(calls, & &1.is_error)
+      {sid, %{total: length(calls), failed: failed}}
+    end)
+  rescue
+    _ -> %{}
   end
 
-  defp ensure_default_project_filter_for_projects(socket) do
-    selected_project_id =
-      normalize_project_filter_id(
-        socket.assigns.session_data_projects,
-        socket.assigns.project_filter_selected_project_id
-      )
+  defp load_rework_stats([]), do: %{}
 
-    update_computer_inputs(socket, :project_filter, %{selected_project_id: selected_project_id})
-  end
-
-  defp normalize_project_filter_id(projects, project_id) when is_nil(project_id),
-    do: first_project_id(projects)
-
-  defp normalize_project_filter_id(projects, project_id) do
-    if project_exists?(projects, project_id) do
-      project_id
-    else
-      first_project_id(projects)
-    end
-  end
-
-  defp project_exists?(projects, project_id) do
-    Enum.any?(projects, &(&1.id == project_id))
-  end
-
-  defp first_project_id(projects) do
-    List.first(projects) |> then(&(&1 && &1.id))
+  defp load_rework_stats(session_ids) do
+    SessionRework
+    |> Ash.Query.filter(session_id in ^session_ids)
+    |> Ash.read!()
+    |> Enum.group_by(& &1.session_id)
+    |> Map.new(fn {sid, records} ->
+      {sid, %{count: length(records)}}
+    end)
+  rescue
+    _ -> %{}
   end
 
   defp append_session_page(socket, project_id, visibility) do
@@ -606,10 +516,10 @@ defmodule SpotterWeb.SessionsLive do
     new_subagents = load_subagents_for_sessions(new_ids)
 
     socket
+    |> assign(session_data_projects: updated_projects)
     |> assign(subagents_by_session: Map.merge(socket.assigns.subagents_by_session, new_subagents))
-    |> update_computer_inputs(:session_data, %{projects: updated_projects})
-    |> update_computer_inputs(:tool_call_stats, %{session_ids: session_ids})
-    |> update_computer_inputs(:rework_stats, %{session_ids: session_ids})
+    |> assign(tool_call_stats: load_tool_call_stats(session_ids))
+    |> assign(rework_stats: load_rework_stats(session_ids))
   end
 
   defp load_project_sessions(project_id, visibility, opts \\ []) do
@@ -719,20 +629,9 @@ defmodule SpotterWeb.SessionsLive do
             No sessions yet.
           </div>
         <% else %>
-          <div :if={length(@session_data_projects) > 1} class="filter-bar">
-            <button
-              :for={project <- @session_data_projects}
-              phx-click="filter_project"
-              phx-value-project-id={project.id}
-              class={"filter-btn#{if @project_filter_selected_project_id == project.id, do: " is-active"}"}
-            >
-              {project.name} ({length(project.visible_sessions)})
-            </button>
-          </div>
-
           <div
             :for={project <- @session_data_projects}
-            :if={@project_filter_selected_project_id == project.id}
+            :if={@current_project_id == project.id}
             class="project-section"
           >
             <div class="project-header">
@@ -800,7 +699,7 @@ defmodule SpotterWeb.SessionsLive do
                           <% end %>
                         </td>
                         <td>
-                          <% stats = Map.get(@tool_call_stats_stats, session.id) %>
+                          <% stats = Map.get(@tool_call_stats, session.id) %>
                           <%= cond do %>
                             <% stats && stats.total > 0 && stats.failed > 0 -> %>
                               <span>{stats.total}</span> <span class="text-error">({stats.failed} failed)</span>
@@ -811,7 +710,7 @@ defmodule SpotterWeb.SessionsLive do
                           <% end %>
                         </td>
                         <td>
-                          <% rework = Map.get(@rework_stats_stats, session.id) %>
+                          <% rework = Map.get(@rework_stats, session.id) %>
                           <%= if rework && rework.count > 0 do %>
                             <span class="text-warning">{rework.count}</span>
                           <% else %>
@@ -919,7 +818,7 @@ defmodule SpotterWeb.SessionsLive do
                               <% end %>
                             </td>
                             <td>
-                              <% stats = Map.get(@tool_call_stats_stats, session.id) %>
+                              <% stats = Map.get(@tool_call_stats, session.id) %>
                               <%= cond do %>
                                 <% stats && stats.total > 0 && stats.failed > 0 -> %>
                                   <span>{stats.total}</span> <span class="text-error">({stats.failed} failed)</span>
@@ -930,7 +829,7 @@ defmodule SpotterWeb.SessionsLive do
                               <% end %>
                             </td>
                             <td>
-                              <% rework = Map.get(@rework_stats_stats, session.id) %>
+                              <% rework = Map.get(@rework_stats, session.id) %>
                               <%= if rework && rework.count > 0 do %>
                                 <span class="text-warning">{rework.count}</span>
                               <% else %>

@@ -27,7 +27,7 @@ defmodule SpotterWeb.RetrosLiveTest do
     })
   end
 
-  defp create_submission(project, session, opts \\ []) do
+  defp create_submission(project, session, opts) do
     Ash.create!(RetroSubmission, %{
       summary: Keyword.get(opts, :summary, "Retro summary #{System.unique_integer([:positive])}"),
       submitted_at: Keyword.get(opts, :submitted_at, DateTime.utc_now()),
