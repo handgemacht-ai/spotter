@@ -635,7 +635,6 @@ defmodule SpotterWeb.SessionsLive do
         <% else %>
           <div
             :for={project <- @session_data_projects}
-            :if={@current_project_id == project.id}
             class="project-section"
           >
             <div class="project-header">
