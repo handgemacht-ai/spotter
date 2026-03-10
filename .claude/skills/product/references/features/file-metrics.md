@@ -10,9 +10,8 @@ A four-tab analysis page — heatmap, hotspots, co-change, and file size — wit
 
 ## User Flow
 
-1. Navigate to File Metrics via sidebar (or project-scoped URL)
-2. Select a project if not already scoped
-3. Switch between tabs:
+1. Navigate to File Metrics via sidebar (project is pre-selected from sidebar project selector)
+2. Switch between tabs:
    - **Heatmap**: files ranked by change frequency (30-day window), filterable by min heat score
    - **Hotspots**: code regions that get repeated changes, filterable by min overall score
    - **Co-change**: groups of files that always change together, with scope (file/directory), expandable member stats
@@ -21,14 +20,13 @@ A four-tab analysis page — heatmap, hotspots, co-change, and file size — wit
 
 ## How It Works
 
-Heatmap and co-change data are computed by Oban background jobs (`ComputeHeatmap`, `ComputeCoChange`) triggered on commit ingestion. `HeatmapCalculator` computes change frequency over a 30-day window. `CoChangeCalculator` identifies files that appear together in commits. `CommitHotspotMetrics` scores code regions by frequency, recency, and impact. The LiveView loads precomputed data from Ash resources with client-side filtering.
+The shared ProjectContext on_mount hook provides the selected project from the sidebar. Heatmap and co-change data are computed by Oban background jobs (`ComputeHeatmap`, `ComputeCoChange`) triggered on commit ingestion. `HeatmapCalculator` computes change frequency over a 30-day window. `CoChangeCalculator` identifies files that appear together in commits. `CommitHotspotMetrics` scores code regions by frequency, recency, and impact. The LiveView loads precomputed data from Ash resources with client-side filtering.
 
 ## Routes & Endpoints
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/file-metrics` | File metrics LiveView (all projects) |
-| GET | `/projects/:project_id/file-metrics` | Project-scoped file metrics |
+| GET | `/file-metrics` | File metrics LiveView (project from sidebar) |
 
 ## Key Files
 

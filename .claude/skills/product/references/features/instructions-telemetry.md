@@ -10,21 +10,19 @@ A per-project telemetry page showing instruction load events with file paths, me
 
 ## User Flow
 
-1. Navigate to Instructions Telemetry via sidebar
-2. Select a project
-3. View instruction load events grouped by file path
+1. Navigate to Instructions Telemetry via sidebar (project is pre-selected from sidebar project selector)
+2. View instruction load events grouped by file path
 4. See metrics: bytes loaded, lines loaded, memory type, load reason
 
 ## How It Works
 
-`InstructionsLoadedExtractor` persists `InstructionsLoadedEvent` records from raw hook events (fired on the `InstructionsLoaded` hook event type). `InstructionsTelemetryQuery` aggregates events for the selected project. The LiveView displays the data with project filtering.
+`InstructionsLoadedExtractor` persists `InstructionsLoadedEvent` records from raw hook events (fired on the `InstructionsLoaded` hook event type). `InstructionsTelemetryQuery` aggregates events for the selected project. The shared ProjectContext on_mount hook provides the selected project from the sidebar. The LiveView displays the data for the selected project.
 
 ## Routes & Endpoints
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/telemetry/instructions` | Instructions telemetry LiveView |
-| GET | `/projects/:project_id/telemetry/instructions` | Project-scoped |
+| GET | `/telemetry/instructions` | Instructions telemetry LiveView (project from sidebar) |
 
 ## Key Files
 
