@@ -52,11 +52,10 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
   end
 
   describe "page rendering" do
-    test "renders project selector, window selector, and summary metrics at /telemetry/commands",
+    test "renders window selector and summary metrics at /telemetry/commands",
          %{project: _project} do
       {:ok, _view, html} = live(build_conn(), "/telemetry/commands")
 
-      assert html =~ "project"
       assert html =~ "window"
       assert html =~ "median"
     end
@@ -66,6 +65,20 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
         live(build_conn(), "/projects/#{project.id}/telemetry/commands")
 
       assert html =~ project.name
+    end
+  end
+
+  describe "project context from on_mount" do
+    test "uses current_project_id from on_mount, no project filter bar", %{project: project} do
+      {:ok, _view, html} =
+        live(build_conn(), "/projects/#{project.id}/telemetry/commands")
+
+      # Content renders for the on_mount project
+      assert html =~ project.name
+
+      # No project filter bar — project selection is in the sidebar now
+      refute html =~ "filter_project"
+      refute html =~ "filter-label\">Project"
     end
   end
 
@@ -146,12 +159,13 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
   end
 
   describe "window switching" do
-    test "preserves selected project when switching window", %{project: project} do
+    test "switching window re-renders without crash", %{project: project} do
       {:ok, view, _html} =
         live(build_conn(), "/projects/#{project.id}/telemetry/commands")
 
       html = render_click(view, "select_window", %{"window" => "last_24h"})
-      assert html =~ project.name
+      assert html =~ "is-active"
+      assert html =~ "24h"
     end
   end
 

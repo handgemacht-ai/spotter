@@ -45,47 +45,16 @@ defmodule SpotterWeb.ReviewsLiveTest do
   end
 
   describe "page structure" do
-    test "renders heading and filter label" do
+    test "renders heading" do
       {:ok, _view, html} = live(build_conn(), "/reviews")
 
       assert html =~ "<h1>Reviews</h1>"
-      assert html =~ "Project"
-    end
-
-    test "renders per-project chips with name and count" do
-      proj_a = create_project("alpha")
-      proj_b = create_project("beta")
-
-      sess_a = create_session(proj_a)
-      sess_b = create_session(proj_b)
-
-      create_annotation(sess_a, :open)
-      create_annotation(sess_b, :open)
-      create_annotation(sess_b, :open)
-
-      {:ok, _view, html} = live(build_conn(), "/reviews")
-
-      assert html =~ "alpha (1)"
-      assert html =~ "beta (2)"
     end
 
     test "shows No project selected when no projects exist" do
       {:ok, _view, html} = live(build_conn(), "/reviews")
 
       assert html =~ "No project selected."
-    end
-
-    test "includes project with zero open annotations in chips" do
-      proj_a = create_project("alpha")
-      create_project("beta")
-
-      sess_a = create_session(proj_a)
-      create_annotation(sess_a, :open)
-
-      {:ok, _view, html} = live(build_conn(), "/reviews")
-
-      assert html =~ "alpha (1)"
-      assert html =~ "beta (0)"
     end
   end
 
@@ -174,57 +143,21 @@ defmodule SpotterWeb.ReviewsLiveTest do
       refute html =~ "Resolved annotations"
       refute html =~ "resolved-hidden"
     end
-
-    test "project chips counts are based on open annotations only" do
-      project = create_project("alpha")
-      session = create_session(project)
-      create_annotation(session, :open, text: "open-one")
-      ann = create_annotation(session, :open, text: "will-close")
-
-      Ash.update!(ann, %{resolution: "Done"}, action: :resolve)
-
-      {:ok, _view, html} = live(build_conn(), "/reviews")
-
-      assert html =~ "alpha (1)"
-    end
   end
 
-  describe "project chip navigation" do
-    test "clicking a project chip updates URL and filters" do
-      proj_a = create_project("alpha")
-      proj_b = create_project("beta")
-      sess_a = create_session(proj_a)
-      sess_b = create_session(proj_b)
+  describe "project context from on_mount" do
+    test "uses current_project_id from on_mount, no project filter chips" do
+      project = create_project("ctx-proj")
+      session = create_session(project)
+      create_annotation(session, :open, text: "ctx-annotation")
 
-      create_annotation(sess_a, :open)
-      create_annotation(sess_b, :open)
+      {:ok, _view, html} = live(build_conn(), "/reviews?project_id=#{project.id}")
 
-      {:ok, view, _html} = live(build_conn(), "/reviews")
+      # Content is filtered by on_mount current_project_id
+      assert html =~ "ctx-annotation"
 
-      # Click project alpha chip
-      html =
-        render_click(view, "filter_project", %{"project-id" => proj_a.id})
-
-      # Should show alpha's annotation and action buttons
-      assert html =~ "Review in Claude Code"
-      assert_patched(view, "/reviews?project_id=#{proj_a.id}")
-    end
-
-    test "clicking a different project chip switches project" do
-      proj_a = create_project("alpha")
-      proj_b = create_project("beta")
-      sess_a = create_session(proj_a)
-      sess_b = create_session(proj_b)
-
-      create_annotation(sess_a, :open)
-      create_annotation(sess_b, :open)
-
-      {:ok, view, _html} = live(build_conn(), "/reviews?project_id=#{proj_a.id}")
-
-      html = render_click(view, "filter_project", %{"project-id" => proj_b.id})
-
-      assert html =~ "Review in Claude Code"
-      assert_patched(view, "/reviews?project_id=#{proj_b.id}")
+      # No project filter chips — project selection is in the sidebar now
+      refute html =~ "filter_project"
     end
   end
 
@@ -261,15 +194,15 @@ defmodule SpotterWeb.ReviewsLiveTest do
       refute html =~ "explain-only-text"
     end
 
-    test "explain annotations are not counted in project chips" do
+    test "explain annotations are excluded from open count" do
       project = create_project("alpha")
       session = create_session(project)
       create_annotation(session, :open, purpose: :review)
       create_annotation(session, :open, purpose: :explain)
 
-      {:ok, _view, html} = live(build_conn(), "/reviews")
+      {:ok, _view, html} = live(build_conn(), "/reviews?project_id=#{project.id}")
 
-      assert html =~ "alpha (1)"
+      assert html =~ "1 open annotations"
     end
   end
 
@@ -290,7 +223,7 @@ defmodule SpotterWeb.ReviewsLiveTest do
       assert html =~ "unbound-file-text"
     end
 
-    test "unbound file annotations counted in project chips" do
+    test "unbound file annotations counted in open annotations" do
       project = create_project("alpha")
       session = create_session(project)
       create_annotation(session, :open)
@@ -303,9 +236,9 @@ defmodule SpotterWeb.ReviewsLiveTest do
         purpose: :review
       })
 
-      {:ok, _view, html} = live(build_conn(), "/reviews")
+      {:ok, _view, html} = live(build_conn(), "/reviews?project_id=#{project.id}")
 
-      assert html =~ "alpha (2)"
+      assert html =~ "2 open annotations"
     end
 
     test "unbound file annotations do not leak across projects" do

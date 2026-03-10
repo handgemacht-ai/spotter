@@ -2,8 +2,6 @@ defmodule SpotterWeb.InstructionsTelemetryLive do
   use Phoenix.LiveView
 
   alias Spotter.Services.InstructionsTelemetryQuery
-  alias Spotter.Transcripts.Project
-
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
@@ -22,39 +20,24 @@ defmodule SpotterWeb.InstructionsTelemetryLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    projects =
-      try do
-        Project |> Ash.Query.sort(name: :asc) |> Ash.read!()
-      rescue
-        e ->
-          Logger.warning("Failed to load projects: #{Exception.message(e)}")
-          []
-      end
-
-    first_pid = first_project_id(projects)
-
     if connected?(socket) do
       :timer.send_interval(5000, :tick)
-      if first_pid, do: subscribe_telemetry(first_pid)
     end
 
     {:ok,
      assign(socket,
-       projects: projects,
-       selected_project_id: first_pid,
        selected_window: :last_7d,
        data: empty_data(),
-       debounce_ref: nil
+       debounce_ref: nil,
+       subscribed_project_id: nil
      )}
   end
 
   @impl true
   def handle_params(params, _uri, socket) do
-    project_id =
-      normalize_project_id(socket.assigns.projects, parse_project_id(params["project_id"]))
-
+    project_id = socket.assigns.current_project_id
     window = parse_window(params["window"])
-    old_pid = socket.assigns.selected_project_id
+    old_pid = socket.assigns.subscribed_project_id
 
     if connected?(socket) and project_id != old_pid do
       if old_pid, do: unsubscribe_telemetry(old_pid)
@@ -63,22 +46,16 @@ defmodule SpotterWeb.InstructionsTelemetryLive do
 
     socket =
       socket
-      |> assign(selected_project_id: project_id, selected_window: window)
+      |> assign(selected_window: window, subscribed_project_id: project_id)
       |> load_data()
 
     {:noreply, socket}
   end
 
   @impl true
-  def handle_event("filter_project", %{"project-id" => raw_id}, socket) do
-    project_id = normalize_project_id(socket.assigns.projects, parse_project_id(raw_id))
-    {:noreply, push_patch(socket, to: build_path(project_id, socket.assigns.selected_window))}
-  end
-
-  @impl true
   def handle_event("select_window", %{"window" => raw_window}, socket) do
     window = parse_window(raw_window)
-    {:noreply, push_patch(socket, to: build_path(socket.assigns.selected_project_id, window))}
+    {:noreply, push_patch(socket, to: build_path(window))}
   end
 
   @impl true
@@ -87,7 +64,7 @@ defmodule SpotterWeb.InstructionsTelemetryLive do
   end
 
   def handle_info({:instructions_telemetry_updated, %{project_id: pid}}, socket) do
-    if pid == socket.assigns.selected_project_id do
+    if pid == socket.assigns.current_project_id do
       {:noreply, schedule_debounce(socket)}
     else
       {:noreply, socket}
@@ -106,7 +83,7 @@ defmodule SpotterWeb.InstructionsTelemetryLive do
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp load_data(socket) do
-    %{selected_project_id: pid, selected_window: window} = socket.assigns
+    %{current_project_id: pid, selected_window: window} = socket.assigns
 
     data =
       if pid do
@@ -146,32 +123,13 @@ defmodule SpotterWeb.InstructionsTelemetryLive do
     assign(socket, debounce_ref: ref)
   end
 
-  defp parse_project_id("all"), do: nil
-  defp parse_project_id(nil), do: nil
-  defp parse_project_id(""), do: nil
-  defp parse_project_id(id), do: id
-
-  defp normalize_project_id(projects, project_id) do
-    first = first_project_id(projects)
-
-    case project_id do
-      nil -> first
-      _ -> if Enum.any?(projects, &(&1.id == project_id)), do: project_id, else: first
-    end
-  end
-
-  defp first_project_id(projects), do: List.first(projects) |> then(&(&1 && &1.id))
-
   defp parse_window(w) when is_map_key(@windows, w), do: Map.fetch!(@windows, w)
   defp parse_window(_), do: :last_7d
 
-  defp build_path(project_id, window) do
-    base =
-      if project_id,
-        do: "/projects/#{project_id}/telemetry/instructions",
-        else: "/telemetry/instructions"
-
-    if window == :last_7d, do: base, else: "#{base}?window=#{window}"
+  defp build_path(window) do
+    if window == :last_7d,
+      do: "/telemetry/instructions",
+      else: "/telemetry/instructions?window=#{window}"
   end
 
   defp format_bytes(bytes) when is_integer(bytes) and bytes >= 1_048_576 do
@@ -214,23 +172,6 @@ defmodule SpotterWeb.InstructionsTelemetryLive do
     <div class="container">
       <div class="page-header">
         <h1>Instructions telemetry</h1>
-      </div>
-
-      <%!-- project filter --%>
-      <div class="filter-section">
-        <div>
-          <label class="filter-label">project</label>
-          <div class="filter-bar">
-            <button
-              :for={project <- @projects}
-              phx-click="filter_project"
-              phx-value-project-id={project.id}
-              class={"filter-btn#{if @selected_project_id == project.id, do: " is-active"}"}
-            >
-              {project.name}
-            </button>
-          </div>
-        </div>
       </div>
 
       <%!-- window selector --%>

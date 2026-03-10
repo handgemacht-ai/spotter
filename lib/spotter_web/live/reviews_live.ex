@@ -1,20 +1,13 @@
 defmodule SpotterWeb.ReviewsLive do
   use Phoenix.LiveView
 
-  alias Spotter.Services.ReviewCounts
-
   alias Spotter.Transcripts.{Annotation, Project, Session}
   require Ash.Query
 
   @impl true
   def mount(_params, _session, socket) do
-    project_counts = ReviewCounts.list_project_open_counts()
-
     {:ok,
-     socket
-     |> assign(
-       project_counts: project_counts,
-       selected_project_id: first_project_id(project_counts),
+     assign(socket,
        open_annotations: [],
        resolved_annotations: [],
        sessions_by_id: %{},
@@ -23,56 +16,12 @@ defmodule SpotterWeb.ReviewsLive do
   end
 
   @impl true
-  def handle_params(params, _uri, socket) do
-    project_id =
-      normalize_project_id(socket.assigns.project_counts, parse_project_id(params["project_id"]))
-
-    socket =
-      socket
-      |> assign(selected_project_id: project_id)
-      |> load_review_data()
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("filter_project", %{"project-id" => raw_id}, socket) do
-    project_id = normalize_project_id(socket.assigns.project_counts, parse_project_id(raw_id))
-    path = if project_id, do: "/reviews?project_id=#{project_id}", else: "/reviews"
-
-    {:noreply, push_patch(socket, to: path)}
-  end
-
-  defp parse_project_id("all"), do: nil
-  defp parse_project_id(nil), do: nil
-  defp parse_project_id(""), do: nil
-
-  defp parse_project_id(id) do
-    case Ash.get(Project, id) do
-      {:ok, _} -> id
-      _ -> nil
-    end
-  end
-
-  defp first_project_id(project_counts) do
-    List.first(project_counts) |> then(&(&1 && &1.project_id))
-  end
-
-  defp normalize_project_id(project_counts, project_id) do
-    first = first_project_id(project_counts)
-
-    case project_id do
-      nil -> first
-      _ -> if project_exists?(project_counts, project_id), do: project_id, else: first
-    end
-  end
-
-  defp project_exists?(project_counts, project_id) do
-    Enum.any?(project_counts, &(&1.project_id == project_id))
+  def handle_params(_params, _uri, socket) do
+    {:noreply, load_review_data(socket)}
   end
 
   defp load_review_data(socket) do
-    project_id = socket.assigns.selected_project_id
+    project_id = socket.assigns.current_project_id
 
     sessions = load_sessions(project_id)
     session_ids = Enum.map(sessions, & &1.id)
@@ -279,23 +228,7 @@ defmodule SpotterWeb.ReviewsLive do
         {Phoenix.Flash.get(@flash, :error)}
       </div>
 
-      <div class="filter-section">
-        <div>
-          <label class="filter-label">Project</label>
-          <div class="filter-bar">
-            <button
-              :for={pc <- @project_counts}
-              phx-click="filter_project"
-              phx-value-project-id={pc.project_id}
-              class={"filter-btn#{if @selected_project_id == pc.project_id, do: " is-active"}"}
-            >
-              {pc.project_name} ({pc.open_count})
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <%= if @selected_project_id do %>
+      <%= if @current_project_id do %>
         <div class="review-header">
           <span class="review-count">
             {length(@open_annotations)} open annotations

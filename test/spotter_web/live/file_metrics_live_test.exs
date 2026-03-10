@@ -95,34 +95,25 @@ defmodule SpotterWeb.FileMetricsLiveTest do
     end
   end
 
-  describe "project filtering" do
-    test "filter_project event navigates via push_patch" do
-      project = create_project("fm-filter")
+  describe "project context from on_mount" do
+    test "uses current_project_id from on_mount, no project filter bar" do
+      project = create_project("fm-ctx")
 
       Ash.create!(FileHeatmap, %{
         project_id: project.id,
-        relative_path: "lib/filtered.ex",
+        relative_path: "lib/ctx-file.ex",
         heat_score: 60.0,
         change_count_30d: 5
       })
 
-      {:ok, view, _html} = live(build_conn(), "/file-metrics")
-      html = render_click(view, "filter_project", %{"project-id" => project.id})
-      assert html =~ "lib/filtered.ex"
-    end
-
-    test "query param selects project" do
-      project = create_project("fm-qp")
-
-      Ash.create!(FileHeatmap, %{
-        project_id: project.id,
-        relative_path: "lib/qp.ex",
-        heat_score: 50.0,
-        change_count_30d: 3
-      })
-
       {:ok, _view, html} = live(build_conn(), "/file-metrics?project_id=#{project.id}")
-      assert html =~ "lib/qp.ex"
+
+      # Content is filtered by on_mount current_project_id
+      assert html =~ "lib/ctx-file.ex"
+
+      # No project filter bar — project selection is in the sidebar now
+      refute html =~ "filter_project"
+      refute html =~ "filter-label\">Project"
     end
   end
 

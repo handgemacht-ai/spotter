@@ -106,35 +106,29 @@ defmodule SpotterWeb.HistoryLiveTest do
     end
   end
 
-  describe "project filter behavior" do
-    test "filtering by project shows only sessions from that project" do
-      proj_a = create_project("proj-alpha")
-      proj_b = create_project("proj-beta")
-      sess_a = create_session(proj_a, slug: "alpha-session")
-      sess_b = create_session(proj_b, slug: "beta-session")
+  describe "project context from on_mount" do
+    test "uses current_project_id from on_mount, no project filter bar" do
+      project = create_project("ctx-proj")
+      session = create_session(project, slug: "ctx-session")
 
       commit =
         create_commit(
           branch: nil,
-          hash: "pf-commit",
+          hash: "ctx-commit",
           committed_at: ~U[2026-01-01 12:00:00Z],
-          subject: "shared commit"
+          subject: "context commit"
         )
 
-      create_link(sess_a, commit)
-      create_link(sess_b, commit)
+      create_link(session, commit)
 
-      # No branch filter (show all), auto-selects first project (proj-alpha)
-      {:ok, view, html} = live(build_conn(), "/history?branch=")
+      {:ok, _view, html} = live(build_conn(), "/history?project_id=#{project.id}&branch=")
 
-      # First project auto-selected, only alpha visible
-      assert html =~ "alpha-session"
+      # Content is filtered by on_mount current_project_id
+      assert html =~ "ctx-session"
 
-      # Switch to proj_b
-      html = render_click(view, "filter_project", %{"project-id" => proj_b.id})
-
-      assert html =~ "beta-session"
-      refute html =~ "alpha-session"
+      # No project filter bar — project selection is in the sidebar now
+      refute html =~ "filter_project"
+      refute html =~ "filter-label\">Project"
     end
   end
 
@@ -220,7 +214,7 @@ defmodule SpotterWeb.HistoryLiveTest do
   end
 
   describe "empty state" do
-    test "project-filtered commit with no sessions shows empty state" do
+    test "project with no matching sessions shows empty state" do
       proj_a = create_project("empty-proj-a")
       proj_b = create_project("empty-proj-b")
       sess_a = create_session(proj_a)
@@ -234,10 +228,9 @@ defmodule SpotterWeb.HistoryLiveTest do
 
       create_link(sess_a, commit)
 
-      {:ok, view, _html} = live(build_conn(), "/history?branch=")
-
-      # Filter to project with no matching sessions - commit is excluded
-      html = render_click(view, "filter_project", %{"project-id" => proj_b.id})
+      # Navigate directly to proj_b which has no sessions
+      {:ok, _view, html} =
+        live(build_conn(), "/history?project_id=#{proj_b.id}&branch=")
 
       refute html =~ "es-commi"
       assert html =~ "No commits found for the selected filters."

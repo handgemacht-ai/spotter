@@ -48,22 +48,10 @@ defmodule SpotterWeb.RetrosLiveTest do
   end
 
   describe "page structure" do
-    test "renders heading and project filter chips with retro submission counts" do
-      proj_a = create_project("alpha")
-      proj_b = create_project("beta")
-
-      sess_a = create_session(proj_a)
-      sess_b = create_session(proj_b)
-
-      create_submission(proj_a, sess_a)
-      create_submission(proj_b, sess_b)
-      create_submission(proj_b, sess_b)
-
+    test "renders heading" do
       {:ok, _view, html} = live(build_conn(), "/retros")
 
       assert html =~ "Retros"
-      assert html =~ "alpha (1)"
-      assert html =~ "beta (2)"
     end
   end
 
@@ -94,25 +82,19 @@ defmodule SpotterWeb.RetrosLiveTest do
     end
   end
 
-  describe "project chip navigation" do
-    test "clicking a project chip updates URL and filters submissions" do
-      proj_a = create_project("alpha")
-      proj_b = create_project("beta")
+  describe "project context from on_mount" do
+    test "uses current_project_id from on_mount, no project filter chips" do
+      project = create_project("ctx-proj")
+      session = create_session(project)
+      create_submission(project, session, summary: "Ctx retro summary")
 
-      sess_a = create_session(proj_a)
-      sess_b = create_session(proj_b)
+      {:ok, _view, html} = live(build_conn(), "/retros?project_id=#{project.id}")
 
-      create_submission(proj_a, sess_a, summary: "Alpha submission")
-      create_submission(proj_b, sess_b, summary: "Beta submission")
+      # Content is filtered by on_mount current_project_id
+      assert html =~ "Ctx retro summary"
 
-      {:ok, view, _html} = live(build_conn(), "/retros")
-
-      # Click project beta chip
-      html = render_click(view, "filter_project", %{"project-id" => proj_b.id})
-
-      assert html =~ "Beta submission"
-      refute html =~ "Alpha submission"
-      assert_patched(view, "/retros?project_id=#{proj_b.id}")
+      # No project filter chips — project selection is in the sidebar now
+      refute html =~ "filter_project"
     end
   end
 
