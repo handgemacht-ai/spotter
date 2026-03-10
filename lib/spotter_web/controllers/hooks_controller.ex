@@ -578,9 +578,15 @@ defmodule SpotterWeb.HooksController do
       "project_id" => session.project_id
     })
 
-    insert_and_emit(%{project_id: session.project_id}, ComputeCoChange, %{
-      "project_id" => session.project_id
-    })
+    if co_change_enabled?() do
+      insert_and_emit(%{project_id: session.project_id}, ComputeCoChange, %{
+        "project_id" => session.project_id
+      })
+    end
+  end
+
+  defp co_change_enabled? do
+    Application.get_env(:spotter, :co_change_enabled, Mix.env() != :dev)
   end
 
   defp enqueue_enrichment(hashes, session) when hashes != [] do

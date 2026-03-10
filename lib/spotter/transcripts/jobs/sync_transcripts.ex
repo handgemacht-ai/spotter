@@ -274,15 +274,21 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
     |> ComputeHeatmap.new()
     |> Oban.insert()
 
-    %{project_id: project.id}
-    |> ComputeCoChange.new()
-    |> Oban.insert()
+    if co_change_enabled?() do
+      %{project_id: project.id}
+      |> ComputeCoChange.new()
+      |> Oban.insert()
+    end
 
     %{project_id: project.id}
     |> ReindexProject.new()
     |> Oban.insert()
 
     enqueue_lanes(project)
+  end
+
+  defp co_change_enabled? do
+    Application.get_env(:spotter, :co_change_enabled, Mix.env() != :dev)
   end
 
   defp enqueue_lanes(project) do
