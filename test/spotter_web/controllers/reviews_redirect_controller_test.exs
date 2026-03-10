@@ -17,12 +17,12 @@ defmodule SpotterWeb.ReviewsRedirectControllerTest do
     project_id = Ash.UUID.generate()
     conn = build_conn() |> get("/projects/#{project_id}/review")
 
-    assert redirected_to(conn) == "/reviews?project_id=#{project_id}"
+    assert redirected_to(conn) == "/reviews?project=#{project_id}"
   end
 
   test "redirects for arbitrary project_id values without error" do
     conn = build_conn() |> get("/projects/not-a-uuid/review")
 
-    assert redirected_to(conn) == "/reviews?project_id=not-a-uuid"
+    assert redirected_to(conn) == "/reviews?project=not-a-uuid"
   end
 end

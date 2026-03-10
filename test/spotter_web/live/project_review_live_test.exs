@@ -44,12 +44,12 @@ defmodule SpotterWeb.ProjectReviewLiveTest do
   end
 
   describe "legacy redirect" do
-    test "redirects /projects/:project_id/review to /reviews?project_id=..." do
+    test "redirects /projects/:project_id/review to /reviews?project=..." do
       {project, _session} = create_project_with_session()
 
       conn = build_conn() |> get("/projects/#{project.id}/review")
 
-      assert redirected_to(conn) == "/reviews?project_id=#{project.id}"
+      assert redirected_to(conn) == "/reviews?project=#{project.id}"
     end
   end
 
