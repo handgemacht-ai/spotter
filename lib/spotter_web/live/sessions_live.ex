@@ -644,7 +644,7 @@ defmodule SpotterWeb.SessionsLive do
                   ({length(project.visible_sessions)} sessions)
                 </span>
               </h3>
-              <a href={"/projects/#{project.id}/file-metrics"} class="btn btn-ghost text-xs">
+              <a href={"/file-metrics?project=#{project.id}"} class="btn btn-ghost text-xs">
                 File metrics
               </a>
               <form phx-submit="update_timezone" class="inline-form">

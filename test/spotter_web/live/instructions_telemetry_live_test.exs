@@ -22,7 +22,7 @@ defmodule SpotterWeb.InstructionsTelemetryLiveTest do
   describe "project context from on_mount" do
     test "uses current_project_id from on_mount, no project filter bar", %{project: project} do
       {:ok, _view, html} =
-        live(build_conn(), "/projects/#{project.id}/telemetry/instructions")
+        live(build_conn(), "/telemetry/instructions?project=#{project.id}")
 
       # Content renders for the on_mount project
       assert html =~ project.name

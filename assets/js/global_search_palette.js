@@ -56,10 +56,8 @@ export function initGlobalSearchPalette() {
   }
 
   function detectProjectId() {
-    const m = window.location.pathname.match(/\/projects\/([0-9a-f-]+)/)
-    if (m) return m[1]
     const params = new URLSearchParams(window.location.search)
-    return params.get("project_id")
+    return params.get("project") || params.get("project_id")
   }
 
   function kindBadge(kind) {

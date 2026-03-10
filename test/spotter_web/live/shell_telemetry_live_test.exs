@@ -60,9 +60,9 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
       assert html =~ "median"
     end
 
-    test "preselects project at /projects/:project_id/telemetry/commands", %{project: project} do
+    test "preselects project via ?project= query param", %{project: project} do
       {:ok, _view, html} =
-        live(build_conn(), "/projects/#{project.id}/telemetry/commands")
+        live(build_conn(), "/telemetry/commands?project=#{project.id}")
 
       assert html =~ project.name
     end
@@ -71,7 +71,7 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
   describe "project context from on_mount" do
     test "uses current_project_id from on_mount, no project filter bar", %{project: project} do
       {:ok, _view, html} =
-        live(build_conn(), "/projects/#{project.id}/telemetry/commands")
+        live(build_conn(), "/telemetry/commands?project=#{project.id}")
 
       # Content renders for the on_mount project
       assert html =~ project.name
@@ -113,7 +113,7 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
       project: project
     } do
       {:ok, _view, html} =
-        live(build_conn(), "/projects/#{project.id}/telemetry/commands")
+        live(build_conn(), "/telemetry/commands?project=#{project.id}")
 
       assert html =~ "mix test"
       assert html =~ "git status"
@@ -128,7 +128,7 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
 
     test "table renders expected columns", %{project: project} do
       {:ok, _view, html} =
-        live(build_conn(), "/projects/#{project.id}/telemetry/commands")
+        live(build_conn(), "/telemetry/commands?project=#{project.id}")
 
       for col <- [
             "command",
@@ -152,7 +152,7 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
       project = Ash.create!(Project, %{name: "empty-telemetry", pattern: "^empty-telemetry"})
 
       {:ok, _view, html} =
-        live(build_conn(), "/projects/#{project.id}/telemetry/commands")
+        live(build_conn(), "/telemetry/commands?project=#{project.id}")
 
       assert html =~ "No command" || html =~ "no data" || html =~ "empty"
     end
@@ -161,7 +161,7 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
   describe "window switching" do
     test "switching window re-renders without crash", %{project: project} do
       {:ok, view, _html} =
-        live(build_conn(), "/projects/#{project.id}/telemetry/commands")
+        live(build_conn(), "/telemetry/commands?project=#{project.id}")
 
       html = render_click(view, "select_window", %{"window" => "last_24h"})
       assert html =~ "is-active"
@@ -175,7 +175,7 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
       fake_id = Ash.UUID.generate()
 
       {:ok, _view, html} =
-        live(build_conn(), "/projects/#{fake_id}/telemetry/commands")
+        live(build_conn(), "/telemetry/commands?project=#{fake_id}")
 
       assert html =~ project.name
     end
@@ -199,7 +199,7 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
       })
 
       {:ok, _view, html} =
-        live(build_conn(), "/projects/#{project.id}/telemetry/commands")
+        live(build_conn(), "/telemetry/commands?project=#{project.id}")
 
       assert html =~ "title=\"#{long_command}\""
       # Truncated display should be shorter than the full command
@@ -212,7 +212,7 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
          %{project: project, session: session} do
       # Mount view first (no command data yet)
       {:ok, view, html_before} =
-        live(build_conn(), "/projects/#{project.id}/telemetry/commands")
+        live(build_conn(), "/telemetry/commands?project=#{project.id}")
 
       assert html_before =~ "No command"
 
@@ -263,7 +263,7 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
       })
 
       {:ok, view, _html} =
-        live(build_conn(), "/projects/#{project.id}/telemetry/commands")
+        live(build_conn(), "/telemetry/commands?project=#{project.id}")
 
       # Insert new data for selected project after mount
       create_command_pair(%{
@@ -289,7 +289,7 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
       session: session
     } do
       {:ok, view, _html} =
-        live(build_conn(), "/projects/#{project.id}/telemetry/commands")
+        live(build_conn(), "/telemetry/commands?project=#{project.id}")
 
       # Create data after mount
       create_command_pair(%{
@@ -332,7 +332,7 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
       })
 
       {:ok, view, _html} =
-        live(build_conn(), "/projects/#{project.id}/telemetry/commands")
+        live(build_conn(), "/telemetry/commands?project=#{project.id}")
 
       # Trigger PubSub refresh
       send(view.pid, {:shell_telemetry_updated, %{project_id: project.id}})
@@ -360,7 +360,7 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
       })
 
       {:ok, view, html1} =
-        live(build_conn(), "/projects/#{project.id}/telemetry/commands")
+        live(build_conn(), "/telemetry/commands?project=#{project.id}")
 
       assert html1 =~ "mix compile"
 
