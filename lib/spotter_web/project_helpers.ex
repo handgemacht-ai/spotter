@@ -23,4 +23,16 @@ defmodule SpotterWeb.ProjectHelpers do
       _ -> false
     end)
   end
+
+  @doc "Loads sorted projects and resolves current project from a raw param value."
+  def load_and_resolve(raw_id) do
+    projects =
+      case Spotter.Transcripts.Project |> Ash.Query.sort(name: :asc) |> Ash.read() do
+        {:ok, list} -> list
+        {:error, _} -> []
+      end
+
+    current_project_id = normalize_project_id(projects, parse_project_id(raw_id))
+    {projects, current_project_id}
+  end
 end
