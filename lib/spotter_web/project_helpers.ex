@@ -10,13 +10,10 @@ defmodule SpotterWeb.ProjectHelpers do
   def first_project_id([%{project_id: id} | _]), do: id
   def first_project_id(_), do: nil
 
-  def normalize_project_id(projects, project_id) do
-    first = first_project_id(projects)
+  def normalize_project_id(projects, nil), do: first_project_id(projects)
 
-    case project_id do
-      nil -> first
-      _ -> if project_exists?(projects, project_id), do: project_id, else: first
-    end
+  def normalize_project_id(projects, project_id) do
+    if project_exists?(projects, project_id), do: project_id, else: first_project_id(projects)
   end
 
   def project_exists?(projects, project_id) do
