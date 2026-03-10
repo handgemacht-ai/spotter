@@ -6,7 +6,8 @@ defmodule SpotterWeb.Plugs.ProjectContextTest do
   alias SpotterWeb.Plugs.ProjectContext
 
   setup do
-    Sandbox.checkout(Spotter.Repo)
+    pid = Sandbox.start_owner!(Spotter.Repo, shared: false)
+    on_exit(fn -> Sandbox.stop_owner(pid) end)
     :ok
   end
 
@@ -35,26 +36,23 @@ defmodule SpotterWeb.Plugs.ProjectContextTest do
 
   describe "call/2 with invalid project param" do
     test "falls back to first project when ?project= does not match any project" do
-      _project_a = Ash.create!(Project, %{name: "alpha", pattern: "^alpha"})
+      project_a = Ash.create!(Project, %{name: "alpha", pattern: "^alpha"})
       _project_b = Ash.create!(Project, %{name: "beta", pattern: "^beta"})
 
       conn = build_conn("project=nonexistent-id") |> call_plug()
 
-      # Should fall back to first project (sorted by name: alpha comes first)
-      assert conn.assigns[:current_project_id] != nil
-      assert conn.assigns[:current_project_id] != "nonexistent-id"
+      assert conn.assigns[:current_project_id] == project_a.id
     end
   end
 
   describe "call/2 with no project param" do
     test "auto-selects first project when no param is provided" do
-      _project_a = Ash.create!(Project, %{name: "alpha", pattern: "^alpha"})
+      project_a = Ash.create!(Project, %{name: "alpha", pattern: "^alpha"})
       _project_b = Ash.create!(Project, %{name: "beta", pattern: "^beta"})
 
       conn = build_conn() |> call_plug()
 
-      # Should auto-select the first project (sorted by name)
-      assert conn.assigns[:current_project_id] != nil
+      assert conn.assigns[:current_project_id] == project_a.id
       assert is_list(conn.assigns[:projects])
     end
   end
@@ -75,6 +73,15 @@ defmodule SpotterWeb.Plugs.ProjectContextTest do
       conn = build_conn("project_id=#{project_a.id}") |> call_plug()
 
       assert conn.assigns[:current_project_id] == project_a.id
+    end
+
+    test "?project= takes precedence over ?project_id=" do
+      project_a = Ash.create!(Project, %{name: "alpha", pattern: "^alpha"})
+      project_b = Ash.create!(Project, %{name: "beta", pattern: "^beta"})
+
+      conn = build_conn("project=#{project_b.id}&project_id=#{project_a.id}") |> call_plug()
+
+      assert conn.assigns[:current_project_id] == project_b.id
     end
   end
 end
