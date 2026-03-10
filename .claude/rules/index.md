@@ -32,6 +32,7 @@
 | `lib/spotter_web/plugs/` | Custom plugs (SpotterMcpPlug, ProjectContext) |
 | `lib/spotter_web/telemetry/` | LiveView OTEL instrumentation |
 | `lib/spotter_web/project_helpers.ex` | Shared project selection helpers |
+| `lib/spotter_web/project_context.ex` | LiveView on_mount hook for project context |
 | `lib/spotter_web/router.ex` | Phoenix routes |
 
 ## Frontend & Static
