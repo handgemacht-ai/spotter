@@ -12,7 +12,7 @@ A per-project telemetry page showing instruction load events with file paths, me
 
 1. Navigate to Instructions Telemetry via sidebar (project is pre-selected from sidebar project selector)
 2. View instruction load events grouped by file path
-4. See metrics: bytes loaded, lines loaded, memory type, load reason
+3. See metrics: bytes loaded, lines loaded, memory type, load reason
 
 ## How It Works
 
