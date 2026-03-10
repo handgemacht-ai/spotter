@@ -39,10 +39,7 @@ defmodule SpotterWeb.PaneListLiveTimezoneTest do
     end
 
     test "shows error for invalid timezone", %{project: project} do
-      {:ok, view, _html} = live(build_conn(), "/sessions")
-
-      # Select the tz-live-test project so its form is rendered
-      render_click(view, "filter_project", %{"project-id" => project.id})
+      {:ok, view, _html} = live(build_conn(), "/sessions?project=#{project.id}")
 
       html =
         view
