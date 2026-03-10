@@ -10,8 +10,8 @@ A per-project telemetry dashboard showing shell command metrics with time window
 
 ## User Flow
 
-1. Navigate to Telemetry via sidebar
-2. Select a project and time window (24h / 7d / 30d / all)
+1. Navigate to Telemetry via sidebar (project is pre-selected from sidebar project selector)
+2. Select a time window (24h / 7d / 30d / all)
 3. View summary metrics row at top
 4. Browse per-command table: command name, path, execution count, latency percentiles, error rate
 5. See ongoing commands with a live elapsed timer
@@ -25,8 +25,7 @@ A per-project telemetry dashboard showing shell command metrics with time window
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/telemetry/commands` | Shell telemetry LiveView |
-| GET | `/projects/:project_id/telemetry/commands` | Project-scoped telemetry |
+| GET | `/telemetry/commands` | Shell telemetry LiveView (project from sidebar) |
 
 ## Key Files
 

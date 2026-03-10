@@ -10,9 +10,8 @@ A project-filtered browser for retrospective submissions. Each submission contai
 
 ## User Flow
 
-1. Navigate to Retros via sidebar
-2. Select a project from filter chips (shows per-project submission counts)
-3. Browse submissions — each shows agent name, session link, submitted_at
+1. Navigate to Retros via sidebar (project is pre-selected from sidebar project selector)
+2. Browse submissions — each shows summary, session link, submitted_at
 4. Expand a submission to see categorized items:
    - knowledge_gained, effective_strategy, gotcha, requirements_clarity, struggle
 5. Rate individual items: useful / undecided / not_useful
@@ -20,7 +19,7 @@ A project-filtered browser for retrospective submissions. Each submission contai
 
 ## How It Works
 
-`RetrosLive` loads `RetroSubmission` resources filtered by project, with nested `RetroItem` preloads. Expansion state tracked in `expanded_ids` assign. Rating updates call the `RetroItem.rate` action. Submissions are created by Claude Code agents via the MCP `submit_retro` tool, which creates a `RetroSubmission` with nested `RetroItem` records.
+The shared ProjectContext on_mount hook provides the selected project from the sidebar. `RetrosLive` loads `RetroSubmission` resources filtered by project, with nested `RetroItem` preloads. Expansion state tracked in `expanded_ids` assign. Rating updates call the `RetroItem.rate` action. Submissions are created by Claude Code agents via the MCP `submit_retro` tool, which creates a `RetroSubmission` with nested `RetroItem` records.
 
 ## Routes & Endpoints
 

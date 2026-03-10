@@ -10,8 +10,8 @@ A two-level view: (1) commit timeline with project and branch filters, cursor pa
 
 ## User Flow
 
-1. Navigate to History via sidebar
-2. Filter by project and/or branch
+1. Navigate to History via sidebar (project is pre-selected from sidebar project selector)
+2. Filter by branch within the selected project
 3. Browse commits in reverse chronological order
 4. See session link confidence badges (Verified 1.0 / Inferred %)
 5. Click a commit to open its detail page
@@ -21,7 +21,7 @@ A two-level view: (1) commit timeline with project and branch filters, cursor pa
 
 ## How It Works
 
-`HistoryLive` loads projects and branches for filter chips, then queries commits with cursor pagination. Conventional commit types (feat, fix, chore, etc.) get emoji rendering. Session links show confidence via `SessionCommitLink.confidence`. `CommitDetailLive` uses `CommitDetailComputers` (AshComputer) to reactively load commit metadata, diff text, co-change rows, linked sessions, and transcript rendered lines for the selected session.
+The shared ProjectContext on_mount hook provides the selected project from the sidebar. `HistoryLive` loads branches for the selected project, then queries commits with cursor pagination. Conventional commit types (feat, fix, chore, etc.) get emoji rendering. Session links show confidence via `SessionCommitLink.confidence`. `CommitDetailLive` uses `CommitDetailComputers` (AshComputer) to reactively load commit metadata, diff text, co-change rows, linked sessions, and transcript rendered lines for the selected session.
 
 ## Routes & Endpoints
 

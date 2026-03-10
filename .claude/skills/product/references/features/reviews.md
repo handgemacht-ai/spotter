@@ -10,16 +10,15 @@ A project-filtered annotation dashboard showing open and resolved annotations in
 
 ## User Flow
 
-1. Navigate to Reviews via sidebar
-2. Select a project from filter chips (shows per-project open counts)
-3. Browse open annotations — each shows source badge, purpose, text excerpt, file/message refs
+1. Navigate to Reviews via sidebar (project is pre-selected from sidebar project selector)
+2. Browse open annotations — each shows source badge, purpose, text excerpt, file/message refs
 4. Resolve annotations (marks them as closed)
 5. Scroll down to see resolved annotations
 6. Sidebar badge updates in real-time as annotations are created/resolved
 
 ## How It Works
 
-`ReviewsLive` loads annotations filtered by project and state (open/resolved). `ReviewsChannel` (WebSocket on topic `reviews:counts`) pushes live count updates whenever annotation state changes, triggered by `ReviewUpdates` service. `ReviewCounts` aggregates per-project open counts for the filter chips. Annotations can also be resolved via the MCP `resolve_annotation` tool (see [mcp-server.md](mcp-server.md)).
+The shared ProjectContext on_mount hook provides the selected project from the sidebar. `ReviewsLive` loads annotations filtered by project and state (open/resolved). `ReviewsChannel` (WebSocket on topic `reviews:counts`) pushes live count updates whenever annotation state changes, triggered by `ReviewUpdates` service. `ReviewCounts` aggregates per-project open counts for the sidebar badge. Annotations can also be resolved via the MCP `resolve_annotation` tool (see [mcp-server.md](mcp-server.md)).
 
 ## Routes & Endpoints
 
