@@ -6,16 +6,8 @@ defmodule SpotterWeb.ProjectContext do
   alias SpotterWeb.ProjectHelpers
 
   def on_mount(:default, params, _session, socket) do
-    projects =
-      case Spotter.Transcripts.Project |> Ash.Query.sort(name: :asc) |> Ash.read() do
-        {:ok, list} -> list
-        {:error, _} -> []
-      end
-
-    raw_id = params["project"] || params["project_id"]
-
-    current_project_id =
-      ProjectHelpers.normalize_project_id(projects, ProjectHelpers.parse_project_id(raw_id))
+    {projects, current_project_id} =
+      ProjectHelpers.load_and_resolve(params["project"] || params["project_id"])
 
     {:cont,
      socket
