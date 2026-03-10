@@ -10,6 +10,8 @@ processors:
 exporters:
   file/traces:
     path: /var/lib/spotter-otel/spotter-traces.json
+  file/logs:
+    path: /var/lib/spotter-otel/cc-events.json
   debug:
     verbosity: basic
   otlphttp/jaeger:
@@ -23,3 +25,7 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [file/traces, otlphttp/jaeger, debug]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [file/logs, debug]
