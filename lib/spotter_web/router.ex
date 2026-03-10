@@ -48,9 +48,6 @@ defmodule SpotterWeb.Router do
       live("/file-metrics", FileMetricsLive)
       live("/telemetry/commands", ShellTelemetryLive)
       live("/telemetry/instructions", InstructionsTelemetryLive)
-      live("/projects/:project_id/file-metrics", FileMetricsLive)
-      live("/projects/:project_id/telemetry/commands", ShellTelemetryLive)
-      live("/projects/:project_id/telemetry/instructions", InstructionsTelemetryLive)
     end
 
     live("/history/commits/:commit_id", CommitDetailLive)

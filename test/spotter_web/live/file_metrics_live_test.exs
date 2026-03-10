@@ -51,7 +51,7 @@ defmodule SpotterWeb.FileMetricsLiveTest do
 
     test "project-scoped route works" do
       project = create_project("fm-proj-route")
-      {:ok, _view, html} = live(build_conn(), "/projects/#{project.id}/file-metrics")
+      {:ok, _view, html} = live(build_conn(), "/file-metrics?project=#{project.id}")
       assert html =~ "File metrics"
     end
   end
