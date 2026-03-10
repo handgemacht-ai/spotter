@@ -1,14 +1,7 @@
 defmodule SpotterWeb.ProjectContextTest do
-  use ExUnit.Case, async: false
+  use Spotter.DataCase, async: false
 
-  alias Ecto.Adapters.SQL.Sandbox
   alias Spotter.Transcripts.Project
-
-  setup do
-    pid = Sandbox.start_owner!(Spotter.Repo, shared: false)
-    on_exit(fn -> Sandbox.stop_owner(pid) end)
-    :ok
-  end
 
   defp mount(params) do
     socket = %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}}

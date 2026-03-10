@@ -90,7 +90,7 @@ defmodule SpotterWeb.SessionsLiveTest do
     test "sidebar renders Sessions nav link on /sessions page" do
       {:ok, _view, html} = live(build_conn(), "/sessions")
 
-      assert html =~ ~s(href="/sessions")
+      assert html =~ ~s(href="/sessions?project=)
       assert html =~ ~s(data-nav-path="/sessions")
       assert html =~ "Sessions"
     end
