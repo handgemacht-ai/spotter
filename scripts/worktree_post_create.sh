@@ -16,6 +16,24 @@ set +a
 
 cd "$WORKTREE_ROOT"
 
+slugify() {
+  echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/^-//; s/-$//'
+}
+
+upsert_env_var() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  local tmp_file
+
+  tmp_file="$(mktemp)"
+  if [ -f "$file" ]; then
+    grep -v "^${key}=" "$file" > "$tmp_file" || true
+  fi
+  printf '%s=%s\n' "$key" "$value" >> "$tmp_file"
+  mv "$tmp_file" "$file"
+}
+
 if [ -z "${SPOTTER_PHX_PORT:-}" ] && [ -n "${SPOTTER_PORT:-}" ]; then
   SPOTTER_PHX_PORT="$SPOTTER_PORT"
 fi
@@ -34,19 +52,21 @@ SPOTTER_PORT="${SPOTTER_PORT:-$SPOTTER_PHX_PORT}"
 SPOTTER_DOLT_HOST_PORT="${SPOTTER_DOLT_HOST_PORT:-13307}"
 SPOTTER_DOLT_PORT="${SPOTTER_DOLT_PORT:-$SPOTTER_DOLT_HOST_PORT}"
 
-TS_IP="127.0.0.1"
-if command -v tailscale >/dev/null 2>&1; then
-  TS_IP="$(tailscale ip -4 2>/dev/null | head -n1 || true)"
-fi
-if [ -z "${TS_IP:-}" ]; then
-  TS_IP="127.0.0.1"
-fi
+TAILNET_ZONE="${TAILNET_INGRESS_ZONE:-dev.handgemacht.internal}"
+PROJECT_SLUG="spotter"
+WORKTREE_SLUG="$(slugify "${WORKTREE_NAME:-main}")"
+PREVIEW_HOST="${PROJECT_SLUG}--${WORKTREE_SLUG}.${TAILNET_ZONE}"
+PREVIEW_URL="http://${PREVIEW_HOST}"
+
+upsert_env_var "${WORKTREE_ENV_FILE}" "TAILNET_INGRESS_ZONE" "${TAILNET_ZONE}"
+upsert_env_var "${WORKTREE_ENV_FILE}" "PREVIEW_HOST" "${PREVIEW_HOST}"
+upsert_env_var "${WORKTREE_ENV_FILE}" "PREVIEW_URL" "${PREVIEW_URL}"
 
 cat > "${WORKTREE_ROOT}/config/dev.local.exs" <<ELIXIR_EOF
 import Config
 
 config :spotter, SpotterWeb.Endpoint,
-  http: [ip: {0, 0, 0, 0}, port: ${SPOTTER_PHX_PORT}]
+  http: [ip: {127, 0, 0, 1}, port: ${SPOTTER_PHX_PORT}]
 ELIXIR_EOF
 
 printf "%s\n" "$SPOTTER_PHX_PORT" > "${WORKTREE_ROOT}/.port"
@@ -56,7 +76,7 @@ cat > "${WORKTREE_ROOT}/.mcp.json" <<MCP_EOF
   "mcpServers": {
     "tidewave": {
       "type": "http",
-      "url": "http://${TS_IP}:${SPOTTER_PHX_PORT}/tidewave/mcp"
+      "url": "http://localhost:${SPOTTER_PHX_PORT}/tidewave/mcp"
     },
     "chrome-devtools": {
       "command": "npx",

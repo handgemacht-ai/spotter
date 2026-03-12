@@ -31,7 +31,7 @@ asset_watchers =
 config :spotter, SpotterWeb.Endpoint,
   code_reloader: true,
   check_origin: false,
-  http: [ip: {0, 0, 0, 0}, port: 1100],
+  http: [ip: {127, 0, 0, 1}, port: 1100],
   adapter: Bandit.PhoenixAdapter,
   server: true,
   secret_key_base:

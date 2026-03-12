@@ -1,6 +1,13 @@
 defmodule SpotterPlugin.HooksConfigTest do
   use ExUnit.Case, async: true
 
+  setup do
+    tmp_dir = Path.join(System.tmp_dir!(), "spotter-plugin-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(tmp_dir)
+    on_exit(fn -> File.rm_rf!(tmp_dir) end)
+    %{tmp_dir: tmp_dir}
+  end
+
   test "notify-session-end runs on SessionEnd and not on Stop" do
     hooks_json_path = Path.join(File.cwd!(), "spotter-plugin/hooks/hooks.json")
 
@@ -19,7 +26,6 @@ defmodule SpotterPlugin.HooksConfigTest do
   end
 
   describe "notify-session.sh canonical dir export" do
-    @tag :tmp_dir
     test "exports SPOTTER_PROJECT_DIR to CLAUDE_ENV_FILE for a git repo", %{tmp_dir: tmp_dir} do
       # Set up a real git repo in the temp dir
       {_, 0} = System.cmd("git", ["init", "--initial-branch=main"], cd: tmp_dir)
@@ -57,7 +63,6 @@ defmodule SpotterPlugin.HooksConfigTest do
              "SPOTTER_PROJECT_DIR should contain the repo root path"
     end
 
-    @tag :tmp_dir
     test "falls back gracefully when git metadata is unavailable", %{tmp_dir: tmp_dir} do
       # tmp_dir is NOT a git repo — no .git directory
       non_git_dir = Path.join(tmp_dir, "not-a-repo")
@@ -90,6 +95,43 @@ defmodule SpotterPlugin.HooksConfigTest do
     end
   end
 
+  describe "spotter_url.sh resolution" do
+    test "returns explicit SPOTTER_URL values before localhost" do
+      script_path = Path.join(File.cwd!(), "spotter-plugin/scripts/lib/spotter_url.sh")
+
+      {output, 0} =
+        System.cmd("bash", ["-lc", ". #{script_path}; spotter_resolve_urls 1100"],
+          env:
+            shell_test_env(%{
+              "SPOTTER_URL" => " http://example.test:1100 , http://other.test:2200 "
+            }),
+          stderr_to_stdout: true
+        )
+
+      assert String.split(output, "\n", trim: true) == [
+               "http://example.test:1100",
+               "http://other.test:2200",
+               "http://localhost:1100"
+             ]
+    end
+
+    test "ignores deprecated tailscale env vars and falls back to localhost" do
+      script_path = Path.join(File.cwd!(), "spotter-plugin/scripts/lib/spotter_url.sh")
+
+      {output, 0} =
+        System.cmd("bash", ["-lc", ". #{script_path}; spotter_resolve_urls 1100"],
+          env:
+            shell_test_env(%{
+              "SPOTTER_TAILSCALE_URL" => "http://100.64.0.1:1100",
+              "SPOTTER_TAILSCALE_IP" => "100.64.0.2"
+            }),
+          stderr_to_stdout: true
+        )
+
+      assert String.split(output, "\n", trim: true) == ["http://localhost:1100"]
+    end
+  end
+
   describe "MCP config canonical project dir" do
     test ".mcp.json header uses canonical env var with PWD fallback, not raw PWD" do
       mcp_json_path = Path.join(File.cwd!(), "spotter-plugin/.mcp.json")
@@ -113,6 +155,64 @@ defmodule SpotterPlugin.HooksConfigTest do
       # Must include a safe fallback to ${PWD} when the canonical var is unset
       assert header_value =~ "${PWD}",
              "x-spotter-project-dir must fall back to ${PWD} when canonical var is unset"
+    end
+  end
+
+  describe "worktree post-create" do
+    test "writes preview env values, loopback binding, and localhost MCP config", %{
+      tmp_dir: tmp_dir
+    } do
+      worktree_dir = Path.join(tmp_dir, "Fix DNS")
+      worktree_env = Path.join(worktree_dir, ".worktree.env")
+      config_dir = Path.join(worktree_dir, "config")
+
+      File.mkdir_p!(config_dir)
+
+      File.write!(
+        worktree_env,
+        [
+          "WORKTREE_NAME='Fix DNS'",
+          "SPOTTER_PORT=1104",
+          "SPOTTER_PHX_PORT=1104",
+          "SPOTTER_DOLT_HOST_PORT=13311",
+          "SPOTTER_DOLT_PORT=13311"
+        ]
+        |> Enum.join("\n")
+        |> Kernel.<>("\n")
+      )
+
+      script_path = Path.join(File.cwd!(), "scripts/worktree_post_create.sh")
+
+      {output, exit_code} =
+        System.cmd("bash", [script_path],
+          env:
+            shell_test_env(%{
+              "WORKTREE_PATH" => worktree_dir,
+              "WORKTREE_ENV_FILE" => worktree_env
+            }),
+          stderr_to_stdout: true
+        )
+
+      assert exit_code == 0, "worktree_post_create.sh exited #{exit_code}:\n#{output}"
+
+      env_contents = File.read!(worktree_env)
+      assert env_contents =~ "TAILNET_INGRESS_ZONE=dev.handgemacht.internal"
+      assert env_contents =~ "PREVIEW_HOST=spotter--fix-dns.dev.handgemacht.internal"
+      assert env_contents =~ "PREVIEW_URL=http://spotter--fix-dns.dev.handgemacht.internal"
+
+      dev_local = File.read!(Path.join(config_dir, "dev.local.exs"))
+      assert dev_local =~ "http: [ip: {127, 0, 0, 1}, port: 1104]"
+
+      mcp =
+        worktree_dir
+        |> Path.join(".mcp.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      assert get_in(mcp, ["mcpServers", "tidewave", "url"]) ==
+               "http://localhost:1104/tidewave/mcp"
+
+      assert File.read!(Path.join(worktree_dir, ".port")) == "1104\n"
     end
   end
 

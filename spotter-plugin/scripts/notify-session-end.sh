@@ -44,7 +44,7 @@ else
   PORT=1100
 fi
 
-# Resolve base URL candidates (container-safe: honours SPOTTER_URL / tailscale / localhost)
+# Resolve base URL candidates (container-safe: honours SPOTTER_URL / localhost)
 SPOTTER_URLS="$(spotter_resolve_urls "${PORT}")"
 
 send_to_spotter() {

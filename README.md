@@ -80,8 +80,29 @@ just reset     # Stop, wipe state, restart clean
 
 | Service | Port | Binding |
 |---------|------|---------|
-| Phoenix | `1100` base | `0.0.0.0` (deterministic per-worktree via `.worktree-ports.json`) |
+| Phoenix | `1100` base | `127.0.0.1` (deterministic per-worktree via `.worktree-ports.json`) |
 | Dolt | `13307` base | `0.0.0.0` (deterministic per-worktree Docker host mapping) |
+
+### Tailnet Preview Hostnames
+
+Spotter uses the shared workspace preview ingress instead of direct Tailscale-IP
+bindings.
+
+From the workspace root:
+
+```bash
+cd /srv/handgemacht/handgemacht
+just ingress-up
+just ingress-sync
+```
+
+Preview hostnames follow the shared convention:
+
+- `http://spotter--main.dev.handgemacht.internal`
+- `http://spotter--<worktree>.dev.handgemacht.internal`
+
+Worktree setup writes `TAILNET_INGRESS_ZONE`, `PREVIEW_HOST`, and `PREVIEW_URL`
+into `.worktree.env`.
 
 ### OpenTelemetry (explicit setup)
 
@@ -265,7 +286,7 @@ The Spotter MCP server is provided by the plugin via `spotter-plugin/.mcp.json`.
 
 The MCP server URL is controlled by the `SPOTTER_URL` environment variable (default `http://127.0.0.1:1100`). The plugin config uses `${SPOTTER_URL:-http://127.0.0.1:1100}/api/mcp`.
 
-Worktree hooks generate `.worktree.env`, `config/dev.local.exs`, `.port`, and `.mcp.json` from `.worktree-ports.json`, so each worktree gets deterministic ports and a matching `SPOTTER_URL` target.
+Worktree hooks generate `.worktree.env`, `config/dev.local.exs`, `.port`, and `.mcp.json` from `.worktree-ports.json`. `.worktree.env` carries the preview hostname values for shared tailnet ingress, while `.mcp.json` keeps Tidewave on `localhost`.
 
 ### Troubleshooting
 
