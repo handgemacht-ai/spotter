@@ -5,15 +5,22 @@ set dotenv-load := false
 
 project_root := justfile_directory()
 compose_dolt := project_root / "docker-compose.dolt.yml"
-compose_otel := project_root / "docker-compose.otel.yml"
 
 # Private: check all prerequisites are installed
 [private]
 _check-prereqs:
     @bash {{project_root}}/scripts/runtime/prereqs.sh
 
+[private]
+_ensure-dev-setup:
+    @bash {{project_root}}/scripts/runtime/ensure-dev-setup.sh
+
+[private]
+_ensure-shared-otel:
+    @bash {{project_root}}/scripts/runtime/ensure-shared-otel.sh
+
 # Start all services (Dolt + Phoenix)
-up: _check-prereqs
+up: _check-prereqs _ensure-shared-otel _ensure-dev-setup
     #!/usr/bin/env bash
     set -euo pipefail
     worktree_env="{{project_root}}/.worktree.env"
@@ -43,12 +50,6 @@ up: _check-prereqs
     fi
     export COMPOSE_PROJECT_NAME="${SPOTTER_COMPOSE_PROJECT:-$compose_project}"
 
-    workspace_obs="{{project_root}}/../../../.runtime/docker/obs-up.sh"
-    if [[ -x "$workspace_obs" ]]; then
-      "$workspace_obs" --quiet
-    else
-      docker compose -f {{compose_otel}} up -d 2>/dev/null || true
-    fi
     docker compose -f {{compose_dolt}} up -d 2>/dev/null || true
     bash {{project_root}}/scripts/runtime/wait-for-dolt.sh
 
@@ -182,45 +183,49 @@ reset: down
 otel-up:
     #!/usr/bin/env bash
     set -euo pipefail
-    workspace_obs="{{project_root}}/../../../.runtime/docker/obs-up.sh"
+    workspace_obs="{{project_root}}/../.runtime/docker/obs-up.sh"
     if [[ -x "$workspace_obs" ]]; then
       "$workspace_obs"
     else
-      docker compose -f {{compose_otel}} up -d
+      echo "Shared observability stack helper not found at $workspace_obs"
+      echo "Start it from the workspace root with: cd {{project_root}}/.. && just obs-up"
+      exit 1
     fi
 
 # Stop OTEL stack
 otel-down:
     #!/usr/bin/env bash
     set -euo pipefail
-    workspace_obs="{{project_root}}/../../../.runtime/docker/obs-down.sh"
+    workspace_obs="{{project_root}}/../.runtime/docker/obs-down.sh"
     if [[ -x "$workspace_obs" ]]; then
       "$workspace_obs"
     else
-      docker compose -f {{compose_otel}} down
+      echo "Shared observability stack helper not found at $workspace_obs"
+      exit 1
     fi
 
 # Restart OTEL stack
 otel-restart:
     #!/usr/bin/env bash
     set -euo pipefail
-    workspace_obs="{{project_root}}/../../../.runtime/docker/obs-restart.sh"
+    workspace_obs="{{project_root}}/../.runtime/docker/obs-restart.sh"
     if [[ -x "$workspace_obs" ]]; then
       "$workspace_obs"
     else
-      docker compose -f {{compose_otel}} down
-      docker compose -f {{compose_otel}} up -d
+      echo "Shared observability stack helper not found at $workspace_obs"
+      exit 1
     fi
 
 # Show OTEL stack status
 otel-status:
     #!/usr/bin/env bash
     set -euo pipefail
-    workspace_obs="{{project_root}}/../../../.runtime/docker/obs-status.sh"
+    workspace_obs="{{project_root}}/../.runtime/docker/obs-status.sh"
     if [[ -x "$workspace_obs" ]]; then
       "$workspace_obs"
     else
-      docker compose -f {{compose_otel}} ps
+      echo "Shared observability stack helper not found at $workspace_obs"
+      exit 1
     fi
 
 # Run runtime smoke tests

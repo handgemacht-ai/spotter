@@ -41,6 +41,14 @@ ensure_down() {
   sleep 1
 }
 
+ensure_otel() {
+  if just --justfile "$JUSTFILE" otel-up >/dev/null 2>&1; then
+    pass "shared OTEL is available"
+  else
+    fail "shared OTEL could not be started with just otel-up"
+  fi
+}
+
 # Helper: check if a port is responding to HTTP
 port_responds() {
   local port="$1"
@@ -74,6 +82,7 @@ echo ""
 echo "--- Test 1: Happy path lifecycle ---"
 
 ensure_down
+ensure_otel
 
 if just --justfile "$JUSTFILE" up 2>&1; then
   pass "just up exits 0"
@@ -176,6 +185,7 @@ echo ""
 echo "--- Test 4: Idempotency (just up twice) ---"
 
 ensure_down
+ensure_otel
 
 just --justfile "$JUSTFILE" up >/dev/null 2>&1 || true
 sleep 2

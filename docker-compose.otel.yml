@@ -1,9 +1,6 @@
 services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.146.1
-    labels:
-      dev.observability.contract: "v1"
-      dev.observability.role: "collector"
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     # The upstream image runs as 10001:10001, which can't write to our bind-mounted ./tmp/otel.
     # Run as the host user so the file exporter can write spotter-traces.json locally.
@@ -22,9 +19,6 @@ services:
 
   jaeger:
     image: jaegertracing/all-in-one:1.66.0
-    labels:
-      dev.observability.contract: "v1"
-      dev.observability.role: "jaeger"
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
     ports:
@@ -32,9 +26,6 @@ services:
 
   prometheus:
     image: prom/prometheus:v3.5.0
-    labels:
-      dev.observability.contract: "v1"
-      dev.observability.role: "prometheus"
     volumes:
       - ./priv/otel/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:

@@ -5,7 +5,6 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 _startup_pwd="$PWD"
 COMPOSE_FILE="${COMPOSE_FILE:-${REPO_ROOT}/docker-compose.dolt.yml}"
-OTEL_COMPOSE_FILE="${OTEL_COMPOSE_FILE:-${REPO_ROOT}/docker-compose.otel.yml}"
 COMPOSE_WAIT_TIMEOUT_SECONDS="${COMPOSE_WAIT_TIMEOUT_SECONDS:-30}"
 WORKTREE_ENV_FILE="${WORKTREE_ENV_FILE:-${REPO_ROOT}/.worktree.env}"
 
@@ -31,11 +30,6 @@ case "${OBS_ENABLED:-true}" in
   0|false|FALSE|no|NO)
     echo "[obs] OBS_ENABLED=false is deprecated; forcing observability ON" >&2
     ;;
-esac
-
-_obs_fallback=1
-case "${SPOTTER_OTEL_LOCAL_FALLBACK:-true}" in
-  0|false|FALSE|no|NO) _obs_fallback=0 ;;
 esac
 
 # ---------------------------------------------------------------------------
@@ -142,22 +136,12 @@ if [ -z "${OTEL_EXPORTER:-}" ]; then
 fi
 
 if [ -z "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-  if [ "$_obs_enabled" -eq 1 ]; then
-    # OBS_ENABLED: point at shared contract port (external collector)
-    export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:14318"
-  else
-    export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
-  fi
+  export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:14318"
 fi
 
-_external_obs_mode=0
-case "${OTEL_EXPORTER_OTLP_ENDPOINT}" in
-  "http://localhost:14318"|"http://127.0.0.1:14318")
-    ;;
-  *)
-    _external_obs_mode=1
-    ;;
-esac
+if [ "$_obs_enabled" -eq 1 ]; then
+  "$REPO_ROOT/scripts/runtime/ensure-shared-otel.sh"
+fi
 
 if is_port_in_use "$DOLT_HOST_PORT"; then
   echo "Port ${DOLT_HOST_PORT} is already in use."
@@ -172,80 +156,7 @@ if [ -z "${SPOTTER_DOLT_PORT:-}" ]; then
 fi
 
 cd "$REPO_ROOT"
-
-compose_args=(
-  -f "$COMPOSE_FILE"
-)
-
-# ---------------------------------------------------------------------------
-# Observability stack decision
-# ---------------------------------------------------------------------------
-# _include_local_otel tracks whether to merge docker-compose.otel.yml
-_include_local_otel=0
-
-if [ "$_obs_enabled" -eq 1 ]; then
-  if [ "$_external_obs_mode" -eq 1 ]; then
-    echo "[obs] External endpoint mode: OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}"
-    echo "[obs] Skipping local/shared stack checks"
-  else
-  # Resolve path to workspace obs-dev-check.sh
-  _workspace_root="$(cd -- "${REPO_ROOT}/.." 2>/dev/null && pwd)"
-  OBS_CHECK="${OBS_CHECK:-${_workspace_root}/.runtime/docker/obs-dev-check.sh}"
-
-  _obs_check_args=()
-  if [ ! -t 1 ]; then
-    _obs_check_args+=(--quiet)
-  fi
-
-  if [ ! -f "$OBS_CHECK" ]; then
-    echo "[obs] WARNING: workspace obs-dev-check.sh not found at $OBS_CHECK" >&2
-    echo "[obs] Treating as: no contract collector available" >&2
-    _obs_check_exit=1
-  else
-    # Run the check; capture exit code without letting set -e kill us
-    _obs_check_exit=0
-    "$OBS_CHECK" "${_obs_check_args[@]}" || _obs_check_exit=$?
-  fi
-
-  case "$_obs_check_exit" in
-    0)
-      # Contract collector running and healthy — skip local stack
-      echo "[obs] Contract collector detected, skipping local OTEL stack"
-      ;;
-    2)
-      # Port conflict with non-contract services — script already printed remediation
-      echo "[obs] ERROR: Port conflict detected (see above)." >&2
-      echo "[obs] Observability is required. Resolve the conflict or run shared stack restart (just obs-restart)." >&2
-      exit 1
-      ;;
-    1)
-      # Expected: no contract collector available
-      if [ "$_obs_fallback" -eq 1 ] && [ -f "$OTEL_COMPOSE_FILE" ]; then
-        echo "[obs] No contract collector found, starting local OTEL stack (fallback)"
-        _include_local_otel=1
-      else
-        echo "[obs] ERROR: No contract collector detected and local fallback unavailable." >&2
-        echo "[obs] Set OTEL_EXPORTER_OTLP_ENDPOINT to an external collector, or provide docker-compose.otel.yml fallback." >&2
-        exit 1
-      fi
-      ;;
-    *)
-      echo "[obs] WARNING: obs-dev-check.sh exited with unexpected code $_obs_check_exit, skipping observability" >&2
-      ;;
-  esac
-  fi
-else
-  # OBS_ENABLED off — preserve current behavior: include local OTEL compose if it exists
-  if [ -f "$OTEL_COMPOSE_FILE" ]; then
-    _include_local_otel=1
-  fi
-fi
-
-if [ "$_include_local_otel" -eq 1 ]; then
-  compose_args+=(-f "$OTEL_COMPOSE_FILE")
-fi
-
-docker compose "${compose_args[@]}" up -d
+docker compose -f "$COMPOSE_FILE" up -d
 
 echo "Starting Dolt SQL-server from ${COMPOSE_FILE} on ${DOLT_HOST}:${DOLT_HOST_PORT}..."
 

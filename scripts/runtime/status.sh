@@ -58,13 +58,10 @@ else
   printf "${RED}✕ Dolt (database)${NC} — stopped (port %s)\n" "$DOLT_PORT"
 fi
 
-# --- OTEL (shared or local fallback) ---
+# --- OTEL (shared stack only) ---
 JAEGER_SHARED_PORT="${OBS_JAEGER_UI_PORT:-14686}"
-JAEGER_LOCAL_PORT="${SPOTTER_LOCAL_JAEGER_PORT:-16686}"
 if curl -sf "http://127.0.0.1:${JAEGER_SHARED_PORT}/" >/dev/null 2>&1; then
   printf "${GREEN}● Jaeger (OTEL)${NC}  — shared stack running on port %s\n" "$JAEGER_SHARED_PORT"
-elif curl -sf "http://127.0.0.1:${JAEGER_LOCAL_PORT}/" >/dev/null 2>&1; then
-  printf "${YELLOW}! Jaeger (OTEL)${NC}  — local fallback running on port %s\n" "$JAEGER_LOCAL_PORT"
 else
-  printf "${YELLOW}! Jaeger (OTEL)${NC}  — not running (start with: just otel-up)\n"
+  printf "${YELLOW}! Jaeger (OTEL)${NC}  — setup required (run: just otel-up)\n"
 fi
