@@ -28,8 +28,22 @@ The sidebar highlights the active page. The Sessions link covers both `/sessions
 | [just](https://github.com/casey/just) | Command runner (delegates to `scripts/runtime/`) |
 | [overmind](https://github.com/DarthSim/overmind) | Process manager (reads `Procfile`) |
 | [docker](https://docs.docker.com/get-docker/) | Runs Dolt SQL-server container |
+| [jq](https://jqlang.org/download/) | Verifies the shared OTEL contract stack |
+| [Elixir / mix](https://elixir-lang.org/install.html) | Runs Phoenix and Mix tasks |
+| MySQL-compatible client (`mysql`) | Dolt readiness checks and database bootstrap |
+| [Node.js / npm](https://nodejs.org/en/download) | Asset installation and file watching |
 
-All three must be on `$PATH`. If any are missing, `just up` exits non-zero with a single error listing all missing tools.
+All of them must be on `$PATH`. If any are missing, `just up` exits non-zero with a single error listing all missing tools.
+
+### First-time setup
+
+On a fresh checkout, `just up` bootstraps missing local dependencies automatically:
+
+- Runs `mix deps.get` when `deps/` is missing
+- Runs `npm ci` when `assets/package-lock.json` exists and `assets/node_modules/` is missing
+- Falls back to `npm install` when the asset lockfile is absent
+
+You can still run `mix setup` manually if you want to prepare the checkout before the first boot.
 
 ### Environment Variables
 
@@ -56,9 +70,11 @@ just reset     # Stop, wipe state, restart clean
 ### Startup Sequence (`just up`)
 
 1. Check prerequisites (`just`, `overmind`, `docker`) — batch all missing into one error
-2. Start Dolt container via Docker Compose
-3. Readiness check: ping Dolt with 30-second timeout
-4. Start Phoenix via overmind (reads `Procfile`)
+2. Verify shared OTEL is already configured, or fail with the exact `just obs-up` / `just otel-up` command to run
+3. Bootstrap missing repo-local dev setup (`mix deps.get` and `npm ci`/`npm install`) when needed
+4. Start Dolt container via Docker Compose
+5. Readiness check: ping Dolt with 30-second timeout
+6. Start Phoenix via overmind (reads `Procfile`)
 
 ### Service Ports
 
@@ -67,9 +83,19 @@ just reset     # Stop, wipe state, restart clean
 | Phoenix | `1100` base | `0.0.0.0` (deterministic per-worktree via `.worktree-ports.json`) |
 | Dolt | `13307` base | `0.0.0.0` (deterministic per-worktree Docker host mapping) |
 
-### OpenTelemetry (always on)
+### OpenTelemetry (explicit setup)
 
-`just up` ensures the OTEL stack is available before starting Phoenix. Manual controls:
+`just up` does not start OTEL for you. Start the shared stack explicitly first, then start Spotter:
+
+```bash
+cd /srv/handgemacht/handgemacht
+just obs-up
+
+cd /srv/handgemacht/handgemacht/spotter
+just up
+```
+
+Repo-local manual controls:
 
 ```
 just otel-up
@@ -303,25 +329,16 @@ This command:
 
 ## Observability
 
-Spotter supports three observability flows controlled by environment variables in `scripts/start_spotter.sh`.
+Spotter supports two observability flows controlled by environment variables in `scripts/start_spotter.sh`.
 
 ### Shared contract collector (default)
 
-When the shared dev observability stack is already running (detected by the `dev.observability.contract=v1` Docker label):
+When the shared dev observability stack is already running, Spotter reuses it:
 
 ```bash
+cd /srv/handgemacht/handgemacht && just obs-up
 scripts/start_spotter.sh
-# → Detects shared collector, skips local OTEL stack, exports to http://localhost:14318
-```
-
-### Local fallback
-
-When no shared stack is running and you want local observability:
-
-```bash
-export SPOTTER_OTEL_LOCAL_FALLBACK=1
-scripts/start_spotter.sh
-# → Starts local collector + Jaeger from docker-compose.otel.yml
+# → Reuses the shared collector at http://localhost:14318
 ```
 
 ### External endpoint override
@@ -331,7 +348,7 @@ For custom or remote collectors:
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=https://my-collector.example.com:4318
 scripts/start_spotter.sh
-# → Uses explicit endpoint, no local stack started
+# → Uses explicit endpoint, no shared stack required
 ```
 
 ### Observability environment variables
@@ -339,7 +356,6 @@ scripts/start_spotter.sh
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `OBS_ENABLED` | Enable contract-aware startup | `true` |
-| `SPOTTER_OTEL_LOCAL_FALLBACK` | Allow local stack when no contract collector | unset (disabled) |
 | `SPOTTER_OTEL_ENABLED` | Elixir SDK instrumentation toggle | `true` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint URL | `http://localhost:14318` |
 | `OTEL_RESOURCE_ATTRIBUTES` | Resource attributes (comma-separated key=value) | auto-filled with project/worktree defaults |

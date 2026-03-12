@@ -5,12 +5,12 @@ Spotter helps to review Claude Code sessions and generated code.
 
 Use `just` recipes from the repository root for day-to-day local runtime control:
 
-- `just up` - Ensure OTEL stack + start Dolt + Phoenix. Idempotent: keeps healthy services running; if Phoenix is unhealthy, tries graceful process restart first, then falls back to full Overmind recycle.
+- `just up` - Require shared OTEL, then start Dolt + Phoenix. It does not start OTEL implicitly; run `just otel-up` first when needed.
 - `just status` - Service health snapshot for Phoenix, Dolt, and Jaeger.
 - `just logs` - Stream Overmind output.
 - `just down` - Stop Phoenix/Overmind and Dolt.
 - `just reset` - `down` + wipe Dolt volumes + clean `up`.
-- `just otel-up` / `just otel-down` - Start/stop OTEL stack (delegates to shared workspace stack when available).
+- `just otel-up` / `just otel-down` - Start/stop the shared workspace OTEL stack explicitly. No repo-local OTEL fallback is supported.
 - `just otel-restart` / `just otel-status` - Restart and inspect OTEL stack health.
 - `just test-smoke` - Run runtime smoke tests.
 

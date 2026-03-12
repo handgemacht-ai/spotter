@@ -14,12 +14,17 @@ else
   NC=''
 fi
 
-REQUIRED_TOOLS=(just overmind docker)
+REQUIRED_TOOLS=(just overmind docker jq mix mysql node npm)
 
 INSTALL_HINTS=(
   "Install just: https://github.com/casey/just#installation"
   "Install overmind: https://github.com/DarthSim/overmind#installation"
   "Install docker: https://docs.docker.com/get-docker/"
+  "Install jq: https://jqlang.org/download/"
+  "Install Elixir (provides mix): https://elixir-lang.org/install.html"
+  "Install a MySQL-compatible client (e.g. brew install mysql-client or apt install default-mysql-client)"
+  "Install Node.js: https://nodejs.org/en/download"
+  "Install npm via Node.js: https://nodejs.org/en/download"
 )
 
 missing=()

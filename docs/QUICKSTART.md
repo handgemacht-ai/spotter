@@ -3,8 +3,12 @@
 ## Start Spotter
 
 ```bash
+just otel-up
 just up
 ```
+
+On a fresh checkout, `just up` installs missing Mix deps and asset deps automatically before Phoenix starts.
+If shared OTEL is not already running, `just up` exits non-zero and tells you to run `just otel-up` or `cd /srv/handgemacht/handgemacht && just obs-up`.
 
 Open `http://localhost:1100` in your browser.
 

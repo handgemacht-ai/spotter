@@ -51,11 +51,23 @@ else
     fi
   done
 
-  # _check-prereqs should exist (underscore = private recipe)
+  # Private setup/bootstrap recipes should exist.
   if grep -q '_check-prereqs' "$JUSTFILE" 2>/dev/null; then
     pass "private recipe '_check-prereqs' is defined"
   else
     fail "private recipe '_check-prereqs' is missing"
+  fi
+
+  if grep -q '_ensure-dev-setup' "$JUSTFILE" 2>/dev/null; then
+    pass "private recipe '_ensure-dev-setup' is defined"
+  else
+    fail "private recipe '_ensure-dev-setup' is missing"
+  fi
+
+  if grep -q '_ensure-shared-otel' "$JUSTFILE" 2>/dev/null; then
+    pass "private recipe '_ensure-shared-otel' is defined"
+  else
+    fail "private recipe '_ensure-shared-otel' is missing"
   fi
 fi
 
