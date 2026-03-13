@@ -64,9 +64,9 @@ defmodule SpotterWeb.PlanComponents do
     ~H"""
     <tr class="plan-epic-row" data-testid="epic-row">
       <td>
-        <a href={"/plans/#{@project}/#{@epic.id}"} class="plan-epic-link">
+        <.link patch={"/plans/#{URI.encode(@project)}/#{URI.encode(@epic.id)}"} class="plan-epic-link">
           {@epic.id}
-        </a>
+        </.link>
       </td>
       <td class="plan-epic-title">
         {@epic.title}
@@ -76,6 +76,9 @@ defmodule SpotterWeb.PlanComponents do
       </td>
       <td>
         <.priority_badge priority={@epic.priority} />
+      </td>
+      <td class="text-muted">
+        \u2014
       </td>
       <td class="text-muted">
         {format_date(@epic.created_at)}
