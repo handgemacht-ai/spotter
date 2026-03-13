@@ -23,6 +23,7 @@
 | `lib/spotter/services/` | Business logic services (~33 modules) |
 | `lib/spotter/observability/` | Telemetry (FlowHub, ObanTelemetry, error reporting) |
 | `lib/spotter/telemetry/` | OpenTelemetry setup (OTLP exporter, trace context) |
+| `lib/spotter/beads/` | Dolt beads client, queries, structs, content parser |
 | `lib/spotter/config/` | Runtime configuration (EnvParser, Setting) |
 | `lib/spotter/search/` | Full-text search (FTS5/LIKE, indexer, reindex job) |
 | `lib/spotter_web/controllers/` | HTTP endpoints (hooks, search, MCP) |
