@@ -46,7 +46,7 @@ defmodule Spotter.Beads.BeadContentParser do
   def extract_mermaid_blocks(nil), do: []
 
   def extract_mermaid_blocks(text) when is_binary(text) do
-    ~r/```mermaid\n(.*?)```/s
+    ~r/```mermaid\r?\n(.*?)```/s
     |> Regex.scan(text)
     |> Enum.map(fn [_full, content] -> String.trim(content) end)
   end

@@ -27,7 +27,8 @@ defmodule Spotter.Beads.BeadQueries do
 
           {:ok, summaries}
 
-        {:error, _} = err ->
+        {:error, reason} = err ->
+          Tracer.set_status(:error, inspect(reason))
           err
       end
     end
@@ -44,8 +45,12 @@ defmodule Spotter.Beads.BeadQueries do
       Tracer.set_attribute("spotter.beads.filter", Atom.to_string(filter))
 
       case Client.list_epics(project, filter) do
-        {:ok, rows} -> {:ok, BeadStructs.Epic.from_rows(rows)}
-        {:error, _} = err -> err
+        {:ok, rows} ->
+          {:ok, BeadStructs.Epic.from_rows(rows)}
+
+        {:error, reason} = err ->
+          Tracer.set_status(:error, inspect(reason))
+          err
       end
     end
   end
@@ -61,8 +66,12 @@ defmodule Spotter.Beads.BeadQueries do
       Tracer.set_attribute("spotter.beads.epic_id", epic_id)
 
       case Client.get_issue(project, epic_id) do
-        {:ok, row} -> {:ok, BeadStructs.Epic.from_row(row)}
-        {:error, _} = err -> err
+        {:ok, row} ->
+          {:ok, BeadStructs.Epic.from_row(row)}
+
+        {:error, reason} = err ->
+          Tracer.set_status(:error, inspect(reason))
+          err
       end
     end
   end
@@ -78,8 +87,12 @@ defmodule Spotter.Beads.BeadQueries do
       Tracer.set_attribute("spotter.beads.parent_id", parent_id)
 
       case Client.get_children(project, parent_id) do
-        {:ok, rows} -> {:ok, BeadStructs.Task.from_rows(rows)}
-        {:error, _} = err -> err
+        {:ok, rows} ->
+          {:ok, BeadStructs.Task.from_rows(rows)}
+
+        {:error, reason} = err ->
+          Tracer.set_status(:error, inspect(reason))
+          err
       end
     end
   end
