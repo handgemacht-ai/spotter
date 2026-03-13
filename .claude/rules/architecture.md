@@ -32,6 +32,16 @@ Localhost prototype, no authentication.
 
 Secondary domain: `Spotter.Config` (runtime settings via `Setting` resource, `Runtime` accessor with DB → TOML → default precedence). `transcript_roots` is the authoritative config key for transcript discovery paths (JSON array string in DB, TOML array in `priv/spotter.toml`).
 
+## Beads Layer (`lib/spotter/beads/`)
+
+Read-only Dolt client for querying beads issue data across projects.
+
+- **Client**: Raw MyXQL pool management and query execution (lazy-started per project)
+- **DoltConfig**: Connection configuration for Dolt databases (`beads_<project>`)
+- **BeadQueries**: High-level query interface returning typed structs with OTEL spans
+- **BeadStructs**: Typed structs — Epic, Task, Dependency — with `from_row/1` converters
+- **BeadContentParser**: Markdown parser — section splitting, mermaid extraction, GIVEN/WHEN/THEN tables
+
 ## Services Layer (`lib/spotter/services/`)
 
 - **Git**: GitRunner (port-based, timeout-safe), GitLogReader, GitCommitReader
