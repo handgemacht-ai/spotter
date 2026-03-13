@@ -53,7 +53,8 @@ defmodule Spotter.Transcripts.Annotation do
         :project_id,
         :commit_id,
         :commit_hotspot_id,
-        :purpose
+        :purpose,
+        :bead_id
       ]
     end
 
@@ -172,8 +173,9 @@ defmodule Spotter.Transcripts.Annotation do
                source = Ash.Changeset.get_attribute(changeset, :source)
                session_id = Ash.Changeset.get_attribute(changeset, :session_id)
 
-               if source != :file && is_nil(session_id) do
-                 {:error, field: :session_id, message: "is required when source is not :file"}
+               if source not in [:file, :plan] && is_nil(session_id) do
+                 {:error,
+                  field: :session_id, message: "is required when source is not :file or :plan"}
                else
                  :ok
                end
@@ -188,9 +190,19 @@ defmodule Spotter.Transcripts.Annotation do
       allow_nil? false
       default :transcript
       public? true
-      constraints one_of: [:terminal, :transcript, :file, :commit_message, :code, :prompt_pattern]
+
+      constraints one_of: [
+                    :terminal,
+                    :transcript,
+                    :file,
+                    :commit_message,
+                    :code,
+                    :prompt_pattern,
+                    :plan
+                  ]
     end
 
+    attribute :bead_id, :string, public?: true
     attribute :relative_path, :string
     attribute :line_start, :integer
     attribute :line_end, :integer
