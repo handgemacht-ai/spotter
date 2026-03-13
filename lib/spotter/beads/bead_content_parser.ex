@@ -26,24 +26,18 @@ defmodule Spotter.Beads.BeadContentParser do
     parts = Regex.split(~r/^##\s+/m, text, trim: true)
     headings = extract_headings(text)
 
-    # If the text starts with content before the first heading, skip that part
     sections =
-      if String.match?(text, ~r/\A\s*##\s+/m) do
-        parts
-      else
-        tl(parts)
-      end
+      if String.match?(text, ~r/\A\s*##\s+/m), do: parts, else: tl(parts)
 
     headings
     |> Enum.zip(sections)
     |> Map.new(fn {heading, body} ->
-      # Remove the heading line from the body (first line is the heading text)
-      body_without_heading =
+      body_text =
         body
         |> String.replace(~r/\A.*\n?/, "")
         |> String.trim()
 
-      {heading, body_without_heading}
+      {heading, body_text}
     end)
   end
 
@@ -62,15 +56,12 @@ defmodule Spotter.Beads.BeadContentParser do
   def extract_acceptance_table(nil), do: []
 
   def extract_acceptance_table(text) when is_binary(text) do
-    lines = String.split(text, "\n")
-
-    lines
+    text
+    |> String.split("\n")
     |> find_gwt_table_rows()
     |> Enum.map(&parse_gwt_row/1)
     |> Enum.reject(&is_nil/1)
   end
-
-  # -- Private helpers --
 
   defp find_gwt_table_rows(lines) do
     lines
