@@ -9,6 +9,19 @@ defmodule Spotter.Beads.BeadStructs do
   defmodule Epic do
     @moduledoc "An epic issue from the beads database."
 
+    @fields [
+      :id,
+      :title,
+      :status,
+      :priority,
+      :issue_type,
+      :description,
+      :created_at,
+      :updated_at,
+      :closed_at,
+      :assignee
+    ]
+
     @type t :: %__MODULE__{
             id: String.t(),
             title: String.t(),
@@ -23,37 +36,10 @@ defmodule Spotter.Beads.BeadStructs do
           }
 
     @enforce_keys [:id, :title, :status, :priority, :issue_type, :created_at]
-    defstruct [
-      :id,
-      :title,
-      :status,
-      :priority,
-      :issue_type,
-      :description,
-      :created_at,
-      :updated_at,
-      :closed_at,
-      :assignee
-    ]
+    defstruct @fields
 
     @spec from_row(map()) :: t()
-    def from_row(row) when is_map(row) do
-      struct!(
-        __MODULE__,
-        Map.take(row, [
-          :id,
-          :title,
-          :status,
-          :priority,
-          :issue_type,
-          :description,
-          :created_at,
-          :updated_at,
-          :closed_at,
-          :assignee
-        ])
-      )
-    end
+    def from_row(row) when is_map(row), do: struct!(__MODULE__, Map.take(row, @fields))
 
     @spec from_rows([map()]) :: [t()]
     def from_rows(rows) when is_list(rows), do: Enum.map(rows, &from_row/1)
@@ -62,6 +48,19 @@ defmodule Spotter.Beads.BeadStructs do
   defmodule Task do
     @moduledoc "A task or child issue from the beads database."
 
+    @fields [
+      :id,
+      :title,
+      :status,
+      :priority,
+      :issue_type,
+      :description,
+      :created_at,
+      :updated_at,
+      :closed_at,
+      :assignee
+    ]
+
     @type t :: %__MODULE__{
             id: String.t(),
             title: String.t(),
@@ -76,37 +75,10 @@ defmodule Spotter.Beads.BeadStructs do
           }
 
     @enforce_keys [:id, :title, :status, :priority, :issue_type, :created_at]
-    defstruct [
-      :id,
-      :title,
-      :status,
-      :priority,
-      :issue_type,
-      :description,
-      :created_at,
-      :updated_at,
-      :closed_at,
-      :assignee
-    ]
+    defstruct @fields
 
     @spec from_row(map()) :: t()
-    def from_row(row) when is_map(row) do
-      struct!(
-        __MODULE__,
-        Map.take(row, [
-          :id,
-          :title,
-          :status,
-          :priority,
-          :issue_type,
-          :description,
-          :created_at,
-          :updated_at,
-          :closed_at,
-          :assignee
-        ])
-      )
-    end
+    def from_row(row) when is_map(row), do: struct!(__MODULE__, Map.take(row, @fields))
 
     @spec from_rows([map()]) :: [t()]
     def from_rows(rows) when is_list(rows), do: Enum.map(rows, &from_row/1)
@@ -114,6 +86,8 @@ defmodule Spotter.Beads.BeadStructs do
 
   defmodule Dependency do
     @moduledoc "A dependency relationship between beads."
+
+    @fields [:depends_on_id, :type, :created_at, :depends_on_title, :depends_on_status]
 
     @type t :: %__MODULE__{
             depends_on_id: String.t(),
@@ -124,27 +98,10 @@ defmodule Spotter.Beads.BeadStructs do
           }
 
     @enforce_keys [:depends_on_id, :type, :created_at]
-    defstruct [
-      :depends_on_id,
-      :type,
-      :created_at,
-      :depends_on_title,
-      :depends_on_status
-    ]
+    defstruct @fields
 
     @spec from_row(map()) :: t()
-    def from_row(row) when is_map(row) do
-      struct!(
-        __MODULE__,
-        Map.take(row, [
-          :depends_on_id,
-          :type,
-          :created_at,
-          :depends_on_title,
-          :depends_on_status
-        ])
-      )
-    end
+    def from_row(row) when is_map(row), do: struct!(__MODULE__, Map.take(row, @fields))
 
     @spec from_rows([map()]) :: [t()]
     def from_rows(rows) when is_list(rows), do: Enum.map(rows, &from_row/1)
