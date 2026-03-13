@@ -1,4 +1,5 @@
 defmodule SpotterWeb.PlansLive do
+  @moduledoc "LiveView for browsing project epics from Dolt-backed beads data."
   use Phoenix.LiveView
 
   import SpotterWeb.PlanComponents
@@ -21,7 +22,7 @@ defmodule SpotterWeb.PlansLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    project = params["project"]
+    project = normalize_param(params["project"])
     epic_id = params["epic_id"]
 
     socket =
@@ -83,8 +84,19 @@ defmodule SpotterWeb.PlansLive do
     assign(socket, epic_detail: detail)
   end
 
+  defp normalize_param(nil), do: nil
+  defp normalize_param(""), do: nil
+  defp normalize_param(val), do: val
+
   defp safe_query(fun, default) do
-    task = Task.async(fun)
+    task =
+      Task.async(fn ->
+        try do
+          fun.()
+        rescue
+          _ -> {:error, :exception}
+        end
+      end)
 
     case Task.yield(task, @query_timeout) || Task.shutdown(task) do
       {:ok, {:ok, result}} -> result
