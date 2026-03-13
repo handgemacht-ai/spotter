@@ -148,16 +148,12 @@ defmodule SpotterWeb.PlansLive do
             <% end %>
           </tbody>
         </table>
-        <%= if @selected_project && @epics == [] do %>
-          <div class="empty-state">
-            No epics found for this project.
-          </div>
-        <% end %>
-        <%= if is_nil(@selected_project) && @epics == [] do %>
-          <div class="empty-state">
-            Select a project to view its epics.
-          </div>
-        <% end %>
+        <div :if={@epics == [] && @selected_project} class="empty-state">
+          No epics found for this project.
+        </div>
+        <div :if={@epics == [] && is_nil(@selected_project)} class="empty-state">
+          Select a project to view its epics.
+        </div>
       <% end %>
     </div>
     """

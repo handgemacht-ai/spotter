@@ -92,8 +92,7 @@ defmodule SpotterWeb.PlanComponents do
   defp priority_badge_class(0), do: "badge-error"
   defp priority_badge_class(1), do: "badge-inferred"
   defp priority_badge_class(2), do: ""
-  defp priority_badge_class(3), do: "badge-muted"
-  defp priority_badge_class(4), do: "badge-muted"
+  defp priority_badge_class(p) when p in [3, 4], do: "badge-muted"
   defp priority_badge_class(_), do: ""
 
   defp priority_label(0), do: "Critical"
