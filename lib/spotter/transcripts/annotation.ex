@@ -173,11 +173,18 @@ defmodule Spotter.Transcripts.Annotation do
                source = Ash.Changeset.get_attribute(changeset, :source)
                session_id = Ash.Changeset.get_attribute(changeset, :session_id)
 
-               if source not in [:file, :plan] && is_nil(session_id) do
-                 {:error,
-                  field: :session_id, message: "is required when source is not :file or :plan"}
-               else
-                 :ok
+               bead_id = Ash.Changeset.get_attribute(changeset, :bead_id)
+
+               cond do
+                 source not in [:file, :plan] && is_nil(session_id) ->
+                   {:error,
+                    field: :session_id, message: "is required when source is not :file or :plan"}
+
+                 source == :plan && is_nil(bead_id) ->
+                   {:error, field: :bead_id, message: "is required when source is :plan"}
+
+                 true ->
+                   :ok
                end
              end,
              on: [:create]
