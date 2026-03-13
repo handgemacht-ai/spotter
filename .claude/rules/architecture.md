@@ -56,9 +56,9 @@ Read-only Dolt client for querying beads issue data across projects.
 ## Web Layer (`lib/spotter_web/`)
 
 **Controllers** (HTTP): HooksController, SessionHookController, SearchController, ReviewsRedirectController, SpotterMcpPlug
-**LiveViews** (15): PaneListLive (dashboard), HistoryLive, CommitDetailLive, FileDetailLive, FileMetricsLive, SessionLive, SubagentLive, ReviewsLive, RetrosLive, ShellTelemetryLive, IngestProgressLive
+**LiveViews** (16): PaneListLive (dashboard), HistoryLive, CommitDetailLive, FileDetailLive, FileMetricsLive, SessionLive, SubagentLive, ReviewsLive, RetrosLive, ShellTelemetryLive, IngestProgressLive, PlansLive
 **Channel**: ReviewsChannel (live review-count updates via WebSocket)
-**Components**: Layouts, TranscriptComponents, AnnotationComponents, LanesComponents, ImportModalComponents
+**Components**: Layouts, TranscriptComponents, AnnotationComponents, LanesComponents, ImportModalComponents, PlanComponents
 
 ## Background Jobs (Oban)
 
