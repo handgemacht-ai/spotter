@@ -52,6 +52,7 @@ services:
     image: jaegertracing/all-in-one:latest
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
+      MEMORY_MAX_TRACES: "10000"
 
 volumes:
   spotter_sqlite:
