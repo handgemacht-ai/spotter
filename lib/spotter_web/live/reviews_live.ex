@@ -105,11 +105,13 @@ defmodule SpotterWeb.ReviewsLive do
   defp source_badge(:transcript), do: "Transcript"
   defp source_badge(:file), do: "File"
   defp source_badge(:prompt_pattern), do: "Pattern"
+  defp source_badge(:plan), do: "Plan"
   defp source_badge(_), do: "Transcript"
 
   defp source_badge_class(:transcript), do: "badge badge-agent"
   defp source_badge_class(:file), do: "badge badge-verified"
   defp source_badge_class(:prompt_pattern), do: "badge badge-pattern"
+  defp source_badge_class(:plan), do: "badge badge-info"
   defp source_badge_class(_), do: "badge badge-agent"
 
   defp subagent_label(%{subagent: %{slug: slug}} = _ann) when is_binary(slug), do: slug
