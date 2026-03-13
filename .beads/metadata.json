@@ -1,10 +1,10 @@
 {
-  "backend": "dolt",
   "database": "dolt",
-  "dolt_database": "beads_spotter",
+  "backend": "dolt",
   "dolt_mode": "server",
   "dolt_server_host": "127.0.0.1",
   "dolt_server_port": 3307,
   "dolt_server_user": "root",
+  "dolt_database": "beads_spotter",
   "project_id": "573e8505-e7c5-4ad7-b552-6c30e1e62110"
 }
