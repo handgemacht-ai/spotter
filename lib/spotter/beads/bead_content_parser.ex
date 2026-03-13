@@ -89,7 +89,7 @@ defmodule Spotter.Beads.BeadContentParser do
     normalized =~ "|given|" and normalized =~ "|when|" and normalized =~ "|then|"
   end
 
-  defp separator_row?(line), do: String.match?(line, ~r/^\s*\|[\s\-|]+\|\s*$/)
+  defp separator_row?(line), do: String.match?(line, ~r/^\s*\|[-| ]+\|\s*$/)
 
   defp table_row?(line), do: String.match?(line, ~r/^\s*\|.+\|\s*$/)
 
