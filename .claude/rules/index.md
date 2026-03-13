@@ -27,7 +27,7 @@
 | `lib/spotter/config/` | Runtime configuration (EnvParser, Setting) |
 | `lib/spotter/search/` | Full-text search (FTS5/LIKE, indexer, reindex job) |
 | `lib/spotter_web/controllers/` | HTTP endpoints (hooks, search, MCP) |
-| `lib/spotter_web/live/` | LiveView pages (15 modules) |
+| `lib/spotter_web/live/` | LiveView pages (16 modules) |
 | `lib/spotter_web/components/` | Reusable HEEX components |
 | `lib/spotter_web/channels/` | WebSocket channels (ReviewsChannel) |
 | `lib/spotter_web/plugs/` | Custom plugs (SpotterMcpPlug, ProjectContext) |
