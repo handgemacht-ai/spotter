@@ -32,6 +32,8 @@ erDiagram
 
 Annotations are polymorphic — they can be attached to a session, subagent, project, commit, or hotspot (all nullable foreign keys). Each annotation tracks its `source` (where it was created) and `purpose` (review or explain). Message refs link to the transcript messages that were selected. File refs specify file paths with line ranges.
 
+Source types: `:terminal`, `:transcript`, `:file`, `:commit_message`, `:code`, `:prompt_pattern`, `:plan`. Plan-source annotations include a `bead_id` string attribute linking to a beads issue ID. Plan annotations require `bead_id` and do not require `session_id` (they are bead-scoped, not session-scoped).
+
 ## File & Change Tracking
 
 ```mermaid
