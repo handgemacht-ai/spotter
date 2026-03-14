@@ -17,6 +17,7 @@
     "esbuild": "^0.27.3",
     "highlight.js": "^11.11.1",
     "marked": "^17.0.2",
+    "mermaid": "^11.13.0",
     "sortablejs": "^1.15.7"
   },
   "devDependencies": {

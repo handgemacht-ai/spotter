@@ -23,6 +23,14 @@ defmodule Spotter.Beads.BeadContentParser do
   def extract_sections(nil), do: %{}
 
   def extract_sections(text) when is_binary(text) do
+    text |> extract_sections_ordered() |> Map.new()
+  end
+
+  @doc "Like `extract_sections/1` but returns an ordered list of `{heading, body}` tuples."
+  @spec extract_sections_ordered(String.t() | nil) :: [{String.t(), String.t()}]
+  def extract_sections_ordered(nil), do: []
+
+  def extract_sections_ordered(text) when is_binary(text) do
     parts = Regex.split(~r/^##\s+/m, text, trim: true)
     headings = extract_headings(text)
 
@@ -31,7 +39,7 @@ defmodule Spotter.Beads.BeadContentParser do
 
     headings
     |> Enum.zip(sections)
-    |> Map.new(fn {heading, body} ->
+    |> Enum.map(fn {heading, body} ->
       body_text =
         body
         |> String.replace(~r/\A.*\n?/, "")

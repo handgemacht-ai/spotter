@@ -1,13 +1,9 @@
 defmodule Spotter.Transcripts.AnnotationPlanSourceTest do
-  use ExUnit.Case, async: false
+  use Spotter.DataCase, async: false
 
-  alias Ecto.Adapters.SQL.Sandbox
-  alias Spotter.Repo
   alias Spotter.Transcripts.{Annotation, Project}
 
   setup do
-    Sandbox.checkout(Repo)
-
     project = Ash.create!(Project, %{name: "test-plan-annotations", pattern: "^test"})
 
     %{project: project}
