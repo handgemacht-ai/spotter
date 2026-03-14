@@ -56,7 +56,7 @@ Read-only Dolt client for querying beads issue data across projects.
 ## Web Layer (`lib/spotter_web/`)
 
 **Controllers** (HTTP): HooksController, SessionHookController, SearchController, ReviewsRedirectController, SpotterMcpPlug
-**LiveViews** (16): PaneListLive (dashboard), HistoryLive, CommitDetailLive, FileDetailLive, FileMetricsLive, SessionLive, SubagentLive, ReviewsLive, RetrosLive, ShellTelemetryLive, IngestProgressLive, PlansLive
+**LiveViews** (17): PaneListLive (dashboard), HistoryLive, CommitDetailLive, FileDetailLive, FileMetricsLive, SessionLive, SubagentLive, ReviewsLive, RetrosLive, ShellTelemetryLive, IngestProgressLive, PlansLive, PlanDetailLive
 **Channel**: ReviewsChannel (live review-count updates via WebSocket)
 **Components**: Layouts, TranscriptComponents, AnnotationComponents, LanesComponents, ImportModalComponents, PlanComponents
 
@@ -86,7 +86,9 @@ Git operations                  --> GitRunner (port-based, timeout-safe)
 
 ## Frontend
 
-esbuild-compiled JS (no framework). Key libraries: cytoscape (DAG visualization), highlight.js, marked (markdown), sortablejs, dompurify.
+esbuild-compiled JS (no framework). Key libraries: cytoscape (DAG visualization), highlight.js, marked (markdown), sortablejs, dompurify, mermaid (lazy-loaded for plan diagrams).
+
+**JS Hooks** (`assets/js/hooks/`): LaneDrag, SortableColumns, ConnectorOverlay, TranscriptTaskRail, MermaidHook (lazy-loads mermaid.js, renders SVG with dark theme), PlanHighlighter (text selection for plan annotations).
 
 ## Plugin
 

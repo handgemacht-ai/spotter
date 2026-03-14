@@ -87,6 +87,65 @@ defmodule SpotterWeb.PlanComponents do
     """
   end
 
+  @doc """
+  Renders a GIVEN/WHEN/THEN acceptance criteria table.
+  """
+  attr(:rows, :list, required: true)
+
+  def acceptance_table(assigns) do
+    ~H"""
+    <table class="acceptance-table" data-testid="acceptance-table">
+      <thead>
+        <tr>
+          <th>GIVEN</th>
+          <th>WHEN</th>
+          <th>THEN</th>
+        </tr>
+      </thead>
+      <tbody>
+        <%= for row <- @rows do %>
+          <tr>
+            <td>{row.given}</td>
+            <td>{row.when}</td>
+            <td>{row.then}</td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+    """
+  end
+
+  @doc """
+  Renders a child task row with expand/collapse toggle.
+  """
+  attr(:task, :map, required: true)
+  attr(:expanded, :boolean, default: false)
+
+  def task_row(assigns) do
+    ~H"""
+    <div class="plan-task-row" data-testid="child-task-row" data-task-id={@task.id}>
+      <div class="plan-task-row-header">
+        <button
+          class="plan-task-toggle"
+          phx-click="toggle_task"
+          phx-value-task_id={@task.id}
+        >
+          <span class={"plan-task-chevron#{if @expanded, do: " is-expanded"}"}>&rsaquo;</span>
+        </button>
+        <span class="plan-task-id">{@task.id}</span>
+        <span class="plan-task-title">{@task.title}</span>
+        <.status_badge status={@task.status} />
+        <.priority_badge priority={@task.priority} />
+      </div>
+      <%= if @expanded && @task.description do %>
+        <div class="plan-task-description" data-testid="child-task-description-expanded">
+          <p>{@task.description}</p>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
   defp status_badge_class("open"), do: "badge-verified"
   defp status_badge_class("closed"), do: "badge-muted"
   defp status_badge_class("in_progress"), do: "badge-agent"

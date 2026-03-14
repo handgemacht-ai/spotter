@@ -32,3 +32,71 @@ config :ash, policies: [show_policy_breakdowns?: true], disable_async?: true
 config :spotter, SpotterWeb.SpotterMcpPlug,
   sse_keepalive_ms: 10,
   sse_max_duration_ms: 25
+
+# Static test fixture data for PlanDetailLive (Dolt is unavailable in tests)
+config :spotter, :plan_detail_test_data, %{
+  "spotter/spotter-uok" => %{
+    epic: %{
+      id: "spotter-uok",
+      title: "Plans Navigation",
+      status: "open",
+      priority: 1,
+      issue_type: "epic",
+      description: """
+      ## Overview
+
+      Plans Navigation feature for Spotter.
+
+      ## Architecture
+
+      ```mermaid
+      graph TD
+        A[Browser] --> B[LiveView]
+        B --> C[BeadQueries]
+        C --> D[Dolt DB]
+      ```
+
+      ## Acceptance Criteria
+
+      | GIVEN | WHEN | THEN |
+      |-------|------|------|
+      | A project with epics | User opens plans page | Epic list is displayed |
+      | An epic is selected | User clicks epic | Epic detail with children shown |
+
+      ## Implementation Notes
+
+      Use MyXQL for Dolt queries.
+      """,
+      created_at: ~N[2026-03-01 00:00:00],
+      updated_at: nil,
+      closed_at: nil,
+      assignee: nil
+    },
+    children: [
+      %{
+        id: "spotter-task-1",
+        title: "Implement BeadQueries",
+        status: "open",
+        priority: 2,
+        issue_type: "task",
+        description: "Query implementation for Dolt database access.",
+        created_at: ~N[2026-03-01 00:00:00],
+        updated_at: nil,
+        closed_at: nil,
+        assignee: nil
+      },
+      %{
+        id: "spotter-task-2",
+        title: "Create PlanDetailLive",
+        status: "in_progress",
+        priority: 1,
+        issue_type: "task",
+        description: "LiveView for epic detail rendering.",
+        created_at: ~N[2026-03-02 00:00:00],
+        updated_at: nil,
+        closed_at: nil,
+        assignee: nil
+      }
+    ]
+  }
+}

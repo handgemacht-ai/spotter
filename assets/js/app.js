@@ -16,6 +16,8 @@ import LaneDrag from "./hooks/lane_drag"
 import SortableColumns from "./hooks/sortable_columns"
 import ConnectorOverlay from "./hooks/connector_overlay"
 import TranscriptTaskRail from "./hooks/transcript_task_rail"
+import MermaidHook from "./hooks/mermaid_hook"
+import PlanHighlighter from "./hooks/plan_highlighter"
 import { initProjectSelector } from "./project_selector"
 
 hljs.registerLanguage("elixir", elixir)
@@ -555,6 +557,8 @@ Hooks.LaneDrag = LaneDrag
 Hooks.SortableColumns = SortableColumns
 Hooks.ConnectorOverlay = ConnectorOverlay
 Hooks.TranscriptTaskRail = TranscriptTaskRail
+Hooks.MermaidHook = MermaidHook
+Hooks.PlanHighlighter = PlanHighlighter
 
 const csrfToken = document.querySelector("meta[name='csrf-token']")?.getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {

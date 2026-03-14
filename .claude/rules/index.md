@@ -27,7 +27,7 @@
 | `lib/spotter/config/` | Runtime configuration (EnvParser, Setting) |
 | `lib/spotter/search/` | Full-text search (FTS5/LIKE, indexer, reindex job) |
 | `lib/spotter_web/controllers/` | HTTP endpoints (hooks, search, MCP) |
-| `lib/spotter_web/live/` | LiveView pages (16 modules) |
+| `lib/spotter_web/live/` | LiveView pages (17 modules) |
 | `lib/spotter_web/components/` | Reusable HEEX components |
 | `lib/spotter_web/channels/` | WebSocket channels (ReviewsChannel) |
 | `lib/spotter_web/plugs/` | Custom plugs (SpotterMcpPlug, ProjectContext) |
@@ -42,6 +42,8 @@
 |------|----------|
 | `assets/` | JS/CSS source (esbuild-compiled) |
 | `assets/js/project_selector.js` | Sidebar project selector dropdown (standalone init) |
+| `assets/js/hooks/mermaid_hook.js` | MermaidHook: lazy-loads mermaid.js, renders SVG diagrams |
+| `assets/js/hooks/plan_highlighter.js` | PlanHighlighter: text selection for plan annotations |
 | `priv/static/` | Compiled static assets |
 
 ## Tests
