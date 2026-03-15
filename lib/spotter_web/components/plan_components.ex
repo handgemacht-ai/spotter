@@ -64,7 +64,7 @@ defmodule SpotterWeb.PlanComponents do
     ~H"""
     <tr class="plan-epic-row" data-testid="epic-row">
       <td>
-        <.link patch={"/plans/#{URI.encode(@project)}/#{URI.encode(@epic.id)}"} class="plan-epic-link">
+        <.link patch={"/plans/#{URI.encode_www_form(@project)}/#{URI.encode_www_form(@epic.id)}"} class="plan-epic-link">
           {@epic.id}
         </.link>
       </td>

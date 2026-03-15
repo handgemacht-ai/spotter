@@ -93,16 +93,23 @@ defmodule SpotterWeb.PlanDetailLive do
 
       project_id = lookup_project_id(project)
 
-      Spotter.Transcripts.Annotation
-      |> Ash.Changeset.for_create(:create, %{
-        source: :plan,
-        bead_id: epic.id,
-        selected_text: text,
-        comment: comment,
-        purpose: :review,
-        project_id: project_id
-      })
-      |> Ash.create()
+      case Spotter.Transcripts.Annotation
+           |> Ash.Changeset.for_create(:create, %{
+             source: :plan,
+             bead_id: epic.id,
+             selected_text: text,
+             comment: comment,
+             purpose: :review,
+             project_id: project_id
+           })
+           |> Ash.create() do
+        {:ok, _annotation} ->
+          :ok
+
+        {:error, reason} ->
+          Tracer.set_status(:error, inspect(reason))
+          :error
+      end
     end
   end
 
@@ -297,5 +304,5 @@ defmodule SpotterWeb.PlanDetailLive do
   defp empty_message(_), do: "Epic not found."
 
   defp back_path(nil), do: "/plans"
-  defp back_path(project), do: "/plans?project=#{URI.encode(project)}"
+  defp back_path(project), do: "/plans?project=#{URI.encode_www_form(project)}"
 end
