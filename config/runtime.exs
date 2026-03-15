@@ -21,6 +21,13 @@ if dsn = System.get_env("SENTRY_DSN") do
   config :sentry, dsn: dsn
 end
 
+# Beads Dolt client configuration — shares the same Dolt server as ProductSpec
+config :spotter, Spotter.Beads.DoltConfig,
+  hostname: System.get_env("SPOTTER_DOLT_HOST", "localhost"),
+  port: String.to_integer(System.get_env("SPOTTER_DOLT_PORT", "13307")),
+  username: System.get_env("SPOTTER_DOLT_USERNAME", "spotter"),
+  password: System.get_env("SPOTTER_DOLT_PASSWORD", "spotter")
+
 # Product Spec (Dolt) configuration
 config :spotter, Spotter.ProductSpec.Repo,
   hostname: System.get_env("SPOTTER_DOLT_HOST", "localhost"),
