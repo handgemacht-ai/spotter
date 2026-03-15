@@ -52,6 +52,10 @@
 |------|----------|
 | `test/` | ExUnit tests (~102 files) |
 | `e2e/` | Playwright E2E tests |
+| `e2e/tests/plans.smoke.spec.ts` | Plans list view e2e tests |
+| `e2e/tests/plan-detail.smoke.spec.ts` | Plan detail view e2e tests |
+| `e2e/support/pages/plans.ts` | PlansPage POM |
+| `e2e/support/pages/plan-detail.ts` | PlanDetailPage POM |
 
 ## Infrastructure
 

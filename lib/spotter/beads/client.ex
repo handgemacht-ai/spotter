@@ -243,7 +243,7 @@ defmodule Spotter.Beads.Client do
     Enum.map(rows, fn row ->
       columns
       |> Enum.zip(row)
-      |> Map.new(fn {col, val} -> {String.to_existing_atom(col), val} end)
+      |> Map.new(fn {col, val} -> {String.to_atom(col), val} end)
     end)
   end
 

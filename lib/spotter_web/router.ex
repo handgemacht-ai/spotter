@@ -33,6 +33,9 @@ defmodule SpotterWeb.Router do
     post("/hooks/commit-event", HooksController, :commit_event)
     post("/hooks/raw-event", HooksController, :raw_event)
     post("/hooks/waiting-summary", SessionHookController, :waiting_summary)
+
+    post("/e2e/seed-plans", E2eSeedController, :seed_plans)
+    delete("/e2e/seed-plans", E2eSeedController, :cleanup_plans)
   end
 
   scope "/", SpotterWeb do
