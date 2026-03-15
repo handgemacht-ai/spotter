@@ -1,9 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { prepareFullPageSnapshot, waitForLiveViewReady } from "../support/liveview";
 import { PlansPage } from "../support/pages/plans";
+import { seedPlans, cleanupPlans } from "../support/seed-plans";
 
 test.describe("plans list — /plans", () => {
   let plans: PlansPage;
+
+  test.beforeAll(async () => { await seedPlans(); });
+  test.afterAll(async () => { await cleanupPlans(); });
 
   test.beforeEach(async ({ page }) => {
     plans = new PlansPage(page);
