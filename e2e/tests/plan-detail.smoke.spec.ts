@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { prepareFullPageSnapshot, waitForLiveViewReady } from "../support/liveview";
 import { PlansPage } from "../support/pages/plans";
 import { PlanDetailPage } from "../support/pages/plan-detail";
+import { seedPlans, cleanupPlans } from "../support/seed-plans";
 
 /**
  * Helper: navigate from plans list to the first epic's detail page.
@@ -28,6 +29,9 @@ async function navigateToFirstEpic(
 test.describe("plan detail — /plans/:project/:epic_id", () => {
   let plans: PlansPage;
   let detail: PlanDetailPage;
+
+  test.beforeAll(async () => { await seedPlans(); });
+  test.afterAll(async () => { await cleanupPlans(); });
 
   test.beforeEach(async ({ page }) => {
     plans = new PlansPage(page);
