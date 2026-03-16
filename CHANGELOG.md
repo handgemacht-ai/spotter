@@ -6,7 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- DoltConfig defaults: port 3307 (shared workspace Dolt), username "root", separate BEADS_DOLT_* env vars (spotter-gdz.1)
+- Database discovery SQL: exclude system DBs instead of filtering beads_* prefix (spotter-gdz.1)
+
 ### Added
+
+- `Spotter.Plans.PlanSource` behaviour for pluggable plan data sources (spotter-gdz.2)
+  - Callbacks: `list_projects/0`, `list_plans/2`, `get_plan/2`, `list_children/2`
+  - Types reference `BeadStructs.Epic` and `BeadStructs.Task`
+- `Spotter.Plans.BeadsSource` — PlanSource implementation delegating to BeadQueries (spotter-gdz.3)
+- `Spotter.Plans` coordinator module aggregating configured plan sources (spotter-gdz.4)
+  - `list_projects/0` merges across sources via flat_map
+  - `list_plans/2`, `get_plan/2`, `list_children/2` try sources in order (first success)
+  - OTEL spans: `spotter.plans.list_projects`, `spotter.plans.list_plans`, `spotter.plans.get_plan`, `spotter.plans.list_children`
+  - Configurable via `config :spotter, Spotter.Plans, sources: [Spotter.Plans.BeadsSource]`
+- PlansLive uses global sidebar project selector instead of local project chips (spotter-gdz.5)
+  - Grouped-by-project view when no project selected
+  - Filtered flat table when project selected via sidebar
+  - Removed `project_chip` component from PlanComponents
+
+### Changed
+
+- PlansLive and PlanDetailLive call `Spotter.Plans` coordinator instead of `BeadQueries` directly (spotter-gdz.5)
 
 - Multi-root transcript discovery via `transcript_roots` config key (spotter-j9d)
   - `transcript_roots` replaces `transcripts_dir` as the single source of truth for transcript location
