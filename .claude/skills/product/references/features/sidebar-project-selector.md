@@ -53,3 +53,4 @@ Uses existing `Spotter.Transcripts.Project` resource (id, name, pattern, timezon
 - Legacy `?project_id=` param is supported as fallback for backwards compatibility
 - Invalid/non-existent project IDs fall back to the first available project
 - One project is always selected — no "All Projects" aggregation view
+- Plans view supports "no project selected" with a grouped-by-project view showing all projects' epics
