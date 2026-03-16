@@ -36,8 +36,8 @@ Secondary domain: `Spotter.Config` (runtime settings via `Setting` resource, `Ru
 
 Plan source abstraction for aggregating plans from multiple backends.
 
-- **Plans** (`Spotter.Plans`): Public API coordinator — aggregates results from configured sources. `list_projects/0` merges via flat_map; `list_plans/2`, `get_plan/2`, `list_children/2` use first-success fallthrough. Sources configured via `config :spotter, Spotter.Plans, sources: [...]`. All functions wrapped in OTEL spans (`spotter.plans.*`).
-- **PlanSource**: Behaviour defining callbacks — `list_projects/0`, `list_plans/2`, `get_plan/2`, `list_children/2`
+- **Plans** (`Spotter.Plans`): Public API coordinator — aggregates results from configured sources. `list_projects/0` merges via flat_map; `list_plans/2`, `get_plan/2`, `get_bead/2`, `list_children/2`, `list_dependencies/2` use first-success fallthrough. Sources configured via `config :spotter, Spotter.Plans, sources: [...]`. All functions wrapped in OTEL spans (`spotter.plans.*`).
+- **PlanSource**: Behaviour defining callbacks — `list_projects/0`, `list_plans/2`, `get_plan/2`, `list_children/2`, `list_dependencies/2`
 - **BeadsSource**: PlanSource implementation — pure delegation to `Spotter.Beads.BeadQueries`
 
 ## Beads Layer (`lib/spotter/beads/`)
