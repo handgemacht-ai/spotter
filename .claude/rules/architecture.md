@@ -36,7 +36,9 @@ Secondary domain: `Spotter.Config` (runtime settings via `Setting` resource, `Ru
 
 Plan source abstraction for aggregating plans from multiple backends.
 
+- **Plans** (`Spotter.Plans`): Public API coordinator — aggregates results from configured sources. `list_projects/0` merges via flat_map; `list_plans/2`, `get_plan/2`, `list_children/2` use first-success fallthrough. Sources configured via `config :spotter, Spotter.Plans, sources: [...]`. All functions wrapped in OTEL spans (`spotter.plans.*`).
 - **PlanSource**: Behaviour defining callbacks — `list_projects/0`, `list_plans/2`, `get_plan/2`, `list_children/2`
+- **BeadsSource**: PlanSource implementation — pure delegation to `Spotter.Beads.BeadQueries`
 
 ## Beads Layer (`lib/spotter/beads/`)
 
@@ -108,3 +110,4 @@ esbuild-compiled JS (no framework). Key libraries: cytoscape (DAG visualization)
 | Claude queries | `spotter.claude_code.*` | `spotter.claude_code.query` |
 | Git operations | `spotter.git.*` | `spotter.git.run` |
 | File detail | `spotter.file_detail.*` | `spotter.file_detail.load_file_content` |
+| Plans coordinator | `spotter.plans.*` | `spotter.plans.list_projects` |

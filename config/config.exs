@@ -24,6 +24,8 @@ config :spotter, Oban,
     {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(15)}
   ]
 
+config :spotter, Spotter.Plans, sources: [Spotter.Plans.BeadsSource]
+
 config :spotter, ecto_repos: [Spotter.Repo], ash_domains: [Spotter.Transcripts, Spotter.Config]
 
 config :spotter, SpotterWeb.Endpoint,

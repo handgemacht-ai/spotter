@@ -35,7 +35,7 @@ config :spotter, SpotterWeb.SpotterMcpPlug,
 
 # Static test fixture data for PlanDetailLive (Dolt is unavailable in tests)
 config :spotter, :plan_detail_test_data, %{
-  "spotter/spotter-uok" => %{
+  "beads_spotter/spotter-uok" => %{
     epic: %{
       id: "spotter-uok",
       title: "Plans Navigation",
