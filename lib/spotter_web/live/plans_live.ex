@@ -66,8 +66,10 @@ defmodule SpotterWeb.PlansLive do
       projects
       |> Task.async_stream(
         fn %{project: name} ->
-          epics = safe_query(fn -> Plans.list_plans(name) end, [])
-          {name, epics}
+          case Plans.list_plans(name) do
+            {:ok, epics} -> {name, epics}
+            _ -> {name, []}
+          end
         end,
         max_concurrency: 4,
         timeout: @query_timeout,
