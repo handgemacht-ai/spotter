@@ -76,6 +76,24 @@ defmodule Spotter.Plans do
     end
   end
 
+  @doc """
+  Lists dependencies of a plan. Tries sources in order, returns first success.
+  """
+  @spec list_dependencies(String.t(), String.t()) ::
+          {:ok, [Spotter.Plans.PlanSource.dependency()]} | {:error, term()}
+  def list_dependencies(project, plan_id) do
+    Tracer.with_span "spotter.plans.list_dependencies" do
+      Tracer.set_attribute("plans.project", project)
+      Tracer.set_attribute("plans.plan_id", plan_id)
+      first_success(sources(), fn source -> source.list_dependencies(project, plan_id) end)
+    end
+  end
+
+  @doc """
+  Gets a single bead by project and bead ID. Alias for `get_plan/2`.
+  """
+  defdelegate get_bead(project, bead_id), to: __MODULE__, as: :get_plan
+
   defp sources do
     Application.get_env(:spotter, __MODULE__, [])
     |> Keyword.get(:sources, [BeadsSource])

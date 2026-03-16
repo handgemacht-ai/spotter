@@ -10,6 +10,7 @@ defmodule Spotter.Plans.PlanSource do
 
   @type plan :: BeadStructs.Epic.t()
   @type task :: BeadStructs.Task.t()
+  @type dependency :: BeadStructs.Dependency.t()
   @type project_summary :: %{project: String.t(), plan_count: integer()}
 
   @callback list_projects() :: {:ok, [project_summary()]} | {:error, term()}
@@ -19,4 +20,6 @@ defmodule Spotter.Plans.PlanSource do
               {:ok, plan()} | {:error, term()}
   @callback list_children(project :: String.t(), plan_id :: String.t()) ::
               {:ok, [task()]} | {:error, term()}
+  @callback list_dependencies(project :: String.t(), plan_id :: String.t()) ::
+              {:ok, [dependency()]} | {:error, term()}
 end

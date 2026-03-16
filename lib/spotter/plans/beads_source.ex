@@ -29,4 +29,7 @@ defmodule Spotter.Plans.BeadsSource do
 
   @impl true
   def list_children(project, plan_id), do: BeadQueries.list_children(project, plan_id)
+
+  @impl true
+  def list_dependencies(project, plan_id), do: BeadQueries.list_dependencies(project, plan_id)
 end

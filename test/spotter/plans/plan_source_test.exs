@@ -24,9 +24,14 @@ defmodule Spotter.Plans.PlanSourceTest do
       assert {:list_children, 2} in callbacks
     end
 
-    test "defines exactly 4 callbacks" do
+    test "defines list_dependencies/2 callback" do
       callbacks = PlanSource.behaviour_info(:callbacks)
-      assert length(callbacks) == 4
+      assert {:list_dependencies, 2} in callbacks
+    end
+
+    test "defines exactly 5 callbacks" do
+      callbacks = PlanSource.behaviour_info(:callbacks)
+      assert length(callbacks) == 5
     end
   end
 
@@ -81,6 +86,9 @@ defmodule Spotter.Plans.PlanSourceTest do
            }
          ]}
       end
+
+      @impl true
+      def list_dependencies(_project, _plan_id), do: {:ok, []}
     end
 
     test "mock implements list_projects/0 returning project summaries" do

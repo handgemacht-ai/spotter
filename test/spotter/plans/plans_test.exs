@@ -67,6 +67,9 @@ defmodule Spotter.PlansTest do
         {:ok, []}
       end
     end
+
+    @impl true
+    def list_dependencies(_project, _plan_id), do: {:ok, []}
   end
 
   defmodule SourceB do
@@ -127,6 +130,9 @@ defmodule Spotter.PlansTest do
         {:ok, []}
       end
     end
+
+    @impl true
+    def list_dependencies(_project, _plan_id), do: {:ok, []}
   end
 
   defmodule ErrorSource do
@@ -143,6 +149,9 @@ defmodule Spotter.PlansTest do
 
     @impl true
     def list_children(_project, _plan_id), do: {:error, :connection_refused}
+
+    @impl true
+    def list_dependencies(_project, _plan_id), do: {:error, :connection_refused}
   end
 
   setup do

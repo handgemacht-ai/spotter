@@ -19,16 +19,36 @@ defmodule Spotter.Transcripts.Annotation do
     read :mcp_read_review_annotations do
       filter expr(purpose == :review)
 
+      argument :bead_id, :string, allow_nil?: true
+
       prepare fn query, _context ->
         require Ash.Query
 
-        case query.context[:spotter_mcp_scope] do
-          %{project_id: project_id} when is_binary(project_id) ->
-            Ash.Query.filter(query, project_id == ^project_id)
+        query =
+          case query.context[:spotter_mcp_scope] do
+            %{project_id: project_id} when is_binary(project_id) ->
+              Ash.Query.filter(query, project_id == ^project_id)
 
-          _ ->
-            Ash.Query.add_error(query, "MCP project scope is required but missing or invalid")
+            _ ->
+              Ash.Query.add_error(query, "MCP project scope is required but missing or invalid")
+          end
+
+        case query.arguments[:bead_id] do
+          nil -> query
+          bead_id -> Ash.Query.filter(query, bead_id == ^bead_id)
         end
+      end
+    end
+
+    read :list_for_bead do
+      argument :bead_id, :string, allow_nil?: false
+
+      filter expr(source == :plan and state == :open)
+
+      prepare fn query, _context ->
+        require Ash.Query
+        bead_id = query.arguments[:bead_id]
+        Ash.Query.filter(query, bead_id == ^bead_id)
       end
     end
 

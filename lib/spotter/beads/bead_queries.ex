@@ -96,4 +96,30 @@ defmodule Spotter.Beads.BeadQueries do
       end
     end
   end
+
+  @doc """
+  Lists dependencies for an issue as Dependency structs.
+  """
+  @spec list_dependencies(String.t(), String.t()) ::
+          {:ok, [BeadStructs.Dependency.t()]} | {:error, atom()}
+  def list_dependencies(project, issue_id) do
+    Tracer.with_span "spotter.beads.queries.list_dependencies" do
+      Tracer.set_attribute("spotter.beads.project", project)
+      Tracer.set_attribute("spotter.beads.issue_id", issue_id)
+
+      case Client.get_dependencies(project, issue_id) do
+        {:ok, rows} ->
+          {:ok, BeadStructs.Dependency.from_rows(rows)}
+
+        {:error, reason} = err ->
+          Tracer.set_status(:error, inspect(reason))
+          err
+      end
+    end
+  end
+
+  @doc """
+  Fetches a single bead (any issue type) by ID as an Epic struct.
+  """
+  defdelegate get_bead(project, bead_id), to: __MODULE__, as: :get_epic
 end
