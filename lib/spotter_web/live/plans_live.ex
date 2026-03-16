@@ -22,8 +22,13 @@ defmodule SpotterWeb.PlansLive do
   def handle_params(params, _uri, socket) do
     socket =
       if connected?(socket) do
+        # Only filter to a single project when an explicit ?project= param is present.
+        # Without it, show the grouped-by-project view with all projects.
         project_name =
-          resolve_project_name(socket.assigns) || normalize_param(params["project"])
+          case normalize_param(params["project"]) do
+            nil -> nil
+            raw -> resolve_project_name(socket.assigns, raw)
+          end
 
         socket = assign(socket, project_name: project_name)
 
@@ -39,16 +44,17 @@ defmodule SpotterWeb.PlansLive do
     {:noreply, socket}
   end
 
-  defp resolve_project_name(%{current_project_id: nil}), do: nil
-
-  defp resolve_project_name(%{current_project_id: project_id, projects: projects}) do
-    case Enum.find(projects, &(&1.id == project_id)) do
+  # Resolve a ?project= param to a project name.
+  # If it matches a project ID from the sidebar, return that project's name.
+  # Otherwise, treat it as a literal project name (for direct URL usage).
+  defp resolve_project_name(%{projects: projects}, raw) when is_list(projects) do
+    case Enum.find(projects, &(&1.id == raw)) do
       %{name: name} -> name
-      _ -> nil
+      _ -> raw
     end
   end
 
-  defp resolve_project_name(_), do: nil
+  defp resolve_project_name(_, raw), do: raw
 
   defp normalize_param(nil), do: nil
   defp normalize_param(""), do: nil

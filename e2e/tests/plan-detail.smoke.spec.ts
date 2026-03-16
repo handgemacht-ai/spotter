@@ -4,22 +4,20 @@ import { PlansPage } from "../support/pages/plans";
 import { PlanDetailPage } from "../support/pages/plan-detail";
 import { seedPlans, cleanupPlans } from "../support/seed-plans";
 
+/** Known e2e test epic seeded by seed-plans. */
+const E2E_PROJECT = "e2e_plans";
+const E2E_EPIC_ID = "e2e-epic-001";
+
 /**
- * Helper: navigate from plans list to the first epic's detail page.
- * Post-migration: epics are visible directly (grouped or filtered via sidebar),
- * no chip click needed.
+ * Helper: navigate directly to the known e2e test epic's detail page.
+ * Uses the deterministic seed data from E2eSeedController.
  */
 async function navigateToFirstEpic(
   page: import("@playwright/test").Page,
-  plans: PlansPage,
+  _plans: PlansPage,
   detail: PlanDetailPage,
 ): Promise<void> {
-  await plans.goto();
-  await expect(plans.allEpicRows().first()).toBeVisible({ timeout: 5000 });
-
-  const epicLink = plans.epicLink(plans.allEpicRows().first());
-  await epicLink.click();
-  await waitForLiveViewReady(page, "plan-detail-root");
+  await detail.goto(E2E_PROJECT, E2E_EPIC_ID);
 }
 
 test.describe("plan detail — /plans/:project/:epic_id", () => {

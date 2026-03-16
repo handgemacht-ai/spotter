@@ -12,7 +12,7 @@ defmodule SpotterWeb.E2eSeedController do
   alias Spotter.Beads.DoltConfig
 
   @e2e_project "e2e_plans"
-  @e2e_database "beads_e2e_plans"
+  @e2e_database "e2e_plans"
   @e2e_epic_id "e2e-epic-001"
 
   @e2e_epic_description """
