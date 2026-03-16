@@ -119,7 +119,8 @@ defmodule Spotter.Beads.BeadQueries do
   end
 
   @doc """
-  Fetches a single bead (any issue type) by ID as an Epic struct.
+  Fetches a single bead by ID. Delegates to `get_epic/2` since all
+  issue types share the same underlying query and struct shape.
   """
   defdelegate get_bead(project, bead_id), to: __MODULE__, as: :get_epic
 end

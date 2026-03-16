@@ -101,31 +101,7 @@ defmodule Spotter.Transcripts.Annotation do
         ]
 
       change set_attribute(:state, :closed)
-
-      change fn changeset, _context ->
-        resolution =
-          changeset
-          |> Ash.Changeset.get_argument(:resolution)
-          |> to_string()
-          |> String.trim()
-
-        if resolution == "" do
-          Ash.Changeset.add_error(changeset, field: :resolution, message: "must be non-empty")
-        else
-          kind = Ash.Changeset.get_argument(changeset, :resolution_kind)
-          existing = Ash.Changeset.get_data(changeset, :metadata) || %{}
-
-          merged =
-            existing
-            |> Map.put("resolution", resolution)
-            |> Map.put("resolved_at", DateTime.utc_now() |> DateTime.to_iso8601())
-            |> then(fn m ->
-              if kind, do: Map.put(m, "resolution_kind", Atom.to_string(kind)), else: m
-            end)
-
-          Ash.Changeset.change_attribute(changeset, :metadata, merged)
-        end
-      end
+      change Spotter.Transcripts.Changes.ApplyResolution
     end
 
     update :mcp_resolve do
@@ -160,31 +136,7 @@ defmodule Spotter.Transcripts.Annotation do
       end
 
       change set_attribute(:state, :closed)
-
-      change fn changeset, _context ->
-        resolution =
-          changeset
-          |> Ash.Changeset.get_argument(:resolution)
-          |> to_string()
-          |> String.trim()
-
-        if resolution == "" do
-          Ash.Changeset.add_error(changeset, field: :resolution, message: "must be non-empty")
-        else
-          kind = Ash.Changeset.get_argument(changeset, :resolution_kind)
-          existing = Ash.Changeset.get_data(changeset, :metadata) || %{}
-
-          merged =
-            existing
-            |> Map.put("resolution", resolution)
-            |> Map.put("resolved_at", DateTime.utc_now() |> DateTime.to_iso8601())
-            |> then(fn m ->
-              if kind, do: Map.put(m, "resolution_kind", Atom.to_string(kind)), else: m
-            end)
-
-          Ash.Changeset.change_attribute(changeset, :metadata, merged)
-        end
-      end
+      change Spotter.Transcripts.Changes.ApplyResolution
     end
   end
 
