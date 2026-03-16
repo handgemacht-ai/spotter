@@ -250,7 +250,7 @@ defmodule Spotter.Beads.Client do
   defp fetch_epic_counts(conn, config) do
     case MyXQL.query(
            conn,
-           "SELECT SCHEMA_NAME FROM SCHEMATA WHERE SCHEMA_NAME NOT IN ('information_schema', 'mysql', 'dolt')",
+           "SELECT SCHEMA_NAME FROM SCHEMATA WHERE SCHEMA_NAME NOT IN ('information_schema', 'mysql', 'dolt', 'performance_schema')",
            [],
            timeout: @query_timeout
          ) do
