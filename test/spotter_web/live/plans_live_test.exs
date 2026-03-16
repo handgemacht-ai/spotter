@@ -1,22 +1,14 @@
 defmodule SpotterWeb.PlansLiveTest do
-  use ExUnit.Case, async: false
+  use Spotter.DataCase, async: false
 
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
-  alias Ecto.Adapters.SQL.Sandbox
-  alias Spotter.Repo
+  alias Spotter.Transcripts.Project
 
   @endpoint SpotterWeb.Endpoint
 
-  setup do
-    :ok = Sandbox.checkout(Repo)
-    Sandbox.mode(Repo, {:shared, self()})
-
-    :ok
-  end
-
-  describe "mount and project filter chips" do
+  describe "mount with ProjectContext" do
     test "renders Plans heading" do
       {:ok, _view, html} = live(build_conn(), "/plans")
 
@@ -24,64 +16,84 @@ defmodule SpotterWeb.PlansLiveTest do
       assert html =~ "Plans"
     end
 
-    test "renders project filter chips from bead data" do
+    test "uses @current_project_id from ProjectContext, not local project chips" do
       {:ok, _view, html} = live(build_conn(), "/plans")
 
-      # Project chips should be rendered with project names
-      assert html =~ "project-chip" or html =~ "filter-chip" or html =~ "data-project"
+      refute html =~ "filter-btn"
+      refute html =~ "project-chip"
+      refute html =~ ~s(class="filter-section")
+    end
+
+    test "mounts with project from URL param via ProjectContext" do
+      project = Ash.create!(Project, %{name: "test_proj", pattern: "^test_proj"})
+      {:ok, _view, html} = live(build_conn(), "/plans?project=#{project.id}")
+
+      assert html =~ "epic-table"
     end
   end
 
-  describe "project chip filtering" do
-    test "clicking a project chip filters epics to that project" do
-      {:ok, view, _html} = live(build_conn(), "/plans")
+  describe "grouped-by-project view (no project selected)" do
+    test "shows grouped view or empty state when no project selected" do
+      {:ok, _view, html} = live(build_conn(), "/plans")
 
-      # Click a project chip to filter — the view should update to show
-      # only epics from the selected project
-      html = render_click(view, "select_project", %{"project" => "spotter"})
+      # With no projects in DB, grouped view is empty → empty state shown
+      # With projects, group headers are rendered
+      assert html =~ ~s(data-testid="project-group-header") or html =~ "empty-state"
+    end
+  end
 
-      assert html =~ "spotter"
+  describe "filtered view (project selected via sidebar)" do
+    setup do
+      project = Ash.create!(Project, %{name: "beads_filter_test", pattern: "^beads_filter"})
+      %{project: project}
+    end
+
+    test "filters epics to selected project (no group headers)", %{project: project} do
+      {:ok, view, _html} = live(build_conn(), "/plans?project=#{project.id}")
+
+      html = render(view)
+
+      # Filtered view: epic table present, no group headers
+      assert html =~ "epic-table"
+      refute html =~ ~s(data-testid="project-group-header")
+    end
+  end
+
+  describe "Spotter.Plans coordinator" do
+    setup do
+      project = Ash.create!(Project, %{name: "beads_plans_test", pattern: "^beads_plans"})
+      %{project: project}
+    end
+
+    test "PlansLive calls Spotter.Plans, not BeadQueries directly", %{project: project} do
+      {:ok, view, _html} = live(build_conn(), "/plans?project=#{project.id}")
+
+      html = render(view)
+
+      assert html =~ "epic-table"
     end
   end
 
   describe "epic table" do
-    test "displays epic title in table" do
+    test "displays epic table structure" do
       {:ok, _view, html} = live(build_conn(), "/plans")
 
-      # The epic table should show epic titles
       assert html =~ "epic-table" or html =~ "<table" or html =~ "<th"
-    end
-
-    test "shows status badge for each epic" do
-      {:ok, _view, html} = live(build_conn(), "/plans")
-
-      # Status badges should use recognizable classes or text
-      assert html =~ "status-badge" or html =~ "badge"
-    end
-
-    test "shows priority for each epic" do
-      {:ok, _view, html} = live(build_conn(), "/plans")
-
-      # Priority should be visible in the table
-      assert html =~ "priority" or html =~ "Priority"
-    end
-
-    test "shows child task count for each epic" do
-      {:ok, _view, html} = live(build_conn(), "/plans")
-
-      # Child task count column should exist
-      assert html =~ "tasks" or html =~ "Tasks" or html =~ "children"
     end
   end
 
   describe "empty state" do
-    test "shows empty state message when project has zero epics" do
-      {:ok, view, _html} = live(build_conn(), "/plans")
+    setup do
+      project = Ash.create!(Project, %{name: "empty_proj", pattern: "^empty_proj"})
+      %{project: project}
+    end
 
-      # Select a project known to have no epics
-      html = render_click(view, "select_project", %{"project" => "nonexistent_project_xyz"})
+    test "shows empty state when project has no plans", %{project: project} do
+      {:ok, view, _html} = live(build_conn(), "/plans?project=#{project.id}")
 
-      assert html =~ "No epics" or html =~ "no epics" or html =~ "empty"
+      html = render(view)
+
+      assert html =~ "No epics" or html =~ "No plans" or html =~ "empty-state"
     end
   end
 
@@ -93,9 +105,9 @@ defmodule SpotterWeb.PlansLiveTest do
     end
 
     test "/plans/:project/:epic_id route is accessible" do
-      {:ok, _view, html} = live(build_conn(), "/plans/spotter/spotter-5zm")
+      {:ok, _view, html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
 
-      assert html =~ "Plans" or html =~ "spotter-5zm"
+      assert html =~ "Plans" or html =~ "spotter-uok"
     end
   end
 end

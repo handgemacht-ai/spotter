@@ -71,6 +71,20 @@ export class PlansPage {
     return row.locator(".plan-epic-title");
   }
 
+  // --- Project group headers (post-migration: grouped-by-project view) ---
+
+  /** All project group header elements (visible when no project filter). */
+  allProjectGroupHeaders(): Locator {
+    return this.root.getByTestId("project-group-header");
+  }
+
+  /** A specific project group header by project name. */
+  projectGroupHeader(project: string): Locator {
+    return this.root.locator(
+      `[data-testid="project-group-header"][data-project="${project}"]`,
+    );
+  }
+
   // --- Empty state ---
 
   /** The empty state message element. */
@@ -117,5 +131,27 @@ export class PlansPage {
   /** Assert the epic table is visible. */
   async expectTableVisible() {
     await expect(this.epicTable).toBeVisible();
+  }
+
+  /** Assert that local project chip filters are NOT present (removed post-migration). */
+  async expectNoProjectChips() {
+    await expect(this.allProjectChips()).toHaveCount(0);
+  }
+
+  /** Assert project group headers are visible with at least the given count. */
+  async expectProjectGroupHeaders(minCount: number) {
+    const count = await this.allProjectGroupHeaders().count();
+    expect(
+      count,
+      `expected at least ${minCount} project group headers`,
+    ).toBeGreaterThanOrEqual(minCount);
+  }
+
+  /** Assert that epics are shown under project group headers (grouped view). */
+  async expectGroupedByProject() {
+    await expect(this.allProjectGroupHeaders().first()).toBeVisible({
+      timeout: 5000,
+    });
+    await expect(this.allEpicRows().first()).toBeVisible({ timeout: 5000 });
   }
 }

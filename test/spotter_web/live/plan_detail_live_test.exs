@@ -18,7 +18,7 @@ defmodule SpotterWeb.PlanDetailLiveTest do
 
   describe "mount with epic data" do
     test "renders epic detail view with title and badges" do
-      {:ok, view, _html} = live(build_conn(), "/plans/spotter/spotter-uok")
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
 
       html = render(view)
 
@@ -32,7 +32,7 @@ defmodule SpotterWeb.PlanDetailLiveTest do
 
   describe "description sections" do
     test "renders parsed sections from BeadContentParser" do
-      {:ok, view, _html} = live(build_conn(), "/plans/spotter/spotter-uok")
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
 
       html = render(view)
 
@@ -45,7 +45,7 @@ defmodule SpotterWeb.PlanDetailLiveTest do
 
   describe "mermaid diagram rendering" do
     test "wraps mermaid blocks with phx-hook and data attribute" do
-      {:ok, view, _html} = live(build_conn(), "/plans/spotter/spotter-uok")
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
 
       html = render(view)
 
@@ -57,7 +57,7 @@ defmodule SpotterWeb.PlanDetailLiveTest do
 
   describe "acceptance criteria table" do
     test "renders GIVEN/WHEN/THEN table from parsed description" do
-      {:ok, view, _html} = live(build_conn(), "/plans/spotter/spotter-uok")
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
 
       html = render(view)
 
@@ -71,7 +71,7 @@ defmodule SpotterWeb.PlanDetailLiveTest do
 
   describe "child tasks" do
     test "lists child tasks with id, title, status, and priority" do
-      {:ok, view, _html} = live(build_conn(), "/plans/spotter/spotter-uok")
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
 
       html = render(view)
 
@@ -80,7 +80,7 @@ defmodule SpotterWeb.PlanDetailLiveTest do
     end
 
     test "child task description is expandable via toggle" do
-      {:ok, view, _html} = live(build_conn(), "/plans/spotter/spotter-uok")
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
 
       html = render(view)
 
@@ -95,7 +95,7 @@ defmodule SpotterWeb.PlanDetailLiveTest do
 
   describe "text selection annotation" do
     setup do
-      project = Ash.create!(Project, %{name: "spotter", pattern: "^spotter"})
+      project = Ash.create!(Project, %{name: "beads_spotter", pattern: "^beads_spotter"})
 
       %{project: project}
     end
@@ -103,7 +103,7 @@ defmodule SpotterWeb.PlanDetailLiveTest do
     test "plan_text_selected event creates annotation with source=:plan and bead_id", %{
       project: project
     } do
-      {:ok, view, _html} = live(build_conn(), "/plans/#{project.name}/spotter-uok")
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
 
       render_click(view, "plan_text_selected", %{
         "selected_text" => "Plans Navigation feature",
@@ -125,7 +125,7 @@ defmodule SpotterWeb.PlanDetailLiveTest do
     end
 
     test "clear_selection event resets selection state" do
-      {:ok, view, _html} = live(build_conn(), "/plans/spotter/spotter-uok")
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
 
       render_click(view, "plan_text_selected", %{
         "selected_text" => "some text",
@@ -140,7 +140,7 @@ defmodule SpotterWeb.PlanDetailLiveTest do
   describe "graceful degradation" do
     test "shows friendly empty state when Dolt is unavailable" do
       # This test exercises the path where BeadQueries return errors
-      {:ok, view, _html} = live(build_conn(), "/plans/spotter/nonexistent-epic-xyz")
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/nonexistent-epic-xyz")
 
       html = render(view)
 
@@ -150,11 +150,11 @@ defmodule SpotterWeb.PlanDetailLiveTest do
 
   describe "back navigation" do
     test "has link back to plans list preserving project context" do
-      {:ok, view, _html} = live(build_conn(), "/plans/spotter/spotter-uok")
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
 
       html = render(view)
 
-      assert html =~ ~s(href="/plans?project=spotter") or
+      assert html =~ ~s(href="/plans?project=beads_spotter") or
                html =~ ~s(data-testid="back-to-plans")
     end
   end

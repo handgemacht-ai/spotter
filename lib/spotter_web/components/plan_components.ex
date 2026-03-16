@@ -2,8 +2,8 @@ defmodule SpotterWeb.PlanComponents do
   @moduledoc """
   Reusable HEEx components for plans/epics rendering.
 
-  Provides status badges, priority badges, project chips, and epic table rows
-  used by `PlansLive`.
+  Provides status badges, priority badges, epic table rows, acceptance tables,
+  and task rows used by `PlansLive` and `PlanDetailLive`.
   """
   use Phoenix.Component
 
@@ -30,27 +30,6 @@ defmodule SpotterWeb.PlanComponents do
     <span class={"badge #{priority_badge_class(@priority)}"} data-priority={@priority}>
       {priority_label(@priority)}
     </span>
-    """
-  end
-
-  @doc """
-  Renders a project filter chip with epic count.
-  """
-  attr(:project, :string, required: true)
-  attr(:epic_count, :integer, required: true)
-  attr(:active, :boolean, default: false)
-
-  def project_chip(assigns) do
-    ~H"""
-    <button
-      phx-click="select_project"
-      phx-value-project={@project}
-      class={"filter-btn#{if @active, do: " is-active"}"}
-      data-project={@project}
-    >
-      {@project}
-      <span class="plan-chip-count">{@epic_count}</span>
-    </button>
     """
   end
 

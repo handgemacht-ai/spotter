@@ -6,24 +6,20 @@ import { seedPlans, cleanupPlans } from "../support/seed-plans";
 
 /**
  * Helper: navigate from plans list to the first epic's detail page.
- * Returns the project name for back-navigation assertions.
+ * Post-migration: epics are visible directly (grouped or filtered via sidebar),
+ * no chip click needed.
  */
 async function navigateToFirstEpic(
   page: import("@playwright/test").Page,
   plans: PlansPage,
   detail: PlanDetailPage,
-): Promise<string> {
+): Promise<void> {
   await plans.goto();
-  const firstChip = plans.allProjectChips().first();
-  const projectName = (await firstChip.getAttribute("data-project"))!;
-  await firstChip.click();
   await expect(plans.allEpicRows().first()).toBeVisible({ timeout: 5000 });
 
   const epicLink = plans.epicLink(plans.allEpicRows().first());
   await epicLink.click();
   await waitForLiveViewReady(page, "plan-detail-root");
-
-  return projectName;
 }
 
 test.describe("plan detail — /plans/:project/:epic_id", () => {
@@ -156,15 +152,12 @@ test.describe("plan detail — /plans/:project/:epic_id", () => {
     });
 
     await test.step("WHEN user selects text in a section", async () => {
-      // Simulate text selection by selecting content in the first section body
       const firstSection = detail.sectionsContainer().locator(".plan-section").first();
       const sectionBody = firstSection.locator(".plan-section-body p").first();
       await expect(sectionBody).toBeVisible();
 
-      // Use triple-click to select the paragraph text
       await sectionBody.click({ clickCount: 3 });
 
-      // Dispatch the PlanHighlighter hook's expected event via the LiveSocket
       await page.evaluate(() => {
         const sections = document.getElementById("plan-sections");
         if (!sections) throw new Error("plan-sections not found");
@@ -172,7 +165,6 @@ test.describe("plan detail — /plans/:project/:epic_id", () => {
         const liveSocket = (window as any).liveSocket;
         if (!liveSocket) throw new Error("liveSocket not found");
 
-        // Find the PlanHighlighter hook
         let hook: any = null;
         for (const viewId of Object.keys(liveSocket.roots)) {
           const view = liveSocket.roots[viewId];
@@ -199,10 +191,8 @@ test.describe("plan detail — /plans/:project/:epic_id", () => {
 
     await test.step("THEN annotation creation form appears", async () => {
       await expect(detail.selectionActive()).toBeVisible({ timeout: 3000 });
-      // Form should contain the selected text preview
       const preview = detail.selectionActive().locator(".plan-annotation-selected-text");
       await expect(preview).toBeVisible();
-      // Should have a textarea and save button
       await expect(detail.selectionActive().locator("textarea")).toBeVisible();
       await expect(
         detail.selectionActive().locator('button[type="submit"]'),
@@ -211,10 +201,8 @@ test.describe("plan detail — /plans/:project/:epic_id", () => {
   });
 
   test("back navigation returns to plans list", async ({ page }) => {
-    let projectName: string;
-
     await test.step("GIVEN user is on detail view", async () => {
-      projectName = await navigateToFirstEpic(page, plans, detail);
+      await navigateToFirstEpic(page, plans, detail);
     });
 
     await test.step("THEN back link is visible", async () => {
@@ -226,15 +214,15 @@ test.describe("plan detail — /plans/:project/:epic_id", () => {
       await detail.backLink().click();
     });
 
-    await test.step("THEN plans list loads with project still selected", async () => {
+    await test.step("THEN plans list loads", async () => {
       await waitForLiveViewReady(page, "plans-root");
-      await plans.expectChipActive(projectName);
+      await plans.expectVisible();
     });
   });
 
   test("not-found state for invalid epic", async ({ page }) => {
     await test.step("GIVEN user navigates to a non-existent epic", async () => {
-      await page.goto("/plans/spotter/nonexistent-epic-xyz");
+      await page.goto("/plans/beads_spotter/nonexistent-epic-xyz");
       await waitForLiveViewReady(page, "plan-detail-root");
     });
 

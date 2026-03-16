@@ -8,8 +8,8 @@ defmodule SpotterWeb.PlanDetailLive do
   import SpotterWeb.PlanComponents
 
   alias Spotter.Beads.BeadContentParser
-  alias Spotter.Beads.BeadQueries
   alias Spotter.Beads.BeadStructs
+  alias Spotter.Plans
 
   @query_timeout 2_000
 
@@ -174,8 +174,8 @@ defmodule SpotterWeb.PlanDetailLive do
   end
 
   defp fetch_from_dolt(project, epic_id) do
-    epic = safe_query(fn -> BeadQueries.get_epic(project, epic_id) end, nil)
-    children = safe_query(fn -> BeadQueries.list_children(project, epic_id) end, [])
+    epic = safe_query(fn -> Plans.get_plan(project, epic_id) end, nil)
+    children = safe_query(fn -> Plans.list_children(project, epic_id) end, [])
     {epic, children}
   end
 
