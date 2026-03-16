@@ -6,7 +6,7 @@ defmodule SpotterWeb.PlansLive do
 
   alias Spotter.Plans
 
-  @query_timeout 2_000
+  @query_timeout 500
 
   @impl true
   def mount(_params, _session, socket) do
