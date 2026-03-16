@@ -3,18 +3,18 @@ defmodule Spotter.Beads.DoltConfig do
   Resolves Dolt connection configuration for beads databases.
 
   Configuration is read from application env under `:spotter, Spotter.Beads.DoltConfig`.
-  Falls back to the bd CLI's Dolt server defaults (port 14065, root user, no password).
+  Falls back to the shared workspace Dolt server defaults (port 3307, root user, no password).
   """
 
   @default_host "127.0.0.1"
-  @default_port 14_065
+  @default_port 3307
   @default_username "root"
   @default_password ""
 
   @doc """
   Returns MyXQL connection options for the given project's beads database.
 
-  The database name follows the bd convention: `beads_<project_name>`.
+  The database name matches the project name directly.
   """
   @spec connection_opts(String.t()) :: keyword()
   def connection_opts(project_name) when is_binary(project_name) do
@@ -34,6 +34,6 @@ defmodule Spotter.Beads.DoltConfig do
   """
   @spec database_name(String.t()) :: String.t()
   def database_name(project_name) when is_binary(project_name) do
-    "beads_#{project_name}"
+    project_name
   end
 end

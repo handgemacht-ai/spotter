@@ -3,7 +3,7 @@ defmodule Spotter.Beads.Client do
   Read-only Dolt client for querying beads issue data.
 
   Manages lazy-started MyXQL connection pools per project. Each project maps
-  to a Dolt database named `beads_<project_name>`.
+  directly to a Dolt database by name.
   """
 
   require OpenTelemetry.Tracer, as: Tracer
@@ -118,7 +118,7 @@ defmodule Spotter.Beads.Client do
   @doc """
   Returns a map of project names to their epic counts.
 
-  Queries the bd Dolt server for all databases matching the `beads_*` pattern,
+  Queries the shared workspace Dolt server for all non-system databases,
   then counts epics in each.
   """
   @spec epic_counts_by_project() :: {:ok, map()} | {:error, atom()}
@@ -250,7 +250,7 @@ defmodule Spotter.Beads.Client do
   defp fetch_epic_counts(conn, config) do
     case MyXQL.query(
            conn,
-           "SELECT SCHEMA_NAME FROM SCHEMATA WHERE SCHEMA_NAME LIKE 'beads_%'",
+           "SELECT SCHEMA_NAME FROM SCHEMATA WHERE SCHEMA_NAME NOT IN ('information_schema', 'mysql', 'dolt')",
            [],
            timeout: @query_timeout
          ) do
@@ -265,10 +265,8 @@ defmodule Spotter.Beads.Client do
 
   defp aggregate_epic_counts(db_names, config) do
     Enum.reduce(db_names, %{}, fn db_name, acc ->
-      project = String.replace_prefix(db_name, "beads_", "")
-
       case count_epics_in(config, db_name) do
-        {:ok, count} -> Map.put(acc, project, count)
+        {:ok, count} -> Map.put(acc, db_name, count)
         {:error, _} -> acc
       end
     end)

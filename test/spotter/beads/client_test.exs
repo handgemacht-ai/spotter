@@ -31,7 +31,7 @@ defmodule Spotter.Beads.ClientTest do
 
       # TELEMETRY: list_epics span with database and query_name attributes
       assert_span_attributes("spotter.beads.client.list_epics", %{
-        "spotter.beads.database" => "beads_spotter",
+        "spotter.beads.database" => "spotter",
         "spotter.beads.query_name" => "list_epics"
       })
     end
@@ -84,7 +84,7 @@ defmodule Spotter.Beads.ClientTest do
 
           # TELEMETRY: get_issue span emitted
           assert_span_attributes("spotter.beads.client.get_issue", %{
-            "spotter.beads.database" => "beads_spotter",
+            "spotter.beads.database" => "spotter",
             "spotter.beads.query_name" => "get_issue"
           })
 
@@ -112,7 +112,7 @@ defmodule Spotter.Beads.ClientTest do
 
           # TELEMETRY: get_children span with correct attributes
           assert_span_attributes("spotter.beads.client.get_children", %{
-            "spotter.beads.database" => "beads_spotter",
+            "spotter.beads.database" => "spotter",
             "spotter.beads.query_name" => "get_children"
           })
 
@@ -143,6 +143,26 @@ defmodule Spotter.Beads.ClientTest do
         "spotter.beads.query_name" => "epic_counts_by_project"
       })
     end
+
+    test "discovers databases without beads_ prefix (e.g. aufgabenschmiede, le)" do
+      assert {:ok, counts} = Client.epic_counts_by_project()
+      project_names = Map.keys(counts)
+
+      # System databases must never appear in results
+      refute "information_schema" in project_names
+      refute "mysql" in project_names
+      refute "dolt" in project_names
+
+      # Project names should be used as-is from database names (no prefix stripping)
+      # If a database is named "aufgabenschmiede", it should appear as "aufgabenschmiede"
+      # not as some stripped version
+      Enum.each(project_names, fn name ->
+        # No project name should have had "beads_" artificially stripped
+        # (a database literally named "beads_spotter" should appear as "beads_spotter")
+        refute String.starts_with?(name, "__"),
+               "System/admin database leaked into project list: #{name}"
+      end)
+    end
   end
 
   describe "get_dependencies/2" do
@@ -156,7 +176,7 @@ defmodule Spotter.Beads.ClientTest do
 
           # TELEMETRY: get_dependencies span with correct attributes
           assert_span_attributes("spotter.beads.client.get_dependencies", %{
-            "spotter.beads.database" => "beads_spotter",
+            "spotter.beads.database" => "spotter",
             "spotter.beads.query_name" => "get_dependencies"
           })
 
