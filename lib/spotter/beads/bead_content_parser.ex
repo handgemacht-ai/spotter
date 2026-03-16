@@ -143,7 +143,7 @@ defmodule Spotter.Beads.BeadContentParser do
     normalized = String.downcase(heading)
 
     cond do
-      normalized =~ "acceptance" or normalized =~ "criteria" ->
+      normalized =~ "acceptance" ->
         :acceptance
 
       normalized =~ "classification" ->
@@ -157,8 +157,15 @@ defmodule Spotter.Beads.BeadContentParser do
     end
   end
 
-  @dangerous_tags ~r/<\s*\/?\s*(script|style|iframe|object|embed|form)\b[^>]*>/i
-  defp sanitize_html(html), do: Regex.replace(@dangerous_tags, html, "")
+  @dangerous_tags ~r/<\s*\/?\s*(script|style|iframe|object|embed|form|svg|math)\b[^>]*>/i
+  @event_handlers ~r/\s+on\w+\s*=\s*"[^"]*"/i
+  @dangerous_uris ~r/(href|src)\s*=\s*"(javascript|data):[^"]*"/i
+  defp sanitize_html(html) do
+    html
+    |> then(&Regex.replace(@dangerous_tags, &1, ""))
+    |> then(&Regex.replace(@event_handlers, &1, ""))
+    |> then(&Regex.replace(@dangerous_uris, &1, ""))
+  end
 
   defp find_section(text, heading) do
     text
