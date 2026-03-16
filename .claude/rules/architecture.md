@@ -32,6 +32,12 @@ Localhost prototype, no authentication.
 
 Secondary domain: `Spotter.Config` (runtime settings via `Setting` resource, `Runtime` accessor with DB → TOML → default precedence). `transcript_roots` is the authoritative config key for transcript discovery paths (JSON array string in DB, TOML array in `priv/spotter.toml`).
 
+## Plans Layer (`lib/spotter/plans/`)
+
+Plan source abstraction for aggregating plans from multiple backends.
+
+- **PlanSource**: Behaviour defining callbacks — `list_projects/0`, `list_plans/2`, `get_plan/2`, `list_children/2`
+
 ## Beads Layer (`lib/spotter/beads/`)
 
 Read-only Dolt client for querying beads issue data across projects.
