@@ -101,6 +101,86 @@ defmodule Spotter.Beads.BeadContentParser do
 
   defp table_row?(line), do: String.match?(line, ~r/^\s*\|.+\|\s*$/)
 
+  @doc "Renders a markdown section body to HTML via Earmark."
+  @spec render_section_body(String.t() | nil) :: String.t()
+  def render_section_body(nil), do: ""
+  def render_section_body(""), do: ""
+
+  def render_section_body(body) when is_binary(body) do
+    case Earmark.as_html(body, %Earmark.Options{code_class_prefix: "language-"}) do
+      {:ok, html, _warnings} -> sanitize_html(html)
+      {:error, _, _} -> Phoenix.HTML.html_escape(body) |> Phoenix.HTML.safe_to_string()
+    end
+  end
+
+  @doc "Extracts classification key-value pairs from a Classification section."
+  @spec extract_classification(String.t() | nil) :: [{String.t(), String.t() | [String.t()]}]
+  def extract_classification(nil), do: []
+
+  def extract_classification(text) when is_binary(text) do
+    case find_section(text, "Classification") do
+      nil ->
+        []
+
+      body ->
+        body
+        |> String.split("\n")
+        |> Enum.filter(&String.match?(String.trim(&1), ~r/^- /))
+        |> Enum.map(&parse_classification_line/1)
+        |> Enum.reject(&is_nil/1)
+    end
+  end
+
+  @doc "Classifies a section heading into a content type atom."
+  @spec classify_section(String.t()) :: :acceptance | :classification | :mermaid | :narrative
+  def classify_section(heading) when is_binary(heading) do
+    normalized = String.downcase(heading)
+
+    cond do
+      normalized =~ "acceptance" or normalized =~ "criteria" ->
+        :acceptance
+
+      normalized =~ "classification" ->
+        :classification
+
+      normalized =~ "diagram" or normalized =~ "data model" or normalized =~ "architecture" ->
+        :mermaid
+
+      true ->
+        :narrative
+    end
+  end
+
+  @dangerous_tags ~r/<\s*\/?\s*(script|style|iframe|object|embed|form)\b[^>]*>/i
+  defp sanitize_html(html), do: Regex.replace(@dangerous_tags, html, "")
+
+  defp find_section(text, heading) do
+    text
+    |> extract_sections()
+    |> Map.get(heading)
+  end
+
+  defp parse_classification_line(line) do
+    stripped =
+      line
+      |> String.trim()
+      |> String.trim_leading("- ")
+      |> String.replace(~r/\*\*(.+?)\*\*/, "\\1")
+
+    case String.split(stripped, ": ", parts: 2) do
+      [key, value] ->
+        parsed_value =
+          if key =~ ~r/boundaries/i,
+            do: value |> String.split(",") |> Enum.map(&String.trim/1),
+            else: value
+
+        {String.trim(key), parsed_value}
+
+      _ ->
+        nil
+    end
+  end
+
   defp parse_gwt_row(line) do
     cells =
       line

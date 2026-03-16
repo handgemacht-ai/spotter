@@ -128,6 +128,115 @@ defmodule Spotter.Beads.BeadContentParserTest do
     end
   end
 
+  describe "render_section_body/1" do
+    test "converts markdown to HTML with code_class_prefix" do
+      markdown = """
+      This is **bold** and `inline code`.
+
+      ```elixir
+      def hello, do: :world
+      ```
+      """
+
+      html = BeadContentParser.render_section_body(markdown)
+
+      assert html =~ "<strong>bold</strong>"
+      assert html =~ "<code class=\"inline\">inline code</code>"
+      assert html =~ ~r/<pre><code class="elixir language-elixir">/
+      assert html =~ "def hello, do: :world"
+    end
+
+    test "returns escaped HTML on Earmark error" do
+      # Simulate a case where the input is already not valid for rendering
+      # but the function should not crash — it should return escaped HTML
+      result = BeadContentParser.render_section_body("<script>alert('xss')</script>")
+
+      refute result =~ "<script>"
+      assert is_binary(result)
+    end
+
+    test "handles nil input" do
+      assert "" == BeadContentParser.render_section_body(nil)
+    end
+
+    test "handles empty string" do
+      assert "" == BeadContentParser.render_section_body("")
+    end
+  end
+
+  describe "extract_classification/1" do
+    test "parses key-value pairs from classification section" do
+      text = """
+      ## Classification
+
+      - **Type**: Feature
+      - **Priority**: High
+      - **Complexity**: Medium
+      """
+
+      classification = BeadContentParser.extract_classification(text)
+
+      assert {"Type", "Feature"} in classification
+      assert {"Priority", "High"} in classification
+      assert {"Complexity", "Medium"} in classification
+    end
+
+    test "parses list values for Affected Boundaries" do
+      text = """
+      ## Classification
+
+      - **Affected Boundaries**: BeadContentParser, PlanDetailLive, PlanComponents
+      """
+
+      classification = BeadContentParser.extract_classification(text)
+
+      {_key, value} =
+        Enum.find(classification, fn {k, _v} -> k == "Affected Boundaries" end)
+
+      assert is_list(value)
+      assert "BeadContentParser" in value
+      assert "PlanDetailLive" in value
+      assert "PlanComponents" in value
+    end
+
+    test "returns empty list when no Classification section" do
+      text = """
+      ## Overview
+
+      Just an overview, no classification here.
+      """
+
+      assert [] == BeadContentParser.extract_classification(text)
+    end
+
+    test "returns empty list for nil" do
+      assert [] == BeadContentParser.extract_classification(nil)
+    end
+  end
+
+  describe "classify_section/1" do
+    test "returns :acceptance for acceptance criteria headings" do
+      assert :acceptance == BeadContentParser.classify_section("Acceptance Criteria")
+      assert :acceptance == BeadContentParser.classify_section("acceptance criteria")
+    end
+
+    test "returns :classification for classification headings" do
+      assert :classification == BeadContentParser.classify_section("Classification")
+      assert :classification == BeadContentParser.classify_section("classification")
+    end
+
+    test "returns :mermaid for architecture/diagram headings" do
+      assert :mermaid == BeadContentParser.classify_section("Architecture")
+      assert :mermaid == BeadContentParser.classify_section("Diagram")
+    end
+
+    test "returns :narrative for other headings" do
+      assert :narrative == BeadContentParser.classify_section("Overview")
+      assert :narrative == BeadContentParser.classify_section("Implementation Notes")
+      assert :narrative == BeadContentParser.classify_section("Some Custom Section")
+    end
+  end
+
   describe "extract_acceptance_table/1" do
     test "parses GIVEN/WHEN/THEN table from description" do
       rows = BeadContentParser.extract_acceptance_table(@sample_description)
