@@ -28,6 +28,8 @@ config :spotter, SpotterWeb.Endpoint,
 
 config :ash, policies: [show_policy_breakdowns?: true], disable_async?: true
 
+config :spotter, Spotter.Config.Runtime, transcript_roots: []
+
 # Bound SSE stream duration so GET /api/mcp tests return quickly
 config :spotter, SpotterWeb.SpotterMcpPlug,
   sse_keepalive_ms: 10,

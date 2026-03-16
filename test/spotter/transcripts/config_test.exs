@@ -4,6 +4,18 @@ defmodule Spotter.Transcripts.ConfigTest do
   alias Spotter.Transcripts.Config
   alias Spotter.Transcripts.Project
 
+  setup do
+    prev = Application.get_env(:spotter, Spotter.Config.Runtime)
+
+    Application.put_env(
+      :spotter,
+      Spotter.Config.Runtime,
+      Keyword.delete(prev || [], :transcript_roots)
+    )
+
+    on_exit(fn -> Application.put_env(:spotter, Spotter.Config.Runtime, prev || []) end)
+  end
+
   describe "read!/0" do
     test "reads and parses spotter.toml" do
       config = Config.read!()

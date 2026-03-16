@@ -3,6 +3,18 @@ defmodule Spotter.Transcripts.ConfigTranscriptRootsTest do
 
   alias Spotter.Transcripts.Config
 
+  setup do
+    prev = Application.get_env(:spotter, Spotter.Config.Runtime)
+
+    Application.put_env(
+      :spotter,
+      Spotter.Config.Runtime,
+      Keyword.delete(prev || [], :transcript_roots)
+    )
+
+    on_exit(fn -> Application.put_env(:spotter, Spotter.Config.Runtime, prev || []) end)
+  end
+
   describe "read!/0 returns transcript_roots" do
     test "returns %{transcript_roots: [...], projects: ...} shape" do
       config = Config.read!()

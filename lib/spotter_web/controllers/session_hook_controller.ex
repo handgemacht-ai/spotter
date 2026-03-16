@@ -249,7 +249,10 @@ defmodule SpotterWeb.SessionHookController do
   end
 
   defp maybe_start_tail_worker(session_id, cwd, _transcript_path) when is_binary(cwd) do
-    start_tail_worker(session_id, live_transcript_path(cwd, session_id))
+    case live_transcript_path(cwd, session_id) do
+      path when is_binary(path) -> start_tail_worker(session_id, path)
+      nil -> :ok
+    end
   end
 
   defp maybe_start_tail_worker(_session_id, _cwd, _transcript_path), do: :ok
@@ -264,13 +267,20 @@ defmodule SpotterWeb.SessionHookController do
 
   defp live_transcript_path(cwd, session_id) do
     {candidate_roots, _source} = Runtime.transcript_roots()
-    dir_name = String.replace(cwd, "/", "-")
-    fallback_root = List.first(candidate_roots)
 
-    transcript_root =
-      Enum.find(candidate_roots, &File.dir?(Path.join(&1, dir_name))) || fallback_root
+    case candidate_roots do
+      [] ->
+        nil
 
-    Path.join([transcript_root, dir_name, "#{session_id}.jsonl"])
+      roots ->
+        dir_name = String.replace(cwd, "/", "-")
+        fallback_root = List.first(roots)
+
+        transcript_root =
+          Enum.find(roots, &File.dir?(Path.join(&1, dir_name))) || fallback_root
+
+        Path.join([transcript_root, dir_name, "#{session_id}.jsonl"])
+    end
   end
 
   @env Application.compile_env(:spotter, :env, :prod)

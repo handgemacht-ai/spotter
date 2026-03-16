@@ -15,14 +15,20 @@ defmodule Spotter.Config.Runtime do
   @doc """
   Returns the effective transcript roots as a normalized list of paths.
 
-  Precedence: DB override -> TOML `priv/spotter.toml` -> defaults.
+  Precedence: app env -> DB override -> TOML `priv/spotter.toml` -> defaults.
   Paths are expanded (`~` -> home), trimmed, deduped, and made absolute.
   """
   @spec transcript_roots() :: {[String.t()], atom()}
   def transcript_roots do
-    case db_get_roots() do
-      {:ok, roots} -> {normalize_roots(roots), :db}
-      :miss -> transcript_roots_from_toml()
+    case Application.get_env(:spotter, __MODULE__)[:transcript_roots] do
+      roots when is_list(roots) ->
+        {roots, :app_env}
+
+      _ ->
+        case db_get_roots() do
+          {:ok, roots} -> {normalize_roots(roots), :db}
+          :miss -> transcript_roots_from_toml()
+        end
     end
   end
 

@@ -573,10 +573,23 @@ defmodule Spotter.Services.TranscriptDiscoveryTest do
         value: Jason.encode!([tmp_dir])
       })
 
-      results = TranscriptDiscovery.discover()
+      # Clear the app_env override so the DB setting takes effect
+      prev = Application.get_env(:spotter, Spotter.Config.Runtime)
 
-      matching = Enum.filter(results, &(&1.session_id == id))
-      assert length(matching) == 1, "Expected discover/0 to use transcript_roots from DB config"
+      Application.put_env(
+        :spotter,
+        Spotter.Config.Runtime,
+        Keyword.delete(prev || [], :transcript_roots)
+      )
+
+      try do
+        results = TranscriptDiscovery.discover()
+
+        matching = Enum.filter(results, &(&1.session_id == id))
+        assert length(matching) == 1, "Expected discover/0 to use transcript_roots from DB config"
+      after
+        Application.put_env(:spotter, Spotter.Config.Runtime, prev || [])
+      end
     end
   end
 

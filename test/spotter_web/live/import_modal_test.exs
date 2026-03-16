@@ -12,6 +12,16 @@ defmodule SpotterWeb.ImportModalTest do
     pid = Sandbox.start_owner!(Spotter.Repo, shared: true)
     on_exit(fn -> Sandbox.stop_owner(pid) end)
 
+    prev = Application.get_env(:spotter, Spotter.Config.Runtime)
+
+    Application.put_env(
+      :spotter,
+      Spotter.Config.Runtime,
+      Keyword.delete(prev || [], :transcript_roots)
+    )
+
+    on_exit(fn -> Application.put_env(:spotter, Spotter.Config.Runtime, prev || []) end)
+
     :ok
   end
 

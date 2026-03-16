@@ -4,6 +4,18 @@ defmodule Spotter.Config.RuntimeTest do
   alias Spotter.Config.Runtime
   alias Spotter.Config.Setting
 
+  setup do
+    prev = Application.get_env(:spotter, Spotter.Config.Runtime)
+
+    Application.put_env(
+      :spotter,
+      Spotter.Config.Runtime,
+      Keyword.delete(prev || [], :transcript_roots)
+    )
+
+    on_exit(fn -> Application.put_env(:spotter, Spotter.Config.Runtime, prev || []) end)
+  end
+
   describe "transcript_roots/0" do
     test "DB override beats TOML and default" do
       Ash.create!(Setting, %{key: "transcript_roots", value: ~s(["/custom/dir"])})
@@ -16,6 +28,19 @@ defmodule Spotter.Config.RuntimeTest do
 
       assert [_ | _] = roots
       assert source in [:toml, :default]
+    end
+
+    test "app_env override beats DB, TOML, and default" do
+      Ash.create!(Setting, %{key: "transcript_roots", value: ~s(["/custom/dir"])})
+      Application.put_env(:spotter, Spotter.Config.Runtime, transcript_roots: ["/from/app_env"])
+
+      assert {["/from/app_env"], :app_env} = Runtime.transcript_roots()
+    end
+
+    test "app_env with empty list returns empty without falling back" do
+      Application.put_env(:spotter, Spotter.Config.Runtime, transcript_roots: [])
+
+      assert {[], :app_env} = Runtime.transcript_roots()
     end
 
     test "expands tilde in DB override" do

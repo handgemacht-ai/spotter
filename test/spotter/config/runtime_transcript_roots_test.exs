@@ -4,6 +4,18 @@ defmodule Spotter.Config.RuntimeTranscriptRootsTest do
   alias Spotter.Config.Runtime
   alias Spotter.Config.Setting
 
+  setup do
+    prev = Application.get_env(:spotter, Spotter.Config.Runtime)
+
+    Application.put_env(
+      :spotter,
+      Spotter.Config.Runtime,
+      Keyword.delete(prev || [], :transcript_roots)
+    )
+
+    on_exit(fn -> Application.put_env(:spotter, Spotter.Config.Runtime, prev || []) end)
+  end
+
   describe "transcript_roots/0" do
     test "returns {paths, source} tuple with list of expanded paths" do
       {paths, source} = Runtime.transcript_roots()
