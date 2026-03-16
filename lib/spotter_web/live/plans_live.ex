@@ -63,9 +63,19 @@ defmodule SpotterWeb.PlansLive do
     projects = safe_query(fn -> Plans.list_projects() end, [])
 
     grouped =
-      Enum.flat_map(projects, fn %{project: name} ->
-        epics = safe_query(fn -> Plans.list_plans(name) end, [])
-        if epics == [], do: [], else: [{name, epics}]
+      projects
+      |> Task.async_stream(
+        fn %{project: name} ->
+          epics = safe_query(fn -> Plans.list_plans(name) end, [])
+          {name, epics}
+        end,
+        max_concurrency: 4,
+        timeout: @query_timeout,
+        on_timeout: :kill_task
+      )
+      |> Enum.flat_map(fn
+        {:ok, {name, epics}} when epics != [] -> [{name, epics}]
+        _ -> []
       end)
 
     assign(socket, epics: [], grouped_epics: grouped)
@@ -98,23 +108,7 @@ defmodule SpotterWeb.PlansLive do
       </div>
 
       <%= if @project_name do %>
-        <table class="epic-table" data-testid="epic-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Title</th>
-              <th>Status</th>
-              <th>Priority</th>
-              <th>Tasks</th>
-              <th>Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            <%= for epic <- @epics do %>
-              <.epic_table_row epic={epic} project={@project_name} />
-            <% end %>
-          </tbody>
-        </table>
+        <.epic_table epics={@epics} project={@project_name} />
         <div :if={@epics == []} class="empty-state">
           No epics found for this project.
         </div>
@@ -128,23 +122,7 @@ defmodule SpotterWeb.PlansLive do
             >
               {project}
             </h2>
-            <table class="epic-table" data-testid="epic-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Title</th>
-                  <th>Status</th>
-                  <th>Priority</th>
-                  <th>Tasks</th>
-                  <th>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                <%= for epic <- epics do %>
-                  <.epic_table_row epic={epic} project={project} />
-                <% end %>
-              </tbody>
-            </table>
+            <.epic_table epics={epics} project={project} />
           <% end %>
         <% else %>
           <div class="empty-state">

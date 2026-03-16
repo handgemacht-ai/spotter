@@ -34,6 +34,34 @@ defmodule SpotterWeb.PlanComponents do
   end
 
   @doc """
+  Renders a full epic table with header and rows.
+  """
+  attr(:epics, :list, required: true)
+  attr(:project, :string, required: true)
+
+  def epic_table(assigns) do
+    ~H"""
+    <table class="epic-table" data-testid="epic-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Title</th>
+          <th>Status</th>
+          <th>Priority</th>
+          <th>Tasks</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        <%= for epic <- @epics do %>
+          <.epic_table_row epic={epic} project={@project} />
+        <% end %>
+      </tbody>
+    </table>
+    """
+  end
+
+  @doc """
   Renders an epic table row.
   """
   attr(:epic, :map, required: true)
