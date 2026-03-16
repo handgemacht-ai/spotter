@@ -51,11 +51,15 @@ None required. All variables have sensible defaults:
 
 | Variable | Default | Notes |
 |----------|---------|-------|
-| `SPOTTER_DOLT_HOST` | `127.0.0.1` | Dolt server host |
-| `SPOTTER_DOLT_HOST_PORT` | `13307` | Dolt host-mapped port |
+| `SPOTTER_DOLT_HOST` | `127.0.0.1` | Internal Dolt server host (ProductSpec/TestSpec) |
+| `SPOTTER_DOLT_PORT` | `13307` | Internal Dolt port |
 | `SPOTTER_DOLT_DATABASE` | `spotter_product` | Main Dolt database |
-| `SPOTTER_DOLT_USERNAME` | `spotter` | Dolt credentials |
-| `SPOTTER_DOLT_PASSWORD` | `spotter` | Dolt credentials |
+| `SPOTTER_DOLT_USERNAME` | `spotter` | Internal Dolt credentials |
+| `SPOTTER_DOLT_PASSWORD` | `spotter` | Internal Dolt credentials |
+| `BEADS_DOLT_HOST` | `localhost` | Shared workspace Dolt server for beads |
+| `BEADS_DOLT_PORT` | `3307` | Shared workspace Dolt port |
+| `BEADS_DOLT_USERNAME` | `root` | Shared workspace Dolt credentials |
+| `BEADS_DOLT_PASSWORD` | *(empty)* | Shared workspace Dolt credentials |
 
 ### Commands
 
