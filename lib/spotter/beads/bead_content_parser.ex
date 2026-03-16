@@ -118,17 +118,23 @@ defmodule Spotter.Beads.BeadContentParser do
   def extract_classification(nil), do: []
 
   def extract_classification(text) when is_binary(text) do
-    case find_section(text, "Classification") do
-      nil ->
-        []
+    text
+    |> find_section("Classification")
+    |> parse_classification_body()
+  end
 
-      body ->
-        body
-        |> String.split("\n")
-        |> Enum.filter(&String.match?(String.trim(&1), ~r/^- /))
-        |> Enum.map(&parse_classification_line/1)
-        |> Enum.reject(&is_nil/1)
-    end
+  defp parse_classification_body(nil), do: []
+
+  defp parse_classification_body(body) do
+    body
+    |> String.split("\n")
+    |> Enum.filter(&String.match?(String.trim(&1), ~r/^- /))
+    |> Enum.flat_map(fn line ->
+      case parse_classification_line(line) do
+        nil -> []
+        pair -> [pair]
+      end
+    end)
   end
 
   @doc "Classifies a section heading into a content type atom."
