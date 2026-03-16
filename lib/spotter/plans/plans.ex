@@ -90,9 +90,9 @@ defmodule Spotter.Plans do
   end
 
   @doc """
-  Gets a single bead by project and bead ID. Alias for `get_plan/2`.
+  Gets a single bead by project and bead ID. Delegates to `get_plan/2`.
   """
-  defdelegate get_bead(project, bead_id), to: __MODULE__, as: :get_plan
+  def get_bead(project, bead_id), do: get_plan(project, bead_id)
 
   defp sources do
     Application.get_env(:spotter, __MODULE__, [])
