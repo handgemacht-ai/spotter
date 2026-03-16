@@ -334,8 +334,10 @@ defmodule SpotterWeb.ShellTelemetryLiveTest do
       {:ok, view, _html} =
         live(build_conn(), "/telemetry/commands?project=#{project.id}")
 
-      # Trigger PubSub refresh
+      # Trigger PubSub refresh (starts 300ms debounce timer)
       send(view.pid, {:shell_telemetry_updated, %{project_id: project.id}})
+      # Flush the debounce timer so the span fires immediately
+      send(view.pid, :debounced_refresh)
       _html = render(view)
 
       assert_span_recorded("spotter.shell_telemetry.live_refresh")

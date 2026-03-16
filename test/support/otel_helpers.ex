@@ -22,6 +22,7 @@ defmodule Spotter.Test.OtelHelpers do
   )
 
   @default_timeout 1_000
+  @drain_timeout 50
 
   @doc """
   Configures the OTel simple processor to export spans to `self()`.
@@ -142,20 +143,30 @@ defmodule Spotter.Test.OtelHelpers do
 
   @doc """
   Collects all span messages received within the timeout period.
+
+  Uses a two-phase approach: waits up to `timeout` for the first span,
+  then drains remaining spans with a short idle timeout.
   """
   def collect_spans(opts \\ []) do
     timeout = Keyword.get(opts, :timeout, @default_timeout)
-    collect_spans_loop(timeout, [])
+    deadline = System.monotonic_time(:millisecond) + timeout
+    collect_until_deadline([], deadline)
   end
 
   # --- Private helpers ---
 
-  defp collect_spans_loop(timeout, acc) do
+  # When no spans collected yet, wait up to the full remaining budget.
+  # Once at least one span is collected, switch to a short drain timeout
+  # (capped by remaining budget) so we return quickly after the burst.
+  defp collect_until_deadline(acc, deadline) do
+    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+    wait = if acc == [], do: remaining, else: min(remaining, @drain_timeout)
+
     receive do
       {:span, span_record} when elem(span_record, 0) == :span ->
-        collect_spans_loop(timeout, [span_record | acc])
+        collect_until_deadline([span_record | acc], deadline)
     after
-      timeout -> Enum.reverse(acc)
+      wait -> Enum.reverse(acc)
     end
   end
 
