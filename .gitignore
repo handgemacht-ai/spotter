@@ -30,7 +30,6 @@ site/dist/
 
 # Gas Town (added by gt)
 .runtime/
-.claude/commands/
 .logs/
 .claude/worktrees
 .beads/issues.jsonl
