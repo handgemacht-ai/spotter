@@ -44,8 +44,8 @@ defmodule SpotterWeb.ReviewsLive do
     count = length(ids)
 
     OpenTelemetry.Tracer.with_span "spotter.reviews.delete_annotation" do
-      OpenTelemetry.Tracer.set_attribute(:delete_type, "batch")
-      OpenTelemetry.Tracer.set_attribute(:count, count)
+      OpenTelemetry.Tracer.set_attribute("spotter.reviews.delete_type", "batch")
+      OpenTelemetry.Tracer.set_attribute("spotter.reviews.count", count)
 
       Enum.each(ids, fn id ->
         case Ash.get(Annotation, id) do
@@ -73,8 +73,8 @@ defmodule SpotterWeb.ReviewsLive do
   def handle_event("confirm_delete", _params, %{assigns: %{delete_target: id}} = socket)
       when is_binary(id) do
     OpenTelemetry.Tracer.with_span "spotter.reviews.delete_annotation" do
-      OpenTelemetry.Tracer.set_attribute(:annotation_id, id)
-      OpenTelemetry.Tracer.set_attribute(:delete_type, "single")
+      OpenTelemetry.Tracer.set_attribute("spotter.reviews.annotation_id", id)
+      OpenTelemetry.Tracer.set_attribute("spotter.reviews.delete_type", "single")
 
       case Ash.get(Annotation, id) do
         {:ok, ann} -> Ash.destroy!(ann)
@@ -90,6 +90,10 @@ defmodule SpotterWeb.ReviewsLive do
       |> load_review_data()
 
     {:noreply, put_flash(socket, :info, "Annotation deleted")}
+  end
+
+  def handle_event("confirm_delete", _params, socket) do
+    {:noreply, assign(socket, delete_target: nil, show_confirm_modal: false)}
   end
 
   def handle_event("cancel_delete", _params, socket) do
