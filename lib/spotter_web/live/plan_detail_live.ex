@@ -6,6 +6,7 @@ defmodule SpotterWeb.PlanDetailLive do
   require OpenTelemetry.Tracer, as: Tracer
 
   import SpotterWeb.PlanComponents
+  import SpotterWeb.AnnotationComponents
 
   alias Spotter.Beads.BeadContentParser
   alias Spotter.Beads.BeadStructs
@@ -24,7 +25,8 @@ defmodule SpotterWeb.PlanDetailLive do
        annotations: [],
        parsed_content: nil,
        dolt_available: nil,
-       selection: nil
+       selection: nil,
+       highlighted_annotation: nil
      )}
   end
 
@@ -63,6 +65,11 @@ defmodule SpotterWeb.PlanDetailLive do
     end
 
     {:noreply, assign(socket, selection: nil)}
+  end
+
+  @impl true
+  def handle_event("highlight_annotation", %{"id" => id}, socket) do
+    {:noreply, assign(socket, highlighted_annotation: id)}
   end
 
   @impl true
@@ -256,6 +263,7 @@ defmodule SpotterWeb.PlanDetailLive do
               data-testid="bead-sections"
               id="plan-sections"
               phx-hook="PlanContentHook"
+              data-annotations={if @annotations != [], do: Jason.encode!(Enum.map(@annotations, fn a -> %{id: a.id, selected_text: a.selected_text, comment: a.comment} end))}
             >
               <%= for {heading, _body, type, rendered} <- @parsed_content.sections, type == :narrative do %>
                 <div
@@ -315,19 +323,15 @@ defmodule SpotterWeb.PlanDetailLive do
 
           <.dependency_list deps={@dependencies} project={@project} />
 
-          <%= if @annotations != [] do %>
-            <div class="plan-annotations" data-testid="bead-annotations">
-              <h3>Annotations ({length(@annotations)})</h3>
-              <div class="plan-annotation-list">
-                <%= for annotation <- @annotations do %>
-                  <div class="plan-annotation-item" data-testid="annotation-item">
-                    <p class="plan-annotation-text">&ldquo;{annotation.selected_text}&rdquo;</p>
-                    <p :if={annotation.comment} class="plan-annotation-comment">{annotation.comment}</p>
-                  </div>
-                <% end %>
-              </div>
-            </div>
-          <% end %>
+          <div
+            :if={@annotations != []}
+            class="bead-annotations-section"
+            data-testid="bead-annotations"
+            data-highlighted-annotation={@highlighted_annotation}
+          >
+            <h4 class="bead-section-heading">Annotations ({length(@annotations)})</h4>
+            <.annotation_cards annotations={@annotations} />
+          </div>
 
           <%= if @children != [] do %>
             <div class="plan-children" data-testid="child-tasks">

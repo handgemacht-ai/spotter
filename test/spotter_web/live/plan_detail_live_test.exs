@@ -270,6 +270,106 @@ defmodule SpotterWeb.PlanDetailLiveTest do
     end
   end
 
+  # ── spotter-00o: Inline annotation highlights + annotation display ────
+
+  describe "annotations data attribute on plan-content" do
+    setup do
+      project = Ash.create!(Project, %{name: "beads_spotter", pattern: "^beads_spotter"})
+
+      {:ok, ann} =
+        Ash.create(Annotation, %{
+          source: :plan,
+          bead_id: "spotter-uok",
+          selected_text: "Plans Navigation feature",
+          comment: "highlight this text",
+          purpose: :review,
+          project_id: project.id
+        })
+
+      %{project: project, annotation: ann}
+    end
+
+    test "plan-sections div includes data-annotations JSON when annotations exist", %{
+      annotation: ann
+    } do
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
+
+      html = render(view)
+
+      # The PlanContentHook container must carry annotations as a JSON data attribute
+      # so the JS hook can fuzzy-match and highlight annotation text inline.
+      # Match the attribute on the bead-sections div specifically (not bead-annotations testid).
+      assert html =~ ~r/id="plan-sections"[^>]*data-annotations="/
+
+      # The JSON must contain the annotation's selected_text for JS highlighting
+      assert html =~ "Plans Navigation feature"
+      assert html =~ ann.id
+    end
+
+    test "annotation_cards component renders in bead-annotations-section" do
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
+
+      html = render(view)
+
+      # Annotations section must use annotation_cards component (from AnnotationComponents)
+      # with clickable cards containing source badge, selected_text, comment, and delete button
+      assert html =~ ~s(class="annotation-card")
+      assert html =~ "Plans Navigation feature"
+      assert html =~ "highlight this text"
+      assert html =~ ~s(phx-click="highlight_annotation")
+    end
+  end
+
+  describe "empty annotations: section hidden, no data attribute" do
+    test "plan-sections div omits data-annotations when no annotations exist" do
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
+
+      html = render(view)
+
+      # Without annotations, the plan-sections div must NOT carry data-annotations
+      refute html =~ ~r/id="plan-sections"[^>]*data-annotations="/
+    end
+
+    test "bead-annotations-section is hidden when no annotations" do
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
+
+      html = render(view)
+
+      refute html =~ ~s(class="annotation-card")
+      refute html =~ ~s(data-testid="bead-annotations-section")
+    end
+  end
+
+  describe "highlight_annotation event handler" do
+    setup do
+      project = Ash.create!(Project, %{name: "beads_spotter", pattern: "^beads_spotter"})
+
+      {:ok, ann} =
+        Ash.create(Annotation, %{
+          source: :plan,
+          bead_id: "spotter-uok",
+          selected_text: "Plans Navigation feature",
+          comment: "highlight me",
+          purpose: :review,
+          project_id: project.id
+        })
+
+      %{project: project, annotation: ann}
+    end
+
+    test "highlight_annotation event sets highlighted annotation ID in assigns", %{
+      annotation: ann
+    } do
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
+
+      html = render_click(view, "highlight_annotation", %{"id" => ann.id})
+
+      # After clicking an annotation card, the highlighted annotation ID should be reflected
+      # in the rendered output (e.g. as an active/highlighted CSS class or data attribute)
+      assert html =~ ~s(data-highlighted-annotation="#{ann.id}")
+    end
+  end
+
   # ── spotter-055: Component integration tests ──────────────────────────
 
   describe "bead_header/1" do
