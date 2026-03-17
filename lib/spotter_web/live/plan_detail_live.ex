@@ -190,8 +190,7 @@ defmodule SpotterWeb.PlanDetailLive do
     deps_task =
       Task.async(fn -> safe_call(fn -> Plans.list_dependencies(project, bead_id) end, []) end)
 
-    annotations_task =
-      Task.async(fn -> safe_call(fn -> {:ok, fetch_annotations(bead_id)} end, []) end)
+    annotations_task = Task.async(fn -> fetch_annotations(bead_id) end)
 
     bead = Task.await(bead_task, @query_timeout)
     children = Task.await(children_task, @query_timeout)
@@ -255,9 +254,13 @@ defmodule SpotterWeb.PlanDetailLive do
                   data-plan-section={heading}
                   data-section-type={type}
                 >
-                  <h3 :if={type == :narrative} class="plan-section-heading bead-section-heading" data-testid="section-heading">{heading}</h3>
-                  <h3 :if={type != :narrative} class="plan-section-heading" data-testid="section-heading">{heading}</h3>
-                  <div class={if type == :narrative, do: "plan-section-body bead-content", else: "plan-section-body"}>
+                  <h3
+                    class={["plan-section-heading", type == :narrative && "bead-section-heading"]}
+                    data-testid="section-heading"
+                  >
+                    {heading}
+                  </h3>
+                  <div class={["plan-section-body", type == :narrative && "bead-content"]}>
                     {render_section(rendered)}
                   </div>
                 </div>

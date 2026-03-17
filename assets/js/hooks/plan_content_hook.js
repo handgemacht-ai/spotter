@@ -15,11 +15,12 @@ const PlanContentHook = {
   },
 
   _highlightCode() {
-    this.el.querySelectorAll('pre code[class*="language-"]').forEach((block) => {
-      if (block.dataset.hljs === "done") return
+    const blocks = this.el.querySelectorAll('pre code[class*="language-"]')
+    for (const block of blocks) {
+      if (block.dataset.hljs === "done") continue
       hljs.highlightElement(block)
       block.dataset.hljs = "done"
-    })
+    }
   },
 
   _setupSelection() {
@@ -27,7 +28,7 @@ const PlanContentHook = {
       try {
         const sel = window.getSelection()
         if (!sel || sel.isCollapsed || !sel.toString().trim()) {
-          this.pushEvent("plan_text_selected", { selected_text: "", section: "" })
+          this.pushEvent("clear_selection", {})
           return
         }
 
