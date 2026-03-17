@@ -348,4 +348,190 @@ defmodule SpotterWeb.ReviewsLiveTest do
       refute html =~ "Subagent"
     end
   end
+
+  describe "single annotation delete" do
+    test "shows delete button on open annotation cards" do
+      project = create_project("alpha")
+      session = create_session(project)
+      create_annotation(session, :open, text: "deletable-open")
+
+      {:ok, _view, html} = live(build_conn(), "/reviews?project_id=#{project.id}")
+
+      assert html =~ "deletable-open"
+      assert html =~ "Delete"
+    end
+
+    test "shows delete button on resolved annotation cards" do
+      project = create_project("alpha")
+      session = create_session(project)
+      ann = create_annotation(session, :open, text: "deletable-resolved")
+      Ash.update!(ann, %{resolution: "Done"}, action: :resolve)
+
+      {:ok, _view, html} = live(build_conn(), "/reviews?project_id=#{project.id}")
+
+      assert html =~ "deletable-resolved"
+      assert html =~ "Delete"
+    end
+
+    test "clicking delete shows confirmation modal" do
+      project = create_project("alpha")
+      session = create_session(project)
+      ann = create_annotation(session, :open, text: "confirm-me")
+
+      {:ok, view, _html} = live(build_conn(), "/reviews?project_id=#{project.id}")
+
+      html = render_click(view, "delete_annotation", %{"id" => ann.id})
+
+      assert html =~ "Delete this annotation?"
+      assert html =~ "This action cannot be undone."
+    end
+
+    test "confirming delete removes the annotation" do
+      project = create_project("alpha")
+      session = create_session(project)
+      ann = create_annotation(session, :open, text: "bye-bye")
+
+      {:ok, view, _html} = live(build_conn(), "/reviews?project_id=#{project.id}")
+
+      render_click(view, "delete_annotation", %{"id" => ann.id})
+      html = render_click(view, "confirm_delete")
+
+      assert html =~ "Annotation deleted"
+      refute html =~ "bye-bye"
+    end
+
+    test "cancelling delete keeps the annotation" do
+      project = create_project("alpha")
+      session = create_session(project)
+      ann = create_annotation(session, :open, text: "keep-me")
+
+      {:ok, view, _html} = live(build_conn(), "/reviews?project_id=#{project.id}")
+
+      render_click(view, "delete_annotation", %{"id" => ann.id})
+      html = render_click(view, "cancel_delete")
+
+      refute html =~ "Delete this annotation?"
+      assert html =~ "keep-me"
+    end
+
+    test "escape key closes confirmation modal" do
+      project = create_project("alpha")
+      session = create_session(project)
+      ann = create_annotation(session, :open, text: "escape-test")
+
+      {:ok, view, _html} = live(build_conn(), "/reviews?project_id=#{project.id}")
+
+      render_click(view, "delete_annotation", %{"id" => ann.id})
+      html = render_click(view, "keydown", %{"key" => "Escape"})
+
+      refute html =~ "Delete this annotation?"
+      assert html =~ "escape-test"
+    end
+  end
+
+  describe "batch selection and delete" do
+    test "shows select button in page header" do
+      project = create_project("alpha")
+      session = create_session(project)
+      create_annotation(session, :open)
+
+      {:ok, _view, html} = live(build_conn(), "/reviews?project_id=#{project.id}")
+
+      assert html =~ "Select"
+    end
+
+    test "entering selection mode shows checkboxes" do
+      project = create_project("alpha")
+      session = create_session(project)
+      create_annotation(session, :open, text: "selectable")
+
+      {:ok, view, _html} = live(build_conn(), "/reviews?project_id=#{project.id}")
+
+      html = view |> element("[phx-click=enter_selection_mode]") |> render_click()
+
+      assert html =~ "Cancel"
+      assert html =~ "checkbox"
+    end
+
+    test "selecting annotations shows batch action bar" do
+      project = create_project("alpha")
+      session = create_session(project)
+      ann = create_annotation(session, :open, text: "select-me")
+
+      {:ok, view, _html} = live(build_conn(), "/reviews?project_id=#{project.id}")
+
+      render_click(view, "enter_selection_mode")
+      html = render_click(view, "toggle_select", %{"id" => ann.id})
+
+      assert html =~ "1 selected"
+      assert html =~ "Delete selected"
+    end
+
+    test "batch delete with confirmation removes all selected annotations" do
+      project = create_project("alpha")
+      session = create_session(project)
+      ann1 = create_annotation(session, :open, text: "batch-one")
+      ann2 = create_annotation(session, :open, text: "batch-two")
+      _ann3 = create_annotation(session, :open, text: "batch-keep")
+
+      {:ok, view, _html} = live(build_conn(), "/reviews?project_id=#{project.id}")
+
+      render_click(view, "enter_selection_mode")
+      render_click(view, "toggle_select", %{"id" => ann1.id})
+      render_click(view, "toggle_select", %{"id" => ann2.id})
+      render_click(view, "batch_delete")
+
+      assert render(view) =~ "Delete 2 annotations?"
+
+      html = render_click(view, "confirm_delete")
+
+      assert html =~ "2 annotations deleted"
+      refute html =~ "batch-one"
+      refute html =~ "batch-two"
+      assert html =~ "batch-keep"
+    end
+
+    test "exiting selection mode clears selections" do
+      project = create_project("alpha")
+      session = create_session(project)
+      ann = create_annotation(session, :open, text: "exit-select")
+
+      {:ok, view, _html} = live(build_conn(), "/reviews?project_id=#{project.id}")
+
+      render_click(view, "enter_selection_mode")
+      render_click(view, "toggle_select", %{"id" => ann.id})
+      html = render_click(view, "exit_selection_mode")
+
+      refute html =~ "selected"
+      assert html =~ "Select"
+    end
+
+    test "deselect all clears selection count" do
+      project = create_project("alpha")
+      session = create_session(project)
+      ann = create_annotation(session, :open, text: "deselect-me")
+
+      {:ok, view, _html} = live(build_conn(), "/reviews?project_id=#{project.id}")
+
+      render_click(view, "enter_selection_mode")
+      render_click(view, "toggle_select", %{"id" => ann.id})
+      html = render_click(view, "deselect_all")
+
+      refute html =~ "Delete selected"
+    end
+
+    test "delete button hidden in selection mode" do
+      project = create_project("alpha")
+      session = create_session(project)
+      create_annotation(session, :open, text: "hidden-delete")
+
+      {:ok, view, html} = live(build_conn(), "/reviews?project_id=#{project.id}")
+
+      assert html =~ "Delete"
+
+      html = view |> element("[phx-click=enter_selection_mode]") |> render_click()
+
+      refute html =~ "phx-click=\"delete_annotation\""
+    end
+  end
 end
