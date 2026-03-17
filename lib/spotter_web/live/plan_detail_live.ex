@@ -35,7 +35,7 @@ defmodule SpotterWeb.PlanDetailLive do
     socket =
       if connected?(socket) do
         socket
-        |> assign(project: project)
+        |> assign(project: project, selection: nil, highlighted_annotation: nil)
         |> load_detail(project, bead_id)
       else
         assign(socket, project: project)
@@ -96,7 +96,7 @@ defmodule SpotterWeb.PlanDetailLive do
 
       case Spotter.Transcripts.Annotation
            |> Ash.get(id) do
-        {:ok, annotation} ->
+        {:ok, %{bead_id: bead_id} = annotation} when bead_id == socket.assigns.bead.id ->
           Ash.destroy!(annotation)
           annotations = Enum.reject(socket.assigns.annotations, &(&1.id == id))
           {:noreply, assign(socket, annotations: annotations, highlighted_annotation: nil)}
