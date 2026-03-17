@@ -94,34 +94,6 @@ defmodule SpotterWeb.PlanComponents do
     """
   end
 
-  @doc """
-  Renders a GIVEN/WHEN/THEN acceptance criteria table.
-  """
-  attr(:rows, :list, required: true)
-
-  def acceptance_table(assigns) do
-    ~H"""
-    <table class="acceptance-table" data-testid="acceptance-table">
-      <thead>
-        <tr>
-          <th>GIVEN</th>
-          <th>WHEN</th>
-          <th>THEN</th>
-        </tr>
-      </thead>
-      <tbody>
-        <%= for row <- @rows do %>
-          <tr>
-            <td>{row.given}</td>
-            <td>{row.when}</td>
-            <td>{row.then}</td>
-          </tr>
-        <% end %>
-      </tbody>
-    </table>
-    """
-  end
-
   attr(:rows, :list, required: true)
 
   def acceptance_cards(assigns) do
@@ -170,7 +142,7 @@ defmodule SpotterWeb.PlanComponents do
       <h4 class="bead-section-heading">Dependencies</h4>
       <div
         :for={dep <- @deps}
-        class={"bead-dep-row #{if dep.depends_on_status != "closed", do: "bead-dep-row--blocking"}"}
+        class={"bead-dep-row #{if dep.depends_on_status not in [nil, "closed"], do: "bead-dep-row--blocking"}"}
         data-testid="dependency-row"
       >
         <.link
