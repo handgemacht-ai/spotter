@@ -49,10 +49,17 @@ defmodule SpotterWeb.PlanDetailLive do
     selection = %{text: text, section: params["section"]}
     socket = assign(socket, selection: selection)
 
-    if is_binary(params["comment"]) and params["comment"] != "" do
-      %{bead: bead, project: project} = socket.assigns
-      maybe_create_annotation(bead, project, text, params["comment"])
-    end
+    socket =
+      if is_binary(params["comment"]) and params["comment"] != "" do
+        %{bead: bead, project: project} = socket.assigns
+
+        case maybe_create_annotation(bead, project, text, params["comment"]) do
+          :ok -> assign(socket, annotations: fetch_annotations(bead.id), selection: nil)
+          _ -> socket
+        end
+      else
+        socket
+      end
 
     {:noreply, socket}
   end
@@ -61,11 +68,17 @@ defmodule SpotterWeb.PlanDetailLive do
   def handle_event("save_annotation", %{"comment" => comment}, socket) do
     %{bead: bead, project: project, selection: selection} = socket.assigns
 
-    if selection do
-      maybe_create_annotation(bead, project, selection.text, comment)
-    end
+    socket =
+      if selection do
+        case maybe_create_annotation(bead, project, selection.text, comment) do
+          :ok -> assign(socket, annotations: fetch_annotations(bead.id), selection: nil)
+          _ -> assign(socket, selection: nil)
+        end
+      else
+        assign(socket, selection: nil)
+      end
 
-    {:noreply, assign(socket, selection: nil)}
+    {:noreply, socket}
   end
 
   @impl true

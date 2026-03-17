@@ -27,6 +27,13 @@ defmodule SpotterWeb.E2eSeedController do
   PlansLive shows project filter chips and an epic table.
   PlanDetailLive renders sections, mermaid diagrams, acceptance tables, and child tasks.
 
+  ```yaml
+  stack:
+    frontend: Phoenix LiveView
+    backend: Elixir + Ash
+    database: Dolt (MySQL-compatible)
+  ```
+
   ## Diagram
 
   ```mermaid
@@ -37,6 +44,13 @@ defmodule SpotterWeb.E2eSeedController do
     D --> B
   ```
 
+  ## Classification
+
+  - Type: feature
+  - Architecture Change: true
+  - Boundary Operation: none
+  - Affected Boundaries: lib/spotter_web/live, lib/spotter/beads
+
   ## Acceptance Criteria
 
   | GIVEN | WHEN | THEN |
@@ -45,6 +59,8 @@ defmodule SpotterWeb.E2eSeedController do
   | An epic has child tasks | User views the epic detail | Child tasks are listed with expand/collapse |
   | An epic has mermaid blocks | User views the epic detail | Mermaid diagrams are rendered |
   """
+
+  @e2e_prereq_id "e2e-prereq-001"
 
   @e2e_tasks [
     %{
@@ -111,6 +127,7 @@ defmodule SpotterWeb.E2eSeedController do
           with :ok <- create_database(conn),
                :ok <- create_tables(conn),
                :ok <- insert_epic(conn),
+               :ok <- insert_prereq(conn),
                :ok <- insert_tasks(conn) do
             insert_dependencies(conn)
           end
@@ -212,21 +229,54 @@ defmodule SpotterWeb.E2eSeedController do
     end)
   end
 
+  defp insert_prereq(conn) do
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+    sql = """
+    REPLACE INTO `#{@e2e_database}`.issues
+      (id, title, status, priority, issue_type, description, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    """
+
+    case MyXQL.query(conn, sql, [
+           @e2e_prereq_id,
+           "Setup test infrastructure",
+           "closed",
+           1,
+           "task",
+           "Prerequisite task for e2e epic.",
+           now
+         ]) do
+      {:ok, _} -> :ok
+      {:error, err} -> {:error, {:insert_prereq, err}}
+    end
+  end
+
   defp insert_dependencies(conn) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
     sql = """
     REPLACE INTO `#{@e2e_database}`.dependencies
       (issue_id, depends_on_id, type, created_at)
-    VALUES (?, ?, 'blocks', ?)
+    VALUES (?, ?, ?, ?)
     """
 
-    Enum.reduce_while(@e2e_tasks, :ok, fn task, :ok ->
-      case MyXQL.query(conn, sql, [task.id, @e2e_epic_id, now]) do
-        {:ok, _} -> {:cont, :ok}
-        {:error, err} -> {:halt, {:error, {:insert_dep, task.id, err}}}
+    # Tasks depend on epic
+    task_deps =
+      Enum.reduce_while(@e2e_tasks, :ok, fn task, :ok ->
+        case MyXQL.query(conn, sql, [task.id, @e2e_epic_id, "blocks", now]) do
+          {:ok, _} -> {:cont, :ok}
+          {:error, err} -> {:halt, {:error, {:insert_dep, task.id, err}}}
+        end
+      end)
+
+    # Epic depends on prereq (so epic detail shows dependencies)
+    with :ok <- task_deps do
+      case MyXQL.query(conn, sql, [@e2e_epic_id, @e2e_prereq_id, "blocked-by", now]) do
+        {:ok, _} -> :ok
+        {:error, err} -> {:error, {:insert_dep, @e2e_epic_id, err}}
       end
-    end)
+    end
   end
 
   defp do_cleanup do

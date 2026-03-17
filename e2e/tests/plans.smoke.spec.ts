@@ -102,7 +102,7 @@ test.describe("plans list — /plans (sidebar project selector)", () => {
 
     await test.step("THEN plan detail page loads", async () => {
       await waitForLiveViewReady(page, "plan-detail-root");
-      await expect(page.getByTestId("epic-detail")).toBeVisible();
+      await expect(page.getByTestId("bead-detail")).toBeVisible();
     });
   });
 
