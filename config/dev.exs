@@ -17,6 +17,9 @@ config :spotter, Spotter.Repo,
 
 config :ash, policies: [show_policy_breakdowns?: true]
 
+config :spotter, Spotter.Beads.DoltConfig,
+  database_mapping: %{"spotter" => "beads_spotter", "levio" => "le"}
+
 # Temporary containment for le-bdy:
 # co-change full rebuilds repeatedly OOM the dev BEAM on the Hetzner rig.
 config :spotter, co_change_enabled: false

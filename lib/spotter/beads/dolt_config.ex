@@ -31,9 +31,18 @@ defmodule Spotter.Beads.DoltConfig do
 
   @doc """
   Returns the Dolt database name for a project.
+
+  Checks `database_mapping` config first, falls back to the project name as-is.
+  Example config:
+      config :spotter, Spotter.Beads.DoltConfig,
+        database_mapping: %{"spotter" => "beads_spotter"}
   """
   @spec database_name(String.t()) :: String.t()
   def database_name(project_name) when is_binary(project_name) do
-    project_name
+    mapping =
+      Application.get_env(:spotter, __MODULE__, [])
+      |> Keyword.get(:database_mapping, %{})
+
+    Map.get(mapping, project_name, project_name)
   end
 end

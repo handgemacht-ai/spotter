@@ -12,6 +12,7 @@ defmodule Spotter.Beads.Client do
 
   @pool_prefix __MODULE__.Pool
   @query_timeout 5_000
+  @connect_timeout 500
 
   # -- Public API --
 
@@ -144,6 +145,39 @@ defmodule Spotter.Beads.Client do
   end
 
   @doc """
+  Lists non-epic issues with no parent dependency (orphans).
+  """
+  @spec list_orphan_issues(String.t(), :all | :open | :closed) ::
+          {:ok, [map()]} | {:error, atom()}
+  def list_orphan_issues(project, filter \\ :all) do
+    Tracer.with_span "spotter.beads.client.list_orphan_issues" do
+      Tracer.set_attribute("spotter.beads.database", DoltConfig.database_name(project))
+      Tracer.set_attribute("spotter.beads.query_name", "list_orphan_issues")
+
+      {where_clause, params} = orphan_filter_clause(filter)
+
+      sql = """
+      SELECT id, title, status, priority, issue_type, description,
+             created_at, updated_at, closed_at, assignee
+      FROM issues
+      WHERE issue_type != 'epic'
+      AND id NOT IN (
+        SELECT issue_id FROM dependencies WHERE type IN ('parent-child', 'parent')
+      )
+      #{where_clause}
+      ORDER BY priority ASC, created_at DESC
+      """
+
+      with {:ok, pool} <- ensure_pool(project) do
+        case run_query(pool, sql, params) do
+          {:ok, result} -> {:ok, rows_to_maps(result)}
+          {:error, _} = err -> err
+        end
+      end
+    end
+  end
+
+  @doc """
   Fetches dependencies for an issue.
   """
   @spec get_dependencies(String.t(), String.t()) ::
@@ -210,7 +244,7 @@ defmodule Spotter.Beads.Client do
   end
 
   defp verify_connection(pool_name) do
-    case MyXQL.query(pool_name, "SELECT 1", [], timeout: @query_timeout) do
+    case MyXQL.query(pool_name, "SELECT 1", [], timeout: @connect_timeout) do
       {:ok, _} -> :ok
       {:error, err} -> {:error, classify_error(err)}
     end
@@ -238,6 +272,10 @@ defmodule Spotter.Beads.Client do
   defp epic_filter_clause(:all), do: {"", []}
   defp epic_filter_clause(:open), do: {"AND status = ?", ["open"]}
   defp epic_filter_clause(:closed), do: {"AND status = ?", ["closed"]}
+
+  defp orphan_filter_clause(:all), do: {"", []}
+  defp orphan_filter_clause(:open), do: {"AND status = ?", ["open"]}
+  defp orphan_filter_clause(:closed), do: {"AND status = ?", ["closed"]}
 
   defp rows_to_maps(%MyXQL.Result{columns: columns, rows: rows}) do
     Enum.map(rows, fn row ->

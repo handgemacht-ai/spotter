@@ -6,6 +6,7 @@ defmodule SpotterWeb.PlansLiveTest do
 
   alias Spotter.Transcripts.Project
 
+  @moduletag timeout: 30_000
   @endpoint SpotterWeb.Endpoint
 
   describe "mount with ProjectContext" do
@@ -24,17 +25,23 @@ defmodule SpotterWeb.PlansLiveTest do
       refute html =~ ~s(class="filter-section")
     end
 
+    @tag :live_dolt
     test "mounts with project from URL param via ProjectContext" do
       project = Ash.create!(Project, %{name: "test_proj", pattern: "^test_proj"})
-      {:ok, _view, html} = live(build_conn(), "/plans?project=#{project.id}")
+      {:ok, view, _html} = live(build_conn(), "/plans?project=#{project.id}")
+
+      html = render_async(view, 10_000)
 
       assert html =~ "epic-table"
     end
   end
 
   describe "grouped-by-project view (no project selected)" do
+    @tag :live_dolt
     test "shows grouped view or empty state when no project selected" do
-      {:ok, _view, html} = live(build_conn(), "/plans")
+      {:ok, view, _html} = live(build_conn(), "/plans")
+
+      html = render_async(view, 10_000)
 
       # With no projects in DB, grouped view is empty → empty state shown
       # With projects, group headers are rendered
@@ -48,10 +55,11 @@ defmodule SpotterWeb.PlansLiveTest do
       %{project: project}
     end
 
+    @tag :live_dolt
     test "filters epics to selected project (no group headers)", %{project: project} do
       {:ok, view, _html} = live(build_conn(), "/plans?project=#{project.id}")
 
-      html = render(view)
+      html = render_async(view, 10_000)
 
       # Filtered view: epic table present, no group headers
       assert html =~ "epic-table"
@@ -65,18 +73,22 @@ defmodule SpotterWeb.PlansLiveTest do
       %{project: project}
     end
 
+    @tag :live_dolt
     test "PlansLive calls Spotter.Plans, not BeadQueries directly", %{project: project} do
       {:ok, view, _html} = live(build_conn(), "/plans?project=#{project.id}")
 
-      html = render(view)
+      html = render_async(view, 10_000)
 
       assert html =~ "epic-table"
     end
   end
 
   describe "epic table" do
+    @tag :live_dolt
     test "displays epic table structure" do
-      {:ok, _view, html} = live(build_conn(), "/plans")
+      {:ok, view, _html} = live(build_conn(), "/plans")
+
+      html = render_async(view, 10_000)
 
       assert html =~ "epic-table" or html =~ "<table" or html =~ "<th"
     end
@@ -88,10 +100,11 @@ defmodule SpotterWeb.PlansLiveTest do
       %{project: project}
     end
 
+    @tag :live_dolt
     test "shows empty state when project has no plans", %{project: project} do
       {:ok, view, _html} = live(build_conn(), "/plans?project=#{project.id}")
 
-      html = render(view)
+      html = render_async(view, 10_000)
 
       assert html =~ "No epics" or html =~ "No plans" or html =~ "empty-state"
     end

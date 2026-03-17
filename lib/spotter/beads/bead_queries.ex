@@ -119,6 +119,27 @@ defmodule Spotter.Beads.BeadQueries do
   end
 
   @doc """
+  Lists non-epic issues with no parent dependency (orphans).
+  """
+  @spec list_orphan_issues(String.t(), :all | :open | :closed) ::
+          {:ok, [BeadStructs.Task.t()]} | {:error, atom()}
+  def list_orphan_issues(project, filter \\ :all) do
+    Tracer.with_span "spotter.beads.queries.list_orphan_issues" do
+      Tracer.set_attribute("spotter.beads.project", project)
+      Tracer.set_attribute("spotter.beads.filter", Atom.to_string(filter))
+
+      case Client.list_orphan_issues(project, filter) do
+        {:ok, rows} ->
+          {:ok, BeadStructs.Task.from_rows(rows)}
+
+        {:error, reason} = err ->
+          Tracer.set_status(:error, inspect(reason))
+          err
+      end
+    end
+  end
+
+  @doc """
   Fetches a single bead by ID. Delegates to `get_epic/2` since all
   issue types share the same underlying query and struct shape.
   """
