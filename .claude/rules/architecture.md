@@ -96,7 +96,7 @@ Git operations                  --> GitRunner (port-based, timeout-safe)
 
 esbuild-compiled JS (no framework). Key libraries: cytoscape (DAG visualization), highlight.js, marked (markdown), sortablejs, dompurify, mermaid (lazy-loaded for plan diagrams).
 
-**JS Hooks** (`assets/js/hooks/`): LaneDrag, SortableColumns, ConnectorOverlay, TranscriptTaskRail, MermaidHook (lazy-loads mermaid.js, renders SVG with dark theme), PlanHighlighter (text selection for plan annotations).
+**JS Hooks** (`assets/js/hooks/`): LaneDrag, SortableColumns, ConnectorOverlay, TranscriptTaskRail, MermaidHook (lazy-loads mermaid.js, renders SVG with dark theme), PlanContentHook (hljs syntax highlighting on Earmark-rendered code blocks + text selection for plan annotations).
 
 ## Plugin
 

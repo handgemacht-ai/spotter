@@ -44,7 +44,7 @@
 | `assets/` | JS/CSS source (esbuild-compiled) |
 | `assets/js/project_selector.js` | Sidebar project selector dropdown (standalone init) |
 | `assets/js/hooks/mermaid_hook.js` | MermaidHook: lazy-loads mermaid.js, renders SVG diagrams |
-| `assets/js/hooks/plan_highlighter.js` | PlanHighlighter: text selection for plan annotations |
+| `assets/js/hooks/plan_content_hook.js` | PlanContentHook: hljs syntax highlighting + text selection for plan annotations |
 | `priv/static/` | Compiled static assets |
 
 ## Tests
