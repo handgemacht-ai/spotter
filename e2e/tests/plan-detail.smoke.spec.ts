@@ -1,17 +1,15 @@
 import { expect, test } from "@playwright/test";
-import { prepareFullPageSnapshot, waitForLiveViewReady } from "../support/liveview";
+import {
+  prepareFullPageSnapshot,
+  waitForLiveViewReady,
+} from "../support/liveview";
 import { PlansPage } from "../support/pages/plans";
 import { PlanDetailPage } from "../support/pages/plan-detail";
 import { seedPlans, cleanupPlans } from "../support/seed-plans";
 
-/** Known e2e test bead seeded by seed-plans. */
 const E2E_PROJECT = "e2e_plans";
 const E2E_BEAD_ID = "e2e-epic-001";
 
-/**
- * Helper: navigate directly to the known e2e test bead's detail page.
- * Uses the deterministic seed data from E2eSeedController.
- */
 async function navigateToTestBead(
   page: import("@playwright/test").Page,
   detail: PlanDetailPage,
@@ -19,19 +17,57 @@ async function navigateToTestBead(
   await detail.goto(E2E_PROJECT, E2E_BEAD_ID);
 }
 
+async function pushPlanTextSelected(
+  page: import("@playwright/test").Page,
+  params: { selected_text: string; section: string; comment?: string },
+): Promise<void> {
+  await page.evaluate((p) => {
+    const sections = document.getElementById("plan-sections");
+    if (!sections) throw new Error("plan-sections not found");
+
+    const liveSocket = (window as any).liveSocket;
+    if (!liveSocket) throw new Error("liveSocket not found");
+
+    let hook: any = null;
+    for (const viewId of Object.keys(liveSocket.roots)) {
+      const view = liveSocket.roots[viewId];
+      for (const hookId of Object.keys(view.viewHooks || {})) {
+        const h = view.viewHooks[hookId];
+        if (h.el === sections) {
+          hook = h;
+          break;
+        }
+      }
+      if (hook) break;
+    }
+
+    if (!hook || !hook.pushEvent) {
+      throw new Error("PlanContentHook not found");
+    }
+
+    hook.pushEvent("plan_text_selected", p);
+  }, params);
+}
+
 test.describe("plan detail — /plans/:project/:bead_id", () => {
   let plans: PlansPage;
   let detail: PlanDetailPage;
 
-  test.beforeAll(async () => { await seedPlans(); });
-  test.afterAll(async () => { await cleanupPlans(); });
+  test.beforeAll(async () => {
+    await seedPlans();
+  });
+  test.afterAll(async () => {
+    await cleanupPlans();
+  });
 
   test.beforeEach(async ({ page }) => {
     plans = new PlansPage(page);
     detail = new PlanDetailPage(page);
   });
 
-  test("bead detail loads with header and rendered markdown sections", async ({ page }) => {
+  test("bead detail loads with header and rendered markdown sections", async ({
+    page,
+  }) => {
     await test.step("GIVEN a bead detail page is loaded", async () => {
       await navigateToTestBead(page, detail);
     });
@@ -83,7 +119,10 @@ test.describe("plan detail — /plans/:project/:bead_id", () => {
 
     await test.step("THEN at least one acceptance card is rendered", async () => {
       const cardCount = await detail.allAcceptanceCardItems().count();
-      expect(cardCount, "expected at least 1 acceptance card").toBeGreaterThanOrEqual(1);
+      expect(
+        cardCount,
+        "expected at least 1 acceptance card",
+      ).toBeGreaterThanOrEqual(1);
     });
 
     await test.step("THEN each card has GIVEN, WHEN, THEN labels", async () => {
@@ -99,7 +138,10 @@ test.describe("plan detail — /plans/:project/:bead_id", () => {
       await expect(values).toHaveCount(3);
       for (let i = 0; i < 3; i++) {
         const text = await values.nth(i).textContent();
-        expect(text!.trim().length, `acceptance value ${i} should not be empty`).toBeGreaterThan(0);
+        expect(
+          text!.trim().length,
+          `acceptance value ${i} should not be empty`,
+        ).toBeGreaterThan(0);
       }
     });
   });
@@ -116,13 +158,21 @@ test.describe("plan detail — /plans/:project/:bead_id", () => {
     });
 
     await test.step("THEN chips have labels and badge values", async () => {
-      const labels = detail.classificationChips().locator(".bead-classification-label");
+      const labels = detail
+        .classificationChips()
+        .locator(".bead-classification-label");
       const labelCount = await labels.count();
-      expect(labelCount, "expected at least 1 classification label").toBeGreaterThanOrEqual(1);
+      expect(
+        labelCount,
+        "expected at least 1 classification label",
+      ).toBeGreaterThanOrEqual(1);
 
       const badges = detail.classificationChips().locator(".badge");
       const badgeCount = await badges.count();
-      expect(badgeCount, "expected at least 1 classification badge").toBeGreaterThanOrEqual(1);
+      expect(
+        badgeCount,
+        "expected at least 1 classification badge",
+      ).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -141,7 +191,10 @@ test.describe("plan detail — /plans/:project/:bead_id", () => {
 
     await test.step("THEN dependency row shows the epic dependency", async () => {
       const rowCount = await detail.allDependencyRows().count();
-      expect(rowCount, "expected at least 1 dependency row").toBeGreaterThanOrEqual(1);
+      expect(
+        rowCount,
+        "expected at least 1 dependency row",
+      ).toBeGreaterThanOrEqual(1);
     });
 
     await test.step("THEN dependency row has a navigable link with bead ID and title", async () => {
@@ -182,7 +235,10 @@ test.describe("plan detail — /plans/:project/:bead_id", () => {
 
     await test.step("THEN child task rows are listed", async () => {
       const taskCount = await detail.allChildTaskRows().count();
-      expect(taskCount, "expected at least 1 child task").toBeGreaterThanOrEqual(1);
+      expect(
+        taskCount,
+        "expected at least 1 child task",
+      ).toBeGreaterThanOrEqual(1);
     });
 
     await test.step("THEN each task row shows ID, title, status, priority", async () => {
@@ -194,7 +250,10 @@ test.describe("plan detail — /plans/:project/:bead_id", () => {
     });
 
     await test.step("WHEN user clicks a task link", async () => {
-      const firstTaskId = await detail.allChildTaskRows().first().getAttribute("data-task-id");
+      const firstTaskId = await detail
+        .allChildTaskRows()
+        .first()
+        .getAttribute("data-task-id");
       expect(firstTaskId).toBeTruthy();
       await detail.taskLink(firstTaskId!).click();
     });
@@ -235,35 +294,10 @@ test.describe("plan detail — /plans/:project/:bead_id", () => {
     await test.step("WHEN user creates an annotation via text selection", async () => {
       await expect(detail.sectionsContainer()).toBeVisible();
 
-      await page.evaluate(() => {
-        const sections = document.getElementById("plan-sections");
-        if (!sections) throw new Error("plan-sections not found");
-
-        const liveSocket = (window as any).liveSocket;
-        if (!liveSocket) throw new Error("liveSocket not found");
-
-        let hook: any = null;
-        for (const viewId of Object.keys(liveSocket.roots)) {
-          const view = liveSocket.roots[viewId];
-          for (const hookId of Object.keys(view.viewHooks || {})) {
-            const h = view.viewHooks[hookId];
-            if (h.el === sections) {
-              hook = h;
-              break;
-            }
-          }
-          if (hook) break;
-        }
-
-        if (!hook || !hook.pushEvent) {
-          throw new Error("PlanContentHook not found");
-        }
-
-        hook.pushEvent("plan_text_selected", {
-          selected_text: "Plans Navigation feature for Spotter",
-          section: "Overview",
-          comment: "E2E test annotation",
-        });
+      await pushPlanTextSelected(page, {
+        selected_text: "Plans Navigation feature for Spotter",
+        section: "Overview",
+        comment: "E2E test annotation",
       });
     });
 
@@ -279,40 +313,17 @@ test.describe("plan detail — /plans/:project/:bead_id", () => {
     });
 
     await test.step("WHEN user selects text in a section", async () => {
-      await page.evaluate(() => {
-        const sections = document.getElementById("plan-sections");
-        if (!sections) throw new Error("plan-sections not found");
-
-        const liveSocket = (window as any).liveSocket;
-        if (!liveSocket) throw new Error("liveSocket not found");
-
-        let hook: any = null;
-        for (const viewId of Object.keys(liveSocket.roots)) {
-          const view = liveSocket.roots[viewId];
-          for (const hookId of Object.keys(view.viewHooks || {})) {
-            const h = view.viewHooks[hookId];
-            if (h.el === sections) {
-              hook = h;
-              break;
-            }
-          }
-          if (hook) break;
-        }
-
-        if (!hook || !hook.pushEvent) {
-          throw new Error("PlanContentHook not found");
-        }
-
-        hook.pushEvent("plan_text_selected", {
-          selected_text: "Plans Navigation feature for Spotter",
-          section: "Overview",
-        });
+      await pushPlanTextSelected(page, {
+        selected_text: "Plans Navigation feature for Spotter",
+        section: "Overview",
       });
     });
 
     await test.step("THEN annotation creation form appears", async () => {
       await expect(detail.selectionActive()).toBeVisible({ timeout: 3000 });
-      const preview = detail.selectionActive().locator(".plan-annotation-selected-text");
+      const preview = detail
+        .selectionActive()
+        .locator(".plan-annotation-selected-text");
       await expect(preview).toBeVisible();
       await expect(detail.selectionActive().locator("textarea")).toBeVisible();
       await expect(

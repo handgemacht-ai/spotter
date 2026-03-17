@@ -182,54 +182,37 @@ defmodule SpotterWeb.E2eSeedController do
   end
 
   defp insert_epic(conn) do
-    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
-
-    sql = """
-    REPLACE INTO `#{@e2e_database}`.issues
-      (id, title, status, priority, issue_type, description, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    """
-
-    case MyXQL.query(conn, sql, [
-           @e2e_epic_id,
-           "Plans Navigation E2E Test Epic",
-           "open",
-           1,
-           "epic",
-           @e2e_epic_description,
-           now
-         ]) do
-      {:ok, _} -> :ok
-      {:error, err} -> {:error, {:insert_epic, err}}
-    end
+    insert_issue(conn, %{
+      id: @e2e_epic_id,
+      title: "Plans Navigation E2E Test Epic",
+      status: "open",
+      priority: 1,
+      issue_type: "epic",
+      description: @e2e_epic_description
+    })
   end
 
   defp insert_tasks(conn) do
-    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
-
-    sql = """
-    REPLACE INTO `#{@e2e_database}`.issues
-      (id, title, status, priority, issue_type, description, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    """
-
     Enum.reduce_while(@e2e_tasks, :ok, fn task, :ok ->
-      case MyXQL.query(conn, sql, [
-             task.id,
-             task.title,
-             task.status,
-             task.priority,
-             "task",
-             task.description,
-             now
-           ]) do
-        {:ok, _} -> {:cont, :ok}
-        {:error, err} -> {:halt, {:error, {:insert_task, task.id, err}}}
+      case insert_issue(conn, Map.put(task, :issue_type, "task")) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
       end
     end)
   end
 
   defp insert_prereq(conn) do
+    insert_issue(conn, %{
+      id: @e2e_prereq_id,
+      title: "Setup test infrastructure",
+      status: "closed",
+      priority: 1,
+      issue_type: "task",
+      description: "Prerequisite task for e2e epic."
+    })
+  end
+
+  defp insert_issue(conn, attrs) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
     sql = """
@@ -239,16 +222,16 @@ defmodule SpotterWeb.E2eSeedController do
     """
 
     case MyXQL.query(conn, sql, [
-           @e2e_prereq_id,
-           "Setup test infrastructure",
-           "closed",
-           1,
-           "task",
-           "Prerequisite task for e2e epic.",
+           attrs.id,
+           attrs.title,
+           attrs.status,
+           attrs.priority,
+           attrs.issue_type,
+           attrs[:description],
            now
          ]) do
       {:ok, _} -> :ok
-      {:error, err} -> {:error, {:insert_prereq, err}}
+      {:error, err} -> {:error, {:insert_issue, attrs.id, err}}
     end
   end
 

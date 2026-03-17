@@ -45,23 +45,26 @@ defmodule SpotterWeb.PlanDetailLive do
   end
 
   @impl true
-  def handle_event("plan_text_selected", %{"selected_text" => text} = params, socket) do
-    selection = %{text: text, section: params["section"]}
-    socket = assign(socket, selection: selection)
+  def handle_event(
+        "plan_text_selected",
+        %{"selected_text" => text, "comment" => comment} = params,
+        socket
+      )
+      when is_binary(comment) and comment != "" do
+    %{bead: bead, project: project} = socket.assigns
 
     socket =
-      if is_binary(params["comment"]) and params["comment"] != "" do
-        %{bead: bead, project: project} = socket.assigns
-
-        case maybe_create_annotation(bead, project, text, params["comment"]) do
-          :ok -> assign(socket, annotations: fetch_annotations(bead.id), selection: nil)
-          _ -> socket
-        end
-      else
-        socket
+      case maybe_create_annotation(bead, project, text, comment) do
+        :ok -> assign(socket, annotations: fetch_annotations(bead.id), selection: nil)
+        _ -> assign(socket, selection: %{text: text, section: params["section"]})
       end
 
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("plan_text_selected", %{"selected_text" => text} = params, socket) do
+    {:noreply, assign(socket, selection: %{text: text, section: params["section"]})}
   end
 
   @impl true
@@ -202,17 +205,17 @@ defmodule SpotterWeb.PlanDetailLive do
 
   defp fetch_data(project, bead_id) do
     case lookup_test_fixture(project, bead_id) do
-      %{epic: epic_map, children: children_maps} = fixture ->
-        fetch_from_fixture(fixture, epic_map, children_maps, project, bead_id)
+      %{} = fixture ->
+        fetch_from_fixture(fixture, project, bead_id)
 
       nil ->
         fetch_from_dolt(project, bead_id)
     end
   end
 
-  defp fetch_from_fixture(fixture, epic_map, children_maps, project, bead_id) do
-    bead = BeadStructs.Epic.from_row(epic_map)
-    children = BeadStructs.Task.from_rows(children_maps)
+  defp fetch_from_fixture(fixture, project, bead_id) do
+    bead = BeadStructs.Epic.from_row(fixture.epic)
+    children = BeadStructs.Task.from_rows(fixture.children)
 
     deps =
       case Map.get(fixture, :dependencies) do
