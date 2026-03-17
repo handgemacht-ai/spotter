@@ -12,9 +12,11 @@ A project-filtered annotation dashboard showing open and resolved annotations in
 
 1. Navigate to Reviews via sidebar (project is pre-selected from sidebar project selector)
 2. Browse open annotations — each shows source badge, purpose, text excerpt, file/message refs
-4. Resolve annotations (marks them as closed)
-5. Scroll down to see resolved annotations
-6. Sidebar badge updates in real-time as annotations are created/resolved
+3. Delete individual annotations via Delete button (with confirmation dialog)
+4. Select multiple annotations via Select mode and batch-delete them
+5. Resolve annotations (marks them as closed)
+6. Scroll down to see resolved annotations
+7. Sidebar badge updates in real-time as annotations are created/resolved/deleted
 
 ## How It Works
 

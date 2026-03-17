@@ -1,8 +1,10 @@
 defmodule SpotterWeb.ReviewsLive do
   use Phoenix.LiveView
 
+  alias Spotter.Services.ReviewUpdates
   alias Spotter.Transcripts.{Annotation, Project, Session}
   require Ash.Query
+  require OpenTelemetry.Tracer
 
   @impl true
   def mount(_params, _session, socket) do
@@ -11,14 +13,125 @@ defmodule SpotterWeb.ReviewsLive do
        open_annotations: [],
        resolved_annotations: [],
        sessions_by_id: %{},
-       projects_by_id: %{}
+       projects_by_id: %{},
+       delete_target: nil,
+       show_confirm_modal: false,
+       selection_mode: false,
+       selected_ids: MapSet.new()
      )}
   end
 
   @impl true
   def handle_params(_params, _uri, socket) do
-    {:noreply, load_review_data(socket)}
+    {:noreply,
+     socket
+     |> assign(
+       selection_mode: false,
+       selected_ids: MapSet.new(),
+       delete_target: nil,
+       show_confirm_modal: false
+     )
+     |> load_review_data()}
   end
+
+  @impl true
+  def handle_event("delete_annotation", %{"id" => id}, socket) do
+    {:noreply, assign(socket, delete_target: id, show_confirm_modal: true)}
+  end
+
+  def handle_event("confirm_delete", _params, %{assigns: %{delete_target: :batch}} = socket) do
+    ids = MapSet.to_list(socket.assigns.selected_ids)
+    count = length(ids)
+
+    OpenTelemetry.Tracer.with_span "spotter.reviews.delete_annotation" do
+      OpenTelemetry.Tracer.set_attribute(:delete_type, "batch")
+      OpenTelemetry.Tracer.set_attribute(:count, count)
+
+      Enum.each(ids, fn id ->
+        case Ash.get(Annotation, id) do
+          {:ok, ann} -> Ash.destroy!(ann)
+          _ -> :ok
+        end
+      end)
+    end
+
+    ReviewUpdates.broadcast_counts()
+
+    socket =
+      socket
+      |> assign(
+        selected_ids: MapSet.new(),
+        delete_target: nil,
+        show_confirm_modal: false,
+        selection_mode: false
+      )
+      |> load_review_data()
+
+    {:noreply, put_flash(socket, :info, "#{count} annotations deleted")}
+  end
+
+  def handle_event("confirm_delete", _params, %{assigns: %{delete_target: id}} = socket)
+      when is_binary(id) do
+    OpenTelemetry.Tracer.with_span "spotter.reviews.delete_annotation" do
+      OpenTelemetry.Tracer.set_attribute(:annotation_id, id)
+      OpenTelemetry.Tracer.set_attribute(:delete_type, "single")
+
+      case Ash.get(Annotation, id) do
+        {:ok, ann} -> Ash.destroy!(ann)
+        _ -> :ok
+      end
+    end
+
+    ReviewUpdates.broadcast_counts()
+
+    socket =
+      socket
+      |> assign(delete_target: nil, show_confirm_modal: false)
+      |> load_review_data()
+
+    {:noreply, put_flash(socket, :info, "Annotation deleted")}
+  end
+
+  def handle_event("cancel_delete", _params, socket) do
+    {:noreply, assign(socket, delete_target: nil, show_confirm_modal: false)}
+  end
+
+  def handle_event("enter_selection_mode", _params, socket) do
+    {:noreply, assign(socket, selection_mode: true)}
+  end
+
+  def handle_event("exit_selection_mode", _params, socket) do
+    {:noreply, assign(socket, selection_mode: false, selected_ids: MapSet.new())}
+  end
+
+  def handle_event("toggle_select", %{"id" => id}, socket) do
+    selected = socket.assigns.selected_ids
+
+    selected =
+      if MapSet.member?(selected, id),
+        do: MapSet.delete(selected, id),
+        else: MapSet.put(selected, id)
+
+    {:noreply, assign(socket, selected_ids: selected)}
+  end
+
+  def handle_event("deselect_all", _params, socket) do
+    {:noreply, assign(socket, selected_ids: MapSet.new())}
+  end
+
+  def handle_event("batch_delete", _params, socket) do
+    if MapSet.size(socket.assigns.selected_ids) > 0 do
+      {:noreply, assign(socket, delete_target: :batch, show_confirm_modal: true)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("keydown", %{"key" => "Escape"}, socket) do
+    {:noreply, assign(socket, delete_target: nil, show_confirm_modal: false)}
+  end
+
+  def handle_event("keydown", _params, socket), do: {:noreply, socket}
 
   defp load_review_data(socket) do
     project_id = socket.assigns.current_project_id
@@ -132,13 +245,24 @@ defmodule SpotterWeb.ReviewsLive do
     session = Map.get(assigns.sessions_by_id, ann.session_id)
     project = session && Map.get(assigns.projects_by_id, session.project_id)
 
+    selected =
+      assigns[:selection_mode] && MapSet.member?(assigns[:selected_ids] || MapSet.new(), ann.id)
+
     assigns =
       assigns
-      |> assign(session: session, project: project)
+      |> assign(session: session, project: project, selected: selected)
 
     ~H"""
-    <div class="annotation-card">
+    <div class={["annotation-card", @selected && "border-[var(--accent-blue)] bg-[color-mix(in_srgb,var(--accent-blue)_4%,transparent)]"]}>
       <div class="flex items-center gap-2 mb-2">
+        <input
+          :if={@selection_mode}
+          type="checkbox"
+          class="w-4 h-4 rounded border-[var(--border-default)] bg-[var(--surface-1)] checked:bg-[var(--accent-blue)] cursor-pointer"
+          checked={@selected}
+          phx-click="toggle_select"
+          phx-value-id={@ann.id}
+        />
         <span class={source_badge_class(@ann.source)}>
           {source_badge(@ann.source)}
         </span>
@@ -172,6 +296,9 @@ defmodule SpotterWeb.ReviewsLive do
         <a :if={@session} href={annotation_link(@ann, @session)} class="text-xs">
           <%= if @ann.subagent_id && @ann.subagent, do: "View agent", else: "View session" %>
         </a>
+        <button :if={!@selection_mode} class="btn-ghost text-error text-xs ml-auto" phx-click="delete_annotation" phx-value-id={@ann.id}>
+          Delete
+        </button>
       </div>
     </div>
     """
@@ -214,12 +341,58 @@ defmodule SpotterWeb.ReviewsLive do
 
   defp parse_resolved_at(_), do: nil
 
+  defp confirm_modal(assigns) do
+    ~H"""
+    <div :if={@show_confirm_modal} class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" phx-click="cancel_delete" phx-window-keydown="keydown">
+      <div class="bg-[var(--surface-1)] border border-[var(--border-default)] rounded-lg p-6 max-w-[400px] w-full mx-4" phx-click-away="cancel_delete">
+        <h3 class="text-[var(--text-primary)] font-semibold text-base">
+          <%= if @delete_target == :batch do %>
+            Delete <%= MapSet.size(@selected_ids) %> annotations?
+          <% else %>
+            Delete this annotation?
+          <% end %>
+        </h3>
+        <p class="text-[var(--text-secondary)] text-sm mt-2">This action cannot be undone.</p>
+        <div class="flex justify-end gap-3 mt-6">
+          <button class="btn" phx-click="cancel_delete">Cancel</button>
+          <button class="btn btn-error" phx-click="confirm_delete">
+            <%= if @delete_target == :batch, do: "Delete all", else: "Delete" %>
+          </button>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp batch_action_bar(assigns) do
+    ~H"""
+    <div :if={@selection_mode and MapSet.size(@selected_ids) > 0}
+         class="fixed bottom-0 left-[200px] right-0 bg-[var(--surface-1)] border-t border-[var(--border-default)] px-4 py-3 flex items-center justify-between shadow-[0_-2px_8px_rgba(0,0,0,0.2)] z-40">
+      <span class="text-[var(--text-secondary)] text-sm">
+        {MapSet.size(@selected_ids)} selected
+      </span>
+      <div class="flex items-center gap-3">
+        <button class="btn btn-ghost btn-sm" phx-click="deselect_all">Clear selection</button>
+        <button class="btn btn-error btn-sm" phx-click="batch_delete">Delete selected</button>
+      </div>
+    </div>
+    """
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
     <div class="container" data-testid="reviews-root">
-      <div class="page-header">
+      <div class="page-header flex items-center justify-between">
         <h1>Reviews</h1>
+        <%= if @current_project_id do %>
+          <button :if={!@selection_mode} class="btn btn-ghost btn-sm" phx-click="enter_selection_mode">
+            Select
+          </button>
+          <button :if={@selection_mode} class="btn btn-ghost btn-sm" phx-click="exit_selection_mode">
+            Cancel
+          </button>
+        <% end %>
       </div>
 
       <div :if={Phoenix.Flash.get(@flash, :info)} class="flash-info">
@@ -265,7 +438,7 @@ defmodule SpotterWeb.ReviewsLive do
           </div>
         <% else %>
           <%= for ann <- @open_annotations do %>
-            <.annotation_card ann={ann} sessions_by_id={@sessions_by_id} projects_by_id={@projects_by_id} />
+            <.annotation_card ann={ann} sessions_by_id={@sessions_by_id} projects_by_id={@projects_by_id} selection_mode={@selection_mode} selected_ids={@selected_ids} />
           <% end %>
         <% end %>
 
@@ -276,7 +449,7 @@ defmodule SpotterWeb.ReviewsLive do
               <span class="text-muted">({length(@resolved_annotations)})</span>
             </h3>
             <%= for ann <- @resolved_annotations do %>
-              <.annotation_card ann={ann} sessions_by_id={@sessions_by_id} projects_by_id={@projects_by_id} />
+              <.annotation_card ann={ann} sessions_by_id={@sessions_by_id} projects_by_id={@projects_by_id} selection_mode={@selection_mode} selected_ids={@selected_ids} />
             <% end %>
           </div>
         <% end %>
@@ -286,6 +459,9 @@ defmodule SpotterWeb.ReviewsLive do
         </div>
       <% end %>
     </div>
+
+    <.confirm_modal show_confirm_modal={@show_confirm_modal} delete_target={@delete_target} selected_ids={@selected_ids} />
+    <.batch_action_bar selection_mode={@selection_mode} selected_ids={@selected_ids} />
     """
   end
 end
