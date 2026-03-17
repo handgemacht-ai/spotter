@@ -1,5 +1,13 @@
 # Release Notes
 
+## 2026-03-17
+
+- The plan detail view now renders full markdown content with syntax-highlighted code blocks, mermaid diagrams, and structured sections — making it much easier to read complex plans at a glance.
+- You can navigate directly to any bead (epic or task) from the plan detail view, not just epics — opening up the full hierarchy for review.
+- Plans now show acceptance criteria as structured cards, classification chips for categorized sections, and a dependency list linking related beads.
+- Inline annotation highlights let you see exactly which parts of a plan have review comments, with clickable cards that pulse to draw attention to new annotations.
+- Stale UI state is now properly reset when navigating between plans, preventing leftover data from a previous view.
+
 ## 2026-03-08
 
 - Spotter now discovers and imports transcripts from multiple configurable root directories, with hook-provided path hints for faster resolution.

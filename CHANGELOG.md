@@ -6,8 +6,66 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- Earmark markdown rendering and `BeadContentParser` enhancements (spotter-bl3)
+  - `render_section_body/1` converts markdown to HTML via Earmark with sanitization
+  - `classify_section/1` detects section types (acceptance, classification, mermaid, prose)
+  - `extract_classification/1` parses GIVEN/WHEN/THEN classification tables
+  - `parse_classification_body/1` extracted helper to reduce nesting
+  - Hardened HTML sanitizer and narrowed `classify_section` matching
+  - Files: `lib/spotter/beads/bead_content_parser.ex`
+- Dependencies wired through Plans coordinator with `get_bead` aliases (spotter-2sc)
+  - `list_dependencies/2` callback added to `PlanSource` behaviour and `BeadsSource`
+  - `get_bead/2` in `Plans` coordinator with first-success fallthrough across sources
+  - `Annotation` resource: declarative `list_for_bead` action with `bead_id` filter
+  - `ApplyResolution` change module extracted, deduplicating resolve/mcp_resolve logic
+  - MCP resolve action: early-return on error instead of nested case
+  - Files: `lib/spotter/plans/`, `lib/spotter/transcripts/annotation.ex`, `lib/spotter_web/plugs/spotter_mcp_plug.ex`
+- Route rename `:epic_id` → `:bead_id` with any-bead navigation (spotter-de2)
+  - `PlanDetailLive` loads any bead type (epic or task), not just epics
+  - Parallel data loading via `Task.async` for bead content, children, dependencies, and annotations
+  - Content parsing pipeline: sections → classified → rendered markdown
+  - Files: `lib/spotter_web/live/plan_detail_live.ex`, `lib/spotter_web/router.ex`
+- `PlanContentHook` JS hook replacing `PlanHighlighter` (spotter-c6j)
+  - Highlight.js syntax highlighting on Earmark-rendered code blocks
+  - Mermaid diagram rendering (lazy-loaded, dark theme)
+  - `.bead-content` CSS namespace for markdown styling
+  - Scoped event listeners with proper cleanup
+  - Files: `assets/js/hooks/plan_content_hook.js`, `assets/js/app.js`, `priv/static/assets/spotter.css`
+- Bead detail UI components (spotter-055)
+  - `bead_header/1` — title, type badge, status, bead ID
+  - `acceptance_cards/1` — structured GIVEN/WHEN/THEN acceptance criteria cards
+  - `classification_chips/1` — categorized section chips with color coding
+  - `dependency_list/1` — linked dependency beads with status indicators, nil-status guard
+  - Files: `lib/spotter_web/components/plan_components.ex`
+- Inline annotation highlights and annotation cards (spotter-00o)
+  - `PlanContentHook` extended with text selection → annotation creation flow
+  - Fuzzy text matching with `normalizedToRaw` offset conversion for highlight positioning
+  - `annotation_cards/1` component with pulse animation on new annotations
+  - `delete_annotation` LiveView handler with bead ownership check
+  - `encode_annotations/1` extracted helper for pushEvent payload
+  - Cache-aware annotation reruns on content updates
+  - Files: `lib/spotter_web/live/plan_detail_live.ex`, `assets/js/hooks/plan_content_hook.js`, `lib/spotter_web/components/annotation_components.ex`
+- E2E test suite for plan detail rework — 17 tests (spotter-7q0)
+  - `PlanDetailPage` POM with `bead-*` data-testid selectors
+  - Seed controller extended with classification and dependency fixture data
+  - Tests cover: markdown rendering, acceptance cards, classification chips, dependency list, annotation highlights, bead navigation, stale state reset
+  - Files: `e2e/tests/plan-detail.smoke.spec.ts`, `e2e/support/pages/plan-detail.ts`, `lib/mix/tasks/spotter.e2e.seed.ex`
+
+### Changed
+
+- `PlanDetailLive` calls `Spotter.Plans` coordinator instead of `BeadQueries` directly (spotter-de2)
+- Route parameter renamed from `:epic_id` to `:bead_id` in plans routes (spotter-de2)
+- Replaced `PlanHighlighter` JS hook with `PlanContentHook` (spotter-c6j)
+- Removed dead `acceptance_table` component, normalized classification values to lists (spotter-055)
+
 ### Fixed
 
+- Stale UI state (annotations, children, dependencies) now resets on navigation between plans (spotter-7q0)
+- `normalizedToRaw` offset bug in annotation highlight positioning (spotter-00o)
+- `pushEvent` key mismatch between LiveView and JS hook (spotter-00o)
+- Nil-status blocking guard in `dependency_list` component (spotter-055)
 - DoltConfig defaults: port 3307 (shared workspace Dolt), username "root", separate BEADS_DOLT_* env vars (spotter-gdz.1)
 - Database discovery SQL: exclude system DBs instead of filtering beads_* prefix (spotter-gdz.1)
 
