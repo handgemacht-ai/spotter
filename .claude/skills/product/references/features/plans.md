@@ -6,7 +6,7 @@ Teams track epics and tasks in Dolt-backed beads databases. Spotter provides a r
 
 ## What It Does
 
-Two views: a plans list showing epics (grouped by project or filtered to a single project via sidebar), and a plan detail view with full Earmark-rendered markdown content (syntax-highlighted code blocks via PlanContentHook), mermaid diagrams, GIVEN/WHEN/THEN acceptance tables, navigable child tasks, dependencies, and text selection for annotations.
+Two views: a plans list showing epics (grouped by project or filtered to a single project via sidebar), and a plan detail view with full Earmark-rendered markdown content (syntax-highlighted code blocks via PlanContentHook), mermaid diagrams, GIVEN/WHEN/THEN acceptance tables, navigable child tasks, dependencies, text selection for creating annotations, and inline annotation highlights with click-to-scroll and pulse animation. Existing annotations display as annotation cards below the content.
 
 ## User Flow
 
@@ -14,10 +14,13 @@ Two views: a plans list showing epics (grouped by project or filtered to a singl
 2. If a project is selected in the sidebar, see that project's epics in a flat table
 3. If no project is selected, see epics grouped by project with section headers
 4. Click an epic ID to navigate to its detail view
-5. Detail view shows: title, status/priority badges, Earmark-rendered markdown sections with syntax-highlighted code blocks, mermaid diagrams, acceptance criteria table, dependencies, and navigable child tasks
+5. Detail view shows: bead header (type chip, ID, title, status/priority badges, assignee), classification chips (type, scope, complexity), Earmark-rendered markdown sections with syntax-highlighted code blocks, mermaid diagrams, acceptance criteria cards (GIVEN/WHEN/THEN), navigable dependency list with blocking indicators, and navigable child tasks
 6. Click child task IDs to navigate to their own detail view
-7. Select text in sections to create review annotations (keyboard Shift+Arrow and mouse selection supported)
-8. Click "Back to Plans" to return to the list
+7. Existing annotations appear as amber-highlighted text passages inline in rendered content
+8. Click an inline highlight to pulse-animate and scroll to center
+9. Annotation cards section below content shows all annotations with source badge, comment, and delete button
+10. Select text in sections to create review annotations (keyboard Shift+Arrow and mouse selection supported)
+11. Click "Back to Plans" to return to the list
 
 ## How It Works
 
@@ -47,7 +50,7 @@ The `Spotter.Plans` coordinator abstracts over plan sources via the `PlanSource`
 
 ## Data Model
 
-Epics and tasks are read from Dolt beads databases (one per project, named `beads_<project>`). Structs: `BeadStructs.Epic` (id, title, status, priority, description, created_at), `BeadStructs.Task` (id, title, status, priority, description, parent_id). Annotations created from text selection are stored as `Spotter.Transcripts.Annotation` resources in SQLite.
+Epics and tasks are read from Dolt beads databases (one per project, named `beads_<project>`). Structs: `BeadStructs.Epic` (id, title, status, priority, issue_type, assignee, description, created_at), `BeadStructs.Task` (id, title, status, priority, description, parent_id), `BeadStructs.Dependency` (depends_on_id, type, depends_on_title, depends_on_status). Classification and acceptance criteria are extracted from bead descriptions by `BeadContentParser`. Annotations created from text selection are stored as `Spotter.Transcripts.Annotation` resources in SQLite.
 
 ## Constraints & Edge Cases
 
@@ -60,3 +63,6 @@ Epics and tasks are read from Dolt beads databases (one per project, named `bead
 - Text selection annotations require the PlanContentHook JS hook
 - Code blocks in bead descriptions get syntax highlighting via hljs (elixir, javascript, bash, json, diff, plaintext)
 - Mermaid SVG text selections are excluded from annotation creation
+- Inline annotation highlights use fuzzy whitespace-normalized matching (TreeWalker) — text spanning multiple DOM elements is not highlighted but still shows in annotation cards
+- Annotation highlight reruns are cached to avoid unnecessary DOM churn on unrelated LiveView patches
+- Annotations are passed to the JS hook via `data-annotations` JSON attribute (omitted when empty)
