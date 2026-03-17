@@ -46,12 +46,13 @@ defmodule SpotterWeb.PlanDetailLive do
 
   @impl true
   def handle_event("plan_text_selected", %{"selected_text" => text} = params, socket) do
-    %{bead: bead, project: project} = socket.assigns
-
     selection = %{text: text, section: params["section"]}
     socket = assign(socket, selection: selection)
 
-    maybe_create_annotation(bead, project, text, params["comment"])
+    if is_binary(params["comment"]) and params["comment"] != "" do
+      %{bead: bead, project: project} = socket.assigns
+      maybe_create_annotation(bead, project, text, params["comment"])
+    end
 
     {:noreply, socket}
   end
@@ -70,6 +71,24 @@ defmodule SpotterWeb.PlanDetailLive do
   @impl true
   def handle_event("highlight_annotation", %{"id" => id}, socket) do
     {:noreply, assign(socket, highlighted_annotation: id)}
+  end
+
+  @impl true
+  def handle_event("delete_annotation", %{"id" => id}, socket) do
+    Tracer.with_span "spotter.plan_detail.delete_annotation" do
+      Tracer.set_attribute("spotter.annotation.id", id)
+
+      case Spotter.Transcripts.Annotation
+           |> Ash.get(id) do
+        {:ok, annotation} ->
+          Ash.destroy!(annotation)
+          annotations = Enum.reject(socket.assigns.annotations, &(&1.id == id))
+          {:noreply, assign(socket, annotations: annotations, highlighted_annotation: nil)}
+
+        _ ->
+          {:noreply, socket}
+      end
+    end
   end
 
   @impl true

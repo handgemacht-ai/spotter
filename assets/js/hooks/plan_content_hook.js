@@ -1,21 +1,21 @@
 import hljs from "highlight.js/lib/core"
 
 /**
- * Advance through `text` by `count` normalized characters, collapsing
- * consecutive whitespace into single characters (mirroring the behaviour
- * of `str.replace(/\s+/g, " ")`). Returns the raw offset into `text`.
+ * Convert a position in the whitespace-normalized string back to the
+ * corresponding raw offset in `text`. Whitespace runs in `text` collapse
+ * to single characters in normalized space (matching `str.replace(/\s+/g, " ")`).
  */
-function advanceNormalized(text, start, count) {
-  let raw = start
-  let remaining = count
-  while (remaining > 0 && raw < text.length) {
+function normalizedToRaw(text, normalizedPos) {
+  let raw = 0
+  let norm = 0
+  while (norm < normalizedPos && raw < text.length) {
     if (/\s/.test(text[raw])) {
       while (raw + 1 < text.length && /\s/.test(text[raw + 1])) {
         raw++
       }
     }
-    remaining--
     raw++
+    norm++
   }
   return raw
 }
@@ -28,7 +28,10 @@ const PlanContentHook = {
   },
   updated() {
     this._highlightCode()
-    this._applyAnnotations()
+    const raw = this.el.dataset.annotations
+    if (raw !== this._lastAnnotationsRaw) {
+      this._applyAnnotations()
+    }
   },
   destroyed() {
     if (this._selectionHandler) {
@@ -50,6 +53,7 @@ const PlanContentHook = {
 
   _applyAnnotations() {
     const raw = this.el.dataset.annotations
+    this._lastAnnotationsRaw = raw
     if (!raw) return
 
     const annotations = JSON.parse(raw)
@@ -72,8 +76,8 @@ const PlanContentHook = {
         const matchIndex = normalized.indexOf(needle)
         if (matchIndex === -1) continue
 
-        const startOffset = advanceNormalized(node.textContent, 0, matchIndex)
-        const endOffset = advanceNormalized(node.textContent, startOffset, needle.length)
+        const startOffset = normalizedToRaw(node.textContent, matchIndex)
+        const endOffset = normalizedToRaw(node.textContent, matchIndex + needle.length)
 
         const range = document.createRange()
         range.setStart(node, startOffset)
