@@ -1,5 +1,25 @@
 import hljs from "highlight.js/lib/core"
 
+/**
+ * Advance through `text` by `count` normalized characters, collapsing
+ * consecutive whitespace into single characters (mirroring the behaviour
+ * of `str.replace(/\s+/g, " ")`). Returns the raw offset into `text`.
+ */
+function advanceNormalized(text, start, count) {
+  let raw = start
+  let remaining = count
+  while (remaining > 0 && raw < text.length) {
+    if (/\s/.test(text[raw])) {
+      while (raw + 1 < text.length && /\s/.test(text[raw + 1])) {
+        raw++
+      }
+    }
+    remaining--
+    raw++
+  }
+  return raw
+}
+
 const PlanContentHook = {
   mounted() {
     this._highlightCode()
@@ -35,7 +55,6 @@ const PlanContentHook = {
     const annotations = JSON.parse(raw)
     if (!annotations.length) return
 
-    // Remove previous highlights before re-applying
     this.el.querySelectorAll(".bead-annotation-highlight").forEach((m) => m.replaceWith(...m.childNodes))
 
     const walker = document.createTreeWalker(this.el, NodeFilter.SHOW_TEXT, null, false)
@@ -49,42 +68,16 @@ const PlanContentHook = {
       while ((node = walker.nextNode())) {
         if (node.parentElement.closest(".bead-annotation-highlight")) continue
 
-        const text = node.textContent.replace(/\s+/g, " ")
-        const idx = text.indexOf(needle)
-        if (idx === -1) continue
+        const normalized = node.textContent.replace(/\s+/g, " ")
+        const matchIndex = normalized.indexOf(needle)
+        if (matchIndex === -1) continue
 
-        // Find the actual offset in original text
-        let origIdx = 0
-        let normalizedCount = 0
-        while (normalizedCount < idx && origIdx < node.textContent.length) {
-          const ch = node.textContent[origIdx]
-          if (/\s/.test(ch)) {
-            // Skip consecutive whitespace in original, counts as one in normalized
-            while (origIdx + 1 < node.textContent.length && /\s/.test(node.textContent[origIdx + 1])) {
-              origIdx++
-            }
-          }
-          normalizedCount++
-          origIdx++
-        }
-
-        const startOffset = origIdx
-        let endNormalized = 0
-        let endIdx = startOffset
-        while (endNormalized < needle.length && endIdx < node.textContent.length) {
-          const ch = node.textContent[endIdx]
-          if (/\s/.test(ch)) {
-            while (endIdx + 1 < node.textContent.length && /\s/.test(node.textContent[endIdx + 1])) {
-              endIdx++
-            }
-          }
-          endNormalized++
-          endIdx++
-        }
+        const startOffset = advanceNormalized(node.textContent, 0, matchIndex)
+        const endOffset = advanceNormalized(node.textContent, startOffset, needle.length)
 
         const range = document.createRange()
         range.setStart(node, startOffset)
-        range.setEnd(node, endIdx)
+        range.setEnd(node, endOffset)
 
         const mark = document.createElement("mark")
         mark.className = "bead-annotation-highlight"
@@ -94,7 +87,7 @@ const PlanContentHook = {
           mark.classList.add("bead-annotation-pulse")
           setTimeout(() => mark.classList.remove("bead-annotation-pulse"), 1500)
           mark.scrollIntoView({ behavior: "smooth", block: "center" })
-          this.pushEvent("highlight_annotation", { annotation_id: ann.id })
+          this.pushEvent("highlight_annotation", { id: ann.id })
         })
 
         try {

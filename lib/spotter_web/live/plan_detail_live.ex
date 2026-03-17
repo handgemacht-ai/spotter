@@ -263,7 +263,7 @@ defmodule SpotterWeb.PlanDetailLive do
               data-testid="bead-sections"
               id="plan-sections"
               phx-hook="PlanContentHook"
-              data-annotations={if @annotations != [], do: Jason.encode!(Enum.map(@annotations, fn a -> %{id: a.id, selected_text: a.selected_text, comment: a.comment} end))}
+              data-annotations={encode_annotations(@annotations)}
             >
               <%= for {heading, _body, type, rendered} <- @parsed_content.sections, type == :narrative do %>
                 <div
@@ -351,6 +351,14 @@ defmodule SpotterWeb.PlanDetailLive do
       <% end %>
     </div>
     """
+  end
+
+  defp encode_annotations([]), do: nil
+
+  defp encode_annotations(annotations) do
+    annotations
+    |> Enum.map(fn a -> %{id: a.id, selected_text: a.selected_text, comment: a.comment} end)
+    |> Jason.encode!()
   end
 
   defp render_section(html) when is_binary(html), do: Phoenix.HTML.raw(html)
