@@ -65,6 +65,12 @@ config :spotter, :plan_detail_test_data, %{
       | A project with epics | User opens plans page | Epic list is displayed |
       | An epic is selected | User clicks epic | Epic detail with children shown |
 
+      ## Classification
+
+      - Type: feature
+      - Scope: frontend, backend
+      - Complexity: medium
+
       ## Implementation Notes
 
       Use MyXQL for Dolt queries.
@@ -74,6 +80,22 @@ config :spotter, :plan_detail_test_data, %{
       closed_at: nil,
       assignee: nil
     },
+    dependencies: [
+      %{
+        depends_on_id: "spotter-dep-1",
+        type: "blocks",
+        created_at: ~N[2026-03-01 00:00:00],
+        depends_on_title: "Setup Infrastructure",
+        depends_on_status: "closed"
+      },
+      %{
+        depends_on_id: "spotter-dep-2",
+        type: "discovered-from",
+        created_at: ~N[2026-03-01 00:00:00],
+        depends_on_title: "Design Spike",
+        depends_on_status: "open"
+      }
+    ],
     children: [
       %{
         id: "spotter-task-1",

@@ -122,6 +122,99 @@ defmodule SpotterWeb.PlanComponents do
     """
   end
 
+  attr(:rows, :list, required: true)
+
+  def acceptance_cards(assigns) do
+    ~H"""
+    <div :if={@rows != []} class="bead-acceptance-tests" data-testid="acceptance-cards">
+      <h4 class="bead-section-heading">Acceptance Tests</h4>
+      <div :for={row <- @rows} class="acceptance-card">
+        <div class="acceptance-row">
+          <span class="acceptance-label acceptance-given">GIVEN</span>
+          <span class="acceptance-value">{row.given}</span>
+        </div>
+        <hr class="acceptance-divider" />
+        <div class="acceptance-row">
+          <span class="acceptance-label acceptance-when">WHEN</span>
+          <span class="acceptance-value">{row.when}</span>
+        </div>
+        <hr class="acceptance-divider" />
+        <div class="acceptance-row">
+          <span class="acceptance-label acceptance-then">THEN</span>
+          <span class="acceptance-value">{row.then}</span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr(:items, :list, required: true)
+
+  def classification_chips(assigns) do
+    ~H"""
+    <div :if={@items != []} class="bead-classification" data-testid="bead-classification">
+      <div :for={{key, value} <- @items} class="bead-classification-item">
+        <span class="bead-classification-label">{key}</span>
+        <%= if is_list(value) do %>
+          <span :for={v <- value} class={"badge #{chip_class(key, v)}"}>{v}</span>
+        <% else %>
+          <span class={"badge #{chip_class(key, value)}"}>{value}</span>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  attr(:deps, :list, required: true)
+  attr(:project, :string, required: true)
+
+  def dependency_list(assigns) do
+    ~H"""
+    <div :if={@deps != []} class="bead-dependencies" data-testid="bead-dependencies">
+      <h4 class="bead-section-heading">Dependencies</h4>
+      <div
+        :for={dep <- @deps}
+        class={"bead-dep-row #{if dep.depends_on_status != "closed", do: "bead-dep-row--blocking"}"}
+        data-testid="dependency-row"
+      >
+        <.link
+          patch={"/plans/#{URI.encode_www_form(@project)}/#{URI.encode_www_form(dep.depends_on_id)}"}
+          class="bead-dep-link"
+        >
+          <span class="bead-dep-id">{dep.depends_on_id}</span>
+          <span :if={dep.depends_on_title} class="bead-dep-title">{dep.depends_on_title}</span>
+        </.link>
+        <.status_badge :if={dep.depends_on_status} status={dep.depends_on_status} />
+        <span class="badge">{dep.type}</span>
+      </div>
+    </div>
+    """
+  end
+
+  attr(:bead, :map, required: true)
+
+  def bead_header(assigns) do
+    ~H"""
+    <div class="bead-detail-header" data-testid="bead-detail-header">
+      <div class="bead-header-top">
+        <span
+          class={"badge bead-type-chip bead-type-#{@bead.issue_type}"}
+          data-testid="bead-type-chip"
+        >
+          {@bead.issue_type}
+        </span>
+        <span class="bead-header-id" data-testid="bead-id">{@bead.id}</span>
+        <h2 class="bead-header-title">{@bead.title}</h2>
+      </div>
+      <div class="bead-header-meta">
+        <.status_badge status={@bead.status} />
+        <.priority_badge priority={@bead.priority} />
+        <span :if={@bead.assignee} class="bead-header-assignee">@{@bead.assignee}</span>
+      </div>
+    </div>
+    """
+  end
+
   @doc """
   Renders a child task row as a navigable link.
   """
@@ -145,6 +238,13 @@ defmodule SpotterWeb.PlanComponents do
     </div>
     """
   end
+
+  defp chip_class(_key, "true"), do: "badge-verified"
+  defp chip_class(_key, "false"), do: "badge-muted"
+  defp chip_class("Type", _value), do: "badge-agent"
+  defp chip_class("Affected Boundaries", _value), do: "badge-inferred"
+  defp chip_class("Boundary Operation", _value), do: "badge-inferred"
+  defp chip_class(_key, _value), do: ""
 
   defp status_badge_class("open"), do: "badge-verified"
   defp status_badge_class("closed"), do: "badge-muted"

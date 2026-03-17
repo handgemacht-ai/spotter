@@ -160,16 +160,26 @@ defmodule SpotterWeb.PlanDetailLive do
 
   defp fetch_data(project, bead_id) do
     case lookup_test_fixture(project, bead_id) do
-      %{epic: epic_map, children: children_maps} ->
-        bead = BeadStructs.Epic.from_row(epic_map)
-        children = BeadStructs.Task.from_rows(children_maps)
-        deps = safe_call(fn -> Plans.list_dependencies(project, bead_id) end, [])
-        annotations = fetch_annotations(bead_id)
-        {bead, children, deps, annotations}
+      %{epic: epic_map, children: children_maps} = fixture ->
+        fetch_from_fixture(fixture, epic_map, children_maps, project, bead_id)
 
       nil ->
         fetch_from_dolt(project, bead_id)
     end
+  end
+
+  defp fetch_from_fixture(fixture, epic_map, children_maps, project, bead_id) do
+    bead = BeadStructs.Epic.from_row(epic_map)
+    children = BeadStructs.Task.from_rows(children_maps)
+
+    deps =
+      case Map.get(fixture, :dependencies) do
+        nil -> safe_call(fn -> Plans.list_dependencies(project, bead_id) end, [])
+        dep_maps -> BeadStructs.Dependency.from_rows(dep_maps)
+      end
+
+    annotations = fetch_annotations(bead_id)
+    {bead, children, deps, annotations}
   end
 
   defp lookup_test_fixture(project, bead_id) do
@@ -234,15 +244,11 @@ defmodule SpotterWeb.PlanDetailLive do
 
       <%= if @bead do %>
         <div class="plan-bead-detail" data-testid="bead-detail">
-          <div class="plan-bead-detail-header" data-testid="bead-detail-header">
-            <h2>{@bead.title}</h2>
-            <div class="flex gap-2">
-              <.status_badge status={@bead.status} />
-              <.priority_badge priority={@bead.priority} />
-            </div>
-          </div>
+          <.bead_header bead={@bead} />
 
           <%= if @parsed_content do %>
+            <.classification_chips items={@parsed_content.classification} />
+
             <div
               data-testid="bead-sections"
               id="plan-sections"
@@ -278,6 +284,7 @@ defmodule SpotterWeb.PlanDetailLive do
                 </div>
               <% end %>
 
+              <.acceptance_cards rows={@parsed_content.acceptance_rows} />
               <.acceptance_table
                 :if={@parsed_content.acceptance_rows != []}
                 rows={@parsed_content.acceptance_rows}
@@ -307,26 +314,7 @@ defmodule SpotterWeb.PlanDetailLive do
             <% end %>
           <% end %>
 
-          <%= if @dependencies != [] do %>
-            <div class="plan-dependencies" data-testid="bead-dependencies">
-              <h3>Dependencies ({length(@dependencies)})</h3>
-              <div class="plan-dependency-list">
-                <%= for dep <- @dependencies do %>
-                  <div class="plan-dependency-row" data-testid="dependency-row">
-                    <.link
-                      patch={"/plans/#{URI.encode_www_form(@project)}/#{URI.encode_www_form(dep.depends_on_id)}"}
-                      class="plan-dependency-link"
-                    >
-                      <span class="plan-dependency-id">{dep.depends_on_id}</span>
-                      <span :if={dep.depends_on_title} class="plan-dependency-title">{dep.depends_on_title}</span>
-                    </.link>
-                    <.status_badge :if={dep.depends_on_status} status={dep.depends_on_status} />
-                    <span class="badge badge-muted">{dep.type}</span>
-                  </div>
-                <% end %>
-              </div>
-            </div>
-          <% end %>
+          <.dependency_list deps={@dependencies} project={@project} />
 
           <%= if @annotations != [] do %>
             <div class="plan-annotations" data-testid="bead-annotations">
