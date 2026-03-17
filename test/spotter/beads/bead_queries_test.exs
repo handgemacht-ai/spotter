@@ -6,6 +6,7 @@ defmodule Spotter.Beads.BeadQueriesTest do
   @moduletag :live_dolt
   @moduletag timeout: 30_000
 
+  alias Spotter.Beads.Client
   @queries_module Spotter.Beads.BeadQueries
   @epic_module Spotter.Beads.BeadStructs.Epic
   @task_module Spotter.Beads.BeadStructs.Task
@@ -116,6 +117,35 @@ defmodule Spotter.Beads.BeadQueriesTest do
     test "returns empty list for epic with no children" do
       assert {:ok, children} = @queries_module.list_children("spotter", "nonexistent-999")
       assert children == []
+    end
+
+    test "finds children linked via parent-child deps" do
+      # Query raw to find an epic with parent-child children
+      {:ok, result} =
+        Client.query("spotter", """
+        SELECT d.depends_on_id
+        FROM dependencies d
+        JOIN issues i ON i.id = d.depends_on_id AND i.issue_type = 'epic'
+        WHERE d.type = 'parent-child'
+        GROUP BY d.depends_on_id
+        HAVING COUNT(*) > 0
+        LIMIT 1
+        """)
+
+      case result.rows do
+        [[epic_id]] ->
+          assert {:ok, children} = @queries_module.list_children("spotter", epic_id)
+
+          assert children != [],
+                 "Epic #{epic_id} has parent-child deps but list_children returned []"
+
+          Enum.each(children, fn child ->
+            assert child.__struct__ == @task_module
+          end)
+
+        [] ->
+          :ok
+      end
     end
   end
 end

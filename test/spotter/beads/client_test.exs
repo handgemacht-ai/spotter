@@ -125,6 +125,31 @@ defmodule Spotter.Beads.ClientTest do
       assert {:ok, children} = Client.get_children("spotter", "nonexistent-999")
       assert children == []
     end
+
+    test "returns children linked via parent-child deps, not blocks" do
+      # Find an epic that has parent-child dependencies pointing to it
+      {:ok, result} =
+        Client.query("spotter", """
+        SELECT d.depends_on_id
+        FROM dependencies d
+        JOIN issues i ON i.id = d.depends_on_id AND i.issue_type = 'epic'
+        WHERE d.type = 'parent-child'
+        GROUP BY d.depends_on_id
+        HAVING COUNT(*) > 0
+        LIMIT 1
+        """)
+
+      case result.rows do
+        [[epic_id]] ->
+          assert {:ok, children} = Client.get_children("spotter", epic_id)
+
+          assert children != [],
+                 "Epic #{epic_id} has parent-child deps but get_children returned []"
+
+        [] ->
+          :ok
+      end
+    end
   end
 
   describe "epic_counts_by_project/0" do

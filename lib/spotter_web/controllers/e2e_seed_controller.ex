@@ -167,7 +167,7 @@ defmodule SpotterWeb.E2eSeedController do
     CREATE TABLE IF NOT EXISTS `#{@e2e_database}`.dependencies (
       issue_id VARCHAR(255) NOT NULL,
       depends_on_id VARCHAR(255) NOT NULL,
-      type VARCHAR(64) NOT NULL DEFAULT 'blocks',
+      type VARCHAR(64) NOT NULL DEFAULT 'parent-child',
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (issue_id, depends_on_id)
     )
@@ -247,14 +247,16 @@ defmodule SpotterWeb.E2eSeedController do
     # Tasks depend on epic
     task_deps =
       Enum.reduce_while(@e2e_tasks, :ok, fn task, :ok ->
-        case MyXQL.query(conn, sql, [task.id, @e2e_epic_id, "blocks", now]) do
+        case MyXQL.query(conn, sql, [task.id, @e2e_epic_id, "parent-child", now]) do
           {:ok, _} -> {:cont, :ok}
           {:error, err} -> {:halt, {:error, {:insert_dep, task.id, err}}}
         end
       end)
 
-    # Epic depends on prereq (so epic detail shows dependencies)
-    with :ok <- task_deps do
+    # Task-002 blocks task-003 (so dependency display is tested)
+    with :ok <- task_deps,
+         {:ok, _} <- MyXQL.query(conn, sql, ["e2e-task-003", "e2e-task-002", "blocks", now]) do
+      # Epic depends on prereq (so epic detail shows dependencies)
       case MyXQL.query(conn, sql, [@e2e_epic_id, @e2e_prereq_id, "blocked-by", now]) do
         {:ok, _} -> :ok
         {:error, err} -> {:error, {:insert_dep, @e2e_epic_id, err}}

@@ -54,10 +54,17 @@ defmodule Spotter.Plans.PlansDependenciesTest do
          [
            %BeadStructs.Dependency{
              depends_on_id: "dep-a-0",
-             type: "blocks",
+             type: "parent-child",
              created_at: ~N[2026-01-01 00:00:00],
              depends_on_title: "Prereq A",
              depends_on_status: "closed"
+           },
+           %BeadStructs.Dependency{
+             depends_on_id: "dep-a-blocked",
+             type: "blocks",
+             created_at: ~N[2026-01-01 00:00:00],
+             depends_on_title: "Blocker Task",
+             depends_on_status: "open"
            }
          ]}
       else
@@ -101,14 +108,18 @@ defmodule Spotter.Plans.PlansDependenciesTest do
       Application.put_env(:spotter, Spotter.Plans, sources: [DepSourceA])
 
       assert {:ok, deps} = Plans.list_dependencies("dep-project-a", "dep-a-1")
-      assert [%BeadStructs.Dependency{depends_on_id: "dep-a-0", type: "blocks"}] = deps
+
+      assert [
+               %BeadStructs.Dependency{depends_on_id: "dep-a-0", type: "parent-child"},
+               %BeadStructs.Dependency{depends_on_id: "dep-a-blocked", type: "blocks"}
+             ] = deps
     end
 
     test "falls through to next source on error" do
       Application.put_env(:spotter, Spotter.Plans, sources: [DepErrorSource, DepSourceA])
 
       assert {:ok, deps} = Plans.list_dependencies("dep-project-a", "dep-a-1")
-      assert [%BeadStructs.Dependency{depends_on_id: "dep-a-0"}] = deps
+      assert [%BeadStructs.Dependency{depends_on_id: "dep-a-0"} | _] = deps
     end
 
     test "returns error when all sources fail" do

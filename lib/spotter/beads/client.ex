@@ -102,7 +102,7 @@ defmodule Spotter.Beads.Client do
              i.created_at, i.updated_at, i.closed_at, i.assignee
       FROM issues i
       INNER JOIN dependencies d ON d.issue_id = i.id
-      WHERE d.depends_on_id = ? AND d.type = 'blocks'
+      WHERE d.depends_on_id = ? AND d.type IN ('parent-child', 'parent')
       ORDER BY i.priority ASC, i.created_at DESC
       """
 
