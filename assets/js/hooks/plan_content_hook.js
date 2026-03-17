@@ -10,7 +10,10 @@ const PlanContentHook = {
   },
   destroyed() {
     if (this._selectionHandler) {
-      document.removeEventListener("mouseup", this._selectionHandler)
+      this.el.removeEventListener("mouseup", this._selectionHandler)
+    }
+    if (this._keyupHandler) {
+      this.el.removeEventListener("keyup", this._keyupHandler)
     }
   },
 
@@ -33,7 +36,8 @@ const PlanContentHook = {
         }
 
         const anchor = sel.anchorNode?.parentElement
-        if (anchor?.closest("[data-mermaid-rendered]")) return
+        const focus = sel.focusNode?.parentElement
+        if (anchor?.closest("[data-mermaid-rendered]") || focus?.closest("[data-mermaid-rendered]")) return
 
         const range = sel.getRangeAt(0)
         if (!this.el.contains(range.startContainer) && !this.el.contains(range.endContainer)) {
@@ -52,7 +56,11 @@ const PlanContentHook = {
         // Fail-safe: never throw from selection capture
       }
     }
-    document.addEventListener("mouseup", this._selectionHandler)
+    this.el.addEventListener("mouseup", this._selectionHandler)
+    this._keyupHandler = (e) => {
+      if (e.shiftKey) this._selectionHandler()
+    }
+    this.el.addEventListener("keyup", this._keyupHandler)
   },
 }
 
