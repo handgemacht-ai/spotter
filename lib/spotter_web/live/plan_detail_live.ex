@@ -154,7 +154,10 @@ defmodule SpotterWeb.PlanDetailLive do
       sections: sections,
       mermaid_blocks: BeadContentParser.extract_mermaid_blocks(description),
       acceptance_rows: BeadContentParser.extract_acceptance_table(description),
-      classification: BeadContentParser.extract_classification(description)
+      classification:
+        description
+        |> BeadContentParser.extract_classification()
+        |> Enum.map(fn {k, v} -> {k, List.wrap(v)} end)
     }
   end
 
@@ -285,10 +288,6 @@ defmodule SpotterWeb.PlanDetailLive do
               <% end %>
 
               <.acceptance_cards rows={@parsed_content.acceptance_rows} />
-              <.acceptance_table
-                :if={@parsed_content.acceptance_rows != []}
-                rows={@parsed_content.acceptance_rows}
-              />
             </div>
 
             <%= if @selection do %>

@@ -153,13 +153,9 @@ defmodule SpotterWeb.PlanComponents do
   def classification_chips(assigns) do
     ~H"""
     <div :if={@items != []} class="bead-classification" data-testid="bead-classification">
-      <div :for={{key, value} <- @items} class="bead-classification-item">
+      <div :for={{key, values} <- @items} class="bead-classification-item">
         <span class="bead-classification-label">{key}</span>
-        <%= if is_list(value) do %>
-          <span :for={v <- value} class={"badge #{chip_class(key, v)}"}>{v}</span>
-        <% else %>
-          <span class={"badge #{chip_class(key, value)}"}>{value}</span>
-        <% end %>
+        <span :for={v <- values} class={"badge #{chip_class(key, v)}"}>{v}</span>
       </div>
     </div>
     """
