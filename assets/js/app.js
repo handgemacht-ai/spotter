@@ -17,7 +17,7 @@ import SortableColumns from "./hooks/sortable_columns"
 import ConnectorOverlay from "./hooks/connector_overlay"
 import TranscriptTaskRail from "./hooks/transcript_task_rail"
 import MermaidHook from "./hooks/mermaid_hook"
-import PlanHighlighter from "./hooks/plan_highlighter"
+import PlanContentHook from "./hooks/plan_content_hook"
 import { initProjectSelector } from "./project_selector"
 
 hljs.registerLanguage("elixir", elixir)
@@ -558,7 +558,7 @@ Hooks.SortableColumns = SortableColumns
 Hooks.ConnectorOverlay = ConnectorOverlay
 Hooks.TranscriptTaskRail = TranscriptTaskRail
 Hooks.MermaidHook = MermaidHook
-Hooks.PlanHighlighter = PlanHighlighter
+Hooks.PlanContentHook = PlanContentHook
 
 const csrfToken = document.querySelector("meta[name='csrf-token']")?.getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {

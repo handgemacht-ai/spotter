@@ -4842,3 +4842,21 @@ span.commit-detail-cochange-member {
 .plan-epic-detail-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
 .plan-epic-detail-header h2 { margin: 0; }
 .plan-epic-description { color: var(--text-secondary); line-height: 1.6; white-space: pre-wrap; }
+
+/* --- Bead Content (rendered markdown) --- */
+.bead-content-section { margin-bottom: var(--space-4); }
+.bead-section-heading { font-size: var(--text-base); font-weight: 600; margin-top: var(--space-4); margin-bottom: var(--space-2); color: var(--text-primary); }
+.bead-content h2 { font-size: var(--text-lg); font-weight: 600; margin-top: var(--space-5); margin-bottom: var(--space-2); }
+.bead-content h3 { font-size: var(--text-base); font-weight: 600; margin-top: var(--space-4); }
+.bead-content p { font-size: var(--text-sm); line-height: 1.6; margin-bottom: var(--space-3); color: var(--text-secondary); }
+.bead-content pre { background: var(--surface-0); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: var(--space-3); overflow-x: auto; margin-bottom: var(--space-3); }
+.bead-content code { font-family: var(--font-mono); font-size: var(--text-xs); }
+.bead-content :not(pre) > code { background: var(--surface-3); border-radius: 4px; padding: 2px var(--space-1); }
+.bead-content ul, .bead-content ol { padding-left: var(--space-3); margin-bottom: var(--space-3); }
+.bead-content li { margin-bottom: var(--space-1); font-size: var(--text-sm); color: var(--text-secondary); }
+.bead-content table { width: 100%; border-collapse: collapse; margin-bottom: var(--space-3); }
+.bead-content th { font-size: var(--text-xs); text-transform: uppercase; color: var(--text-tertiary); letter-spacing: 0.05em; }
+.bead-content td, .bead-content th { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-subtle); text-align: left; }
+.bead-content blockquote { border-left: 3px solid var(--accent-blue); padding-left: var(--space-3); color: var(--text-secondary); margin: var(--space-3) 0; }
+.bead-content a { color: var(--accent-blue); text-decoration: none; }
+.bead-content a:hover { text-decoration: underline; }

@@ -247,16 +247,17 @@ defmodule SpotterWeb.PlanDetailLive do
             <div
               data-testid="bead-sections"
               id="plan-sections"
-              phx-hook="PlanHighlighter"
+              phx-hook="PlanContentHook"
             >
-              <%= for {heading, _body, type, rendered} <- @parsed_content.sections do %>
+              <%= for {heading, _body, type, rendered} <- @parsed_content.sections, type in [:narrative, :mermaid] do %>
                 <div
-                  class="plan-section"
+                  class="plan-section bead-content-section"
                   data-plan-section={heading}
                   data-section-type={type}
                 >
-                  <h3 class="plan-section-heading" data-testid="section-heading">{heading}</h3>
-                  <div class="plan-section-body">
+                  <h3 :if={type == :narrative} class="plan-section-heading bead-section-heading" data-testid="section-heading">{heading}</h3>
+                  <h3 :if={type != :narrative} class="plan-section-heading" data-testid="section-heading">{heading}</h3>
+                  <div class={if type == :narrative, do: "plan-section-body bead-content", else: "plan-section-body"}>
                     {render_section(rendered)}
                   </div>
                 </div>
