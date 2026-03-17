@@ -1,10 +1,10 @@
 defmodule SpotterWeb.PlanDetailLiveTest do
   @moduledoc """
-  Integration tests for PlanDetailLive — the epic detail view.
+  Integration tests for PlanDetailLive — the bead detail view.
 
-  Route: /plans/:project/:epic_id
+  Route: /plans/:project/:bead_id
   Tests: parsed sections, mermaid hooks, acceptance table,
-         child tasks, task expansion, annotation creation,
+         child tasks, dependencies, annotations, classification,
          graceful degradation, back navigation.
   """
   use Spotter.DataCase, async: false
@@ -16,15 +16,14 @@ defmodule SpotterWeb.PlanDetailLiveTest do
 
   @endpoint SpotterWeb.Endpoint
 
-  describe "mount with epic data" do
-    test "renders epic detail view with title and badges" do
+  describe "mount with bead data" do
+    test "renders bead detail view with title and badges" do
       {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
 
       html = render(view)
 
-      assert html =~ ~s(data-testid="epic-detail")
-      assert html =~ ~s(data-testid="epic-detail-header")
-      # Status and priority badges rendered
+      assert html =~ ~s(data-testid="bead-detail")
+      assert html =~ ~s(data-testid="bead-detail-header")
       assert html =~ "data-status="
       assert html =~ "data-priority="
     end
@@ -37,7 +36,7 @@ defmodule SpotterWeb.PlanDetailLiveTest do
       html = render(view)
 
       # Sections container must exist
-      assert html =~ ~s(data-testid="epic-sections")
+      assert html =~ ~s(data-testid="bead-sections")
       # Individual section headings rendered as h3 elements
       assert html =~ ~s(data-testid="section-heading")
     end
@@ -79,17 +78,13 @@ defmodule SpotterWeb.PlanDetailLiveTest do
       assert html =~ ~s(data-testid="child-task-row")
     end
 
-    test "child task description is expandable via toggle" do
+    test "child task rows are navigable links" do
       {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
 
       html = render(view)
 
-      # Description should be collapsed by default
-      refute html =~ ~s(data-testid="child-task-description-expanded")
-
-      # Toggle expand on first child task
-      html = render_click(view, "toggle_task", %{"task_id" => "spotter-task-1"})
-      assert html =~ ~s(data-testid="child-task-description-expanded")
+      assert html =~ ~s(data-testid="child-task-row")
+      refute html =~ "toggle_task"
     end
   end
 
@@ -134,6 +129,72 @@ defmodule SpotterWeb.PlanDetailLiveTest do
 
       html = render_click(view, "clear_selection", %{})
       refute html =~ ~s(data-testid="selection-active")
+    end
+  end
+
+  describe "bead-centric data loading" do
+    test "loads and renders dependencies section" do
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
+
+      html = render(view)
+
+      assert html =~ ~s(data-testid="bead-dependencies")
+    end
+  end
+
+  describe "expanded_tasks removal" do
+    test "toggle_task event is no longer handled" do
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
+
+      html = render(view)
+
+      refute html =~ "toggle_task"
+    end
+  end
+
+  describe "bead-centric template" do
+    test "renders bead-detail data-testid instead of epic-detail" do
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
+
+      html = render(view)
+
+      assert html =~ ~s(data-testid="bead-detail")
+      refute html =~ ~s(data-testid="epic-detail")
+    end
+  end
+
+  describe "annotations loading" do
+    setup do
+      project = Ash.create!(Project, %{name: "beads_spotter", pattern: "^beads_spotter"})
+
+      Ash.create!(Annotation, %{
+        source: :plan,
+        bead_id: "spotter-uok",
+        selected_text: "pre-existing annotation",
+        comment: "loaded in handle_params",
+        purpose: :review,
+        project_id: project.id
+      })
+
+      %{project: project}
+    end
+
+    test "handle_params loads existing annotations for the bead" do
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
+
+      html = render(view)
+
+      assert html =~ ~s(data-testid="bead-annotations")
+    end
+  end
+
+  describe "content parsing with classification" do
+    test "sections include type classification from BeadContentParser" do
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
+
+      html = render(view)
+
+      assert html =~ ~s(data-section-type=)
     end
   end
 

@@ -52,7 +52,7 @@ defmodule SpotterWeb.Router do
       live("/telemetry/commands", ShellTelemetryLive)
       live("/telemetry/instructions", InstructionsTelemetryLive)
       live("/plans", PlansLive)
-      live("/plans/:project/:epic_id", PlanDetailLive)
+      live("/plans/:project/:bead_id", PlanDetailLive)
     end
 
     live("/history/commits/:commit_id", CommitDetailLive)

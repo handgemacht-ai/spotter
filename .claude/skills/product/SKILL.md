@@ -36,7 +36,7 @@ Spotter reviews Claude Code sessions and generated code. It links sessions to Gi
 | Shell Telemetry | `/telemetry/commands` | [shell-telemetry.md](references/features/shell-telemetry.md) |
 | Instructions Telemetry | `/telemetry/instructions` | [instructions-telemetry.md](references/features/instructions-telemetry.md) |
 | Plans List | `/plans` | [plans.md](references/features/plans.md) |
-| Plan Detail | `/plans/:project/:epic_id` | [plans.md](references/features/plans.md) |
+| Plan Detail | `/plans/:project/:bead_id` | [plans.md](references/features/plans.md) |
 | Search | `GET /api/search` | [search.md](references/features/search.md) |
 | MCP Server | `POST /api/mcp` | [mcp-server.md](references/features/mcp-server.md) |
 | Commit Linking | (background) | [commit-linking.md](references/features/commit-linking.md) |

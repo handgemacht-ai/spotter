@@ -123,32 +123,25 @@ defmodule SpotterWeb.PlanComponents do
   end
 
   @doc """
-  Renders a child task row with expand/collapse toggle.
+  Renders a child task row as a navigable link.
   """
   attr(:task, :map, required: true)
-  attr(:expanded, :boolean, default: false)
+  attr(:project, :string, required: true)
 
   def task_row(assigns) do
     ~H"""
     <div class="plan-task-row" data-testid="child-task-row" data-task-id={@task.id}>
       <div class="plan-task-row-header">
-        <button
-          class="plan-task-toggle"
-          phx-click="toggle_task"
-          phx-value-task_id={@task.id}
+        <.link
+          patch={"/plans/#{URI.encode_www_form(@project)}/#{URI.encode_www_form(@task.id)}"}
+          class="plan-task-link"
         >
-          <span class={"plan-task-chevron#{if @expanded, do: " is-expanded"}"}>&rsaquo;</span>
-        </button>
-        <span class="plan-task-id">{@task.id}</span>
-        <span class="plan-task-title">{@task.title}</span>
+          <span class="plan-task-id">{@task.id}</span>
+          <span class="plan-task-title">{@task.title}</span>
+        </.link>
         <.status_badge status={@task.status} />
         <.priority_badge priority={@task.priority} />
       </div>
-      <%= if @expanded && @task.description do %>
-        <div class="plan-task-description" data-testid="child-task-description-expanded">
-          <p>{@task.description}</p>
-        </div>
-      <% end %>
     </div>
     """
   end

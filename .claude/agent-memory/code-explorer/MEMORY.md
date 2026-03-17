@@ -1,62 +1,50 @@
-# Code Explorer Memory for spotter-gdz
+# Code Explorer Memory for spotter-cp6
 
-## Epic: Generic Plan Sources with Dolt Fix
+## Epic: Plans/Beads Detail View Rework
 
-**Summary**: Fix Dolt config bugs, introduce PlanSource behaviour abstraction, wrap BeadQueries in BeadsSource, create Plans coordinator, migrate PlansLive to global sidebar selector.
+**Summary**: Rework plan detail view with full markdown rendering, inline annotations, dependency display, and any-bead navigation.
 
-**Key Paths**:
-- `lib/spotter/beads/dolt_config.ex` — Dolt connection config (buggy defaults)
-- `lib/spotter/beads/client.ex` — MyXQL pool manager, discovery SQL (buggy discovery)
-- `lib/spotter/beads/bead_queries.ex` — High-level query API wrapping Client
-- `lib/spotter/beads/bead_structs.ex` — Epic, Task, Dependency structs
-- `lib/spotter/plans/` — **NEW** (doesn't exist yet)
-- `lib/spotter_web/live/plans_live.ex` — Plan list view (tightly coupled to BeadQueries)
-- `lib/spotter_web/live/plan_detail_live.ex` — Plan detail view with annotations
-- `lib/spotter_web/components/plan_components.ex` — Plan UI components
-- `lib/spotter_web/project_context.ex` — on_mount hook for project context
-- `config/runtime.exs` — Runtime env var configuration
+**Child beads**: spotter-bl3 (Earmark), spotter-2sc (deps + aliases), spotter-de2 (route rename + any-bead LiveView), spotter-c6j (Markdown rendering + PlanContentHook), spotter-055 (Acceptance cards + chips + deps components), spotter-00o (Inline annotations), spotter-7q0 (E2E tests).
 
-## Codebase State
+## Key Paths
 
-### lib/spotter/beads/dolt_config.ex
-- **Line 10**: `@default_port 14_065` — WRONG, should be 3307 (shared workspace Dolt, not bd CLI default)
-- **Line 28**: `database: database_name(project_name)`
-- **Line 36-38**: `database_name/1` returns `"beads_#{project_name}"` — WRONG, most databases on port 3307 don't use "beads_" prefix
+### Beads Layer (`lib/spotter/beads/`)
+- `dolt_config.ex` — Connection config. Port 3307, root user, no password. `database_name/1` returns project name as-is.
+- `client.ex` — MyXQL pool manager. `get_issue/2`, `list_epics/2`, `get_children/2`, `get_dependencies/2`, `epic_counts_by_project/0`. Discovery SQL filters system schemas. Lazy pool per project.
+- `bead_queries.ex` — High-level API: `project_summaries/0`, `list_epics/2`, `get_epic/2`, `list_children/2`. All OTEL-traced. **No `get_dependencies` wrapper yet.**
+- `bead_structs.ex` — Epic, Task, Dependency structs with `from_row/1` and `from_rows/1`.
+- `bead_content_parser.ex` — Parses markdown: `extract_sections_ordered/1`, `extract_mermaid_blocks/1`, `extract_acceptance_table/1`, `extract_headings/1`.
 
-### lib/spotter/beads/client.ex
-- **Line 253**: Discovery SQL `WHERE SCHEMA_NAME LIKE 'beads_%'` — WRONG, filters out non-prefixed databases like aufgabenschmiede, le
-- **Line 268**: `String.replace_prefix(db_name, "beads_", "")` — Assumes beads_ prefix exists
+### Plans Layer (`lib/spotter/plans/`)
+- `plan_source.ex` — Behaviour: `list_projects/0`, `list_plans/2`, `get_plan/2`, `list_children/2`. Types alias BeadStructs.
+- `beads_source.ex` — PlanSource impl, pure delegation to BeadQueries.
+- `plans.ex` — Public coordinator. `list_projects/0` merges flat_map; others use first-success fallthrough. Config: `config :spotter, Spotter.Plans, sources: [...]`.
 
-### lib/spotter_web/live/plans_live.ex
-- **Lines 5-7**: Direct `BeadQueries` import + hard coupling
-- **Lines 40-48**: Own project selector event handling (`select_project`)
-- **Line 51**: Directly calls `BeadQueries.project_summaries()`
-- Missing integration with global sidebar project selector (`ProjectContext`)
+### Web Layer
+- `plans_live.ex` — List view. Uses sidebar ProjectContext. Grouped or filtered view. `safe_query/2` with Task.async + 2s timeout.
+- `plan_detail_live.ex` — Detail view. Params: `project`, `epic_id`. Uses BeadContentParser. PlanHighlighter hook. `safe_query/2` pattern. Test data override via app env.
+- `plan_components.ex` — `status_badge`, `priority_badge`, `epic_table`, `epic_table_row`, `acceptance_table`, `task_row`.
+- `project_context.ex` — on_mount hook for project context.
 
-### config/runtime.exs
-- **Lines 25-29**: DoltConfig uses `SPOTTER_DOLT_*` env vars and port 13307 (Spotter internal)
-- **Lines 32-38**: ProductSpec.Repo (different Dolt server, MUST NOT CHANGE)
-- Need separate `BEADS_DOLT_*` env vars for port 3307
+### Routes
+- `/plans` → PlansLive
+- `/plans/:project/:epic_id` → PlanDetailLive
 
-## Ready Tasks
+### Annotations
+- `annotation.ex` — Ash resource. Source `:plan` requires `bead_id`. States: open/closed. Purpose: review/explain.
 
-### spotter-gdz.1 (Priority 1 — bugfix)
-"Fix DoltConfig port and database discovery"
-- Fix runtime.exs: add BEADS_DOLT_* env vars
-- Fix DoltConfig defaults: port→3307, username→"root", password→""
-- Fix DoltConfig.database_name: drop "beads_" prefix
-- Fix Client discovery SQL: change LIKE to filter system schemas
-- Fix Client.aggregate_epic_counts: use db_name as-is
+### JS Hooks
+- `assets/js/hooks/plan_highlighter.js` — Text selection → `plan_text_selected` event.
+- `assets/js/hooks/mermaid_hook.js` — Lazy-loads mermaid.js, renders SVG.
 
-### spotter-gdz.2 (Priority 1 — feature)
-"Introduce PlanSource behaviour"
-- Create lib/spotter/plans/plan_source.ex (behaviour module)
-- Minimal callbacks: list_projects, list_plans, get_plan, list_children
+### E2E
+- `e2e/tests/plans.smoke.spec.ts`, `e2e/tests/plan-detail.smoke.spec.ts`
+- `e2e/support/pages/plans.ts`, `e2e/support/pages/plan-detail.ts`
 
-## Architecture Patterns
-
-- **Configuration**: Application.get_env for app config + defaults
-- **OTEL Tracing**: Tracer.with_span, set_attribute, set_status
-- **Error Handling**: {:ok, val} | {:error, reason}
-- **Struct Mapping**: rows_to_maps helper for MyXQL.Result
-- **Pool Management**: Lazy-started per-project pools with prefix __MODULE__.Pool
+## Gaps for This Epic
+- **No `get_dependencies` in BeadQueries** — Client has it but no wrapper (spotter-2sc)
+- **No `get_dependencies` in PlanSource behaviour** — Needs new callback (spotter-2sc)
+- **Plain text rendering** — Sections body rendered as `<p>` per line, no Earmark (spotter-bl3, spotter-c6j)
+- **No any-bead navigation** — Routes only support epics (spotter-de2)
+- **No dependency display** — Not shown in detail view (spotter-055)
+- **No inline annotation display** — Created but not rendered (spotter-00o)
