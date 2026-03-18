@@ -164,19 +164,24 @@ defmodule Spotter.Services.FileDetailTest do
       GitRunner.run(["config", "user.email", "test@test.com"], cd: tmp_dir)
       GitRunner.run(["config", "user.name", "Test"], cd: tmp_dir)
 
-      # Create files and dirs
+      # Write .gitignore first so ignored dirs stay untracked
+      File.write!(Path.join(tmp_dir, ".gitignore"), "node_modules/\n_build/\ndeps/\n")
+
+      # Create tracked files and dirs
       File.write!(Path.join(tmp_dir, "README.md"), "# Hello")
       File.mkdir_p!(Path.join(tmp_dir, "lib"))
       File.write!(Path.join(tmp_dir, "lib/app.ex"), "defmodule App, do: nil")
+
+      # Create ignored dirs (untracked due to .gitignore)
       File.mkdir_p!(Path.join(tmp_dir, "node_modules/pkg"))
       File.write!(Path.join(tmp_dir, "node_modules/pkg/index.js"), "")
       File.mkdir_p!(Path.join(tmp_dir, "_build"))
       File.write!(Path.join(tmp_dir, "_build/out"), "")
       File.mkdir_p!(Path.join(tmp_dir, "deps"))
 
-      # Initial commit so git works
+      # Initial commit with tracked files only
       GitRunner.run(["add", "."], cd: tmp_dir)
-      GitRunner.run(["commit", "-m", "init", "--allow-empty"], cd: tmp_dir)
+      GitRunner.run(["commit", "-m", "init"], cd: tmp_dir)
 
       project =
         Ash.create!(Project, %{
@@ -196,10 +201,8 @@ defmodule Spotter.Services.FileDetailTest do
       %{tmp_dir: tmp_dir, project: project}
     end
 
-    test "filters gitignored directories from listing", %{tmp_dir: tmp_dir, project: project} do
-      File.write!(Path.join(tmp_dir, ".gitignore"), "node_modules/\n_build/\ndeps/\n")
-
-      assert {:ok, entries} = FileDetail.list_directory(project.id, nil)
+    test "filters gitignored directories from listing", %{project: project} do
+      assert {:ok, entries} = FileDetail.list_directory(project.id, nil, filter_gitignored: true)
       names = Enum.map(entries, & &1.name)
 
       assert "lib" in names
@@ -210,7 +213,7 @@ defmodule Spotter.Services.FileDetailTest do
       refute "deps" in names
     end
 
-    test "shows all entries when no gitignore exists", %{project: project} do
+    test "shows all entries without filter_gitignored opt-in", %{project: project} do
       assert {:ok, entries} = FileDetail.list_directory(project.id, nil)
       names = Enum.map(entries, & &1.name)
 
