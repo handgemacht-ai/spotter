@@ -50,6 +50,43 @@ Read-only Dolt client for querying beads issue data across projects.
 - **BeadStructs**: Typed structs — Epic, Task, Dependency — with `from_row/1` converters
 - **BeadContentParser**: Markdown parser — section splitting, mermaid extraction, GIVEN/WHEN/THEN tables
 
+## Search Subsystem (`lib/spotter/search/`)
+
+Unified full-text search over sessions, commits, hotspots, annotations, and files.
+
+- **Spotter.Search**: Public facade — `search/2` delegates to Query
+- **Search.Query**: Dual-backend query engine — SQLite FTS5 with BM25 ranking (primary), LIKE pattern matching (fallback when FTS5 unavailable)
+- **Search.Indexer**: Idempotent batch indexer — builds search documents from Ash resources and git, upserts in chunks of 300 with batch timestamp, sweeps stale rows
+- **Search.Result**: Typed struct (kind, project_id, external_id, title, subtitle, url, score)
+- **Search.Jobs.ReindexProject**: Oban worker (queue: default, max_attempts: 3, unique per project 30s)
+
+Indexed kinds: session, commit, commit_hotspot, annotation, file, directory. All operations wrapped in OTEL spans (`spotter.search.*`).
+
+## Observability Layer (`lib/spotter/observability/`)
+
+In-memory flow event system for real-time visualization of hook→job→enrichment pipelines.
+
+- **FlowHub**: GenServer with ETS-backed event store (10K cap, 2h retention). Records events, broadcasts via PubSub (`flows:global`, `flows:<key>`)
+- **FlowEvent**: Typed event struct with validation, sanitization, and W3C trace context derivation
+- **FlowGraph**: Converts event snapshots into deterministic DAG model (nodes, edges, flows) for the `/flows` LiveView. Node types: session, commit, oban, agent_run
+- **FlowKeys**: Namespaced key builders (`session:`, `commit:`, `oban:`, `agent_run:`, `project:`, `subagent:`)
+- **ObanTelemetry**: Attaches to `[:oban, :job, :*]` events, emits FlowHub events with job metadata and trace context
+- **ParallelLanesTelemetry**: Handles `[:spotter, :parallel_lanes, :compute, :*]` events
+- **ErrorReport**: Structured error payload builders for both FlowHub events and OTEL span attributes
+- **AgentRunInput**: Input normalization (atom/string key unification) for Oban job args
+
+## Telemetry Layer (`lib/spotter/telemetry/`)
+
+OpenTelemetry bootstrap and trace context utilities.
+
+- **Otel**: Idempotent OTEL setup — Bandit + Phoenix instrumentation, opt-out via `SPOTTER_OTEL_ENABLED=false`
+- **TraceContext**: W3C `traceparent` extraction from current span context
+
+## Web Tracing (`lib/spotter_web/`)
+
+- **OtelTraceHelpers**: Controller tracing macro (`with_span`), error recording (`set_error`), trace response headers (`x-spotter-trace-id`), job arg trace context injection
+- **LiveviewOtel**: Custom LiveView telemetry handler using `OpentelemetryTelemetry` tracer stack — replaces OpentelemetryPhoenix's built-in LV handler to prevent context leaks between sequential callbacks
+
 ## Services Layer (`lib/spotter/services/`)
 
 - **Git**: GitRunner (port-based, timeout-safe), GitLogReader, GitCommitReader
@@ -67,6 +104,13 @@ Read-only Dolt client for querying beads issue data across projects.
 **LiveViews** (17): PaneListLive (dashboard), HistoryLive, CommitDetailLive, FileDetailLive, FileMetricsLive, SessionLive, SubagentLive, ReviewsLive, RetrosLive, ShellTelemetryLive, IngestProgressLive, PlansLive, PlanDetailLive
 **Channel**: ReviewsChannel (live review-count updates via WebSocket)
 **Components**: Layouts, TranscriptComponents, AnnotationComponents, LanesComponents, ImportModalComponents, PlanComponents
+
+### Web Plugs (`lib/spotter_web/plugs/`)
+
+Custom middleware for request pipeline augmentation.
+
+- **SpotterMcpPlug**: MCP endpoint at `/api/mcp` — wraps `AshAi.Mcp.Router` with OTEL tracing and 3-tier project scope resolution (header → session_id param → recent session fallback). Exposes tools: list_review_annotations, resolve_annotation, create_hotspot, submit_retro. Handles SSE transport with configurable keepalive (15s default).
+- **ProjectContext**: Resolves current project from `?project=` query param via `ProjectHelpers`, assigns `:projects` and `:current_project_id` to conn for downstream use.
 
 ## Background Jobs (Oban)
 
@@ -111,3 +155,6 @@ esbuild-compiled JS (no framework). Key libraries: cytoscape (DAG visualization)
 | Git operations | `spotter.git.*` | `spotter.git.run` |
 | File detail | `spotter.file_detail.*` | `spotter.file_detail.load_file_content` |
 | Plans coordinator | `spotter.plans.*` | `spotter.plans.list_projects` |
+| Search | `spotter.search.*` | `spotter.search.query` |
+| MCP endpoint | `spotter.mcp.*` | `spotter.mcp.http` |
+| Web controllers | `spotter.web.*` | `spotter.web.search` |
