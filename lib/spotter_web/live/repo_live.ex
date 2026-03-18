@@ -203,7 +203,7 @@ defmodule SpotterWeb.RepoLive do
                                    %{attributes: %{"project.id" => project_id}} do
       case FileDetail.resolve_repo_root(project_id) do
         {:ok, repo_root} ->
-          case FileDetail.list_directory(project_id, "") do
+          case FileDetail.list_directory(project_id, "", filter_gitignored: true) do
             {:ok, entries} ->
               entries = Enum.take(entries, @max_entries)
               {tree, expanded} = build_tree(project_id, repo_root, entries, 0, max_depth)
@@ -248,7 +248,7 @@ defmodule SpotterWeb.RepoLive do
 
   defp maybe_expand_directory(%{kind: :directory} = node, project_id, repo_root, depth, max_depth)
        when depth < max_depth do
-    case FileDetail.list_directory(project_id, node.relative_path) do
+    case FileDetail.list_directory(project_id, node.relative_path, filter_gitignored: true) do
       {:ok, child_entries} ->
         child_entries = Enum.take(child_entries, @max_entries)
 
@@ -277,7 +277,7 @@ defmodule SpotterWeb.RepoLive do
   defp badge_for(_), do: nil
 
   defp lazy_load_children(project_id, path) do
-    case FileDetail.list_directory(project_id, path) do
+    case FileDetail.list_directory(project_id, path, filter_gitignored: true) do
       {:ok, entries} ->
         depth = path |> String.split("/") |> length()
 

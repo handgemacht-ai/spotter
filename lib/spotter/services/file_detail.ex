@@ -83,8 +83,13 @@ defmodule Spotter.Services.FileDetail do
 
   Returns `{:ok, entries}` where each entry has `name`, `relative_path`, and `kind`.
   `kind` is `:directory` or `:file`.
+
+  ## Options
+
+    * `:filter_gitignored` — when `true`, filters out entries matching `.gitignore`
+      rules via `git check-ignore`. Defaults to `false`.
   """
-  def list_directory(project_id, relative_path) do
+  def list_directory(project_id, relative_path, opts \\ []) do
     with {:ok, repo_root} <- resolve_repo_root(project_id),
          relative_dir = relative_path || "",
          full_path = Path.join(repo_root, relative_dir),
@@ -92,7 +97,7 @@ defmodule Spotter.Services.FileDetail do
       case File.ls(full_path) do
         {:ok, entries} ->
           built = build_directory_entries(entries, full_path, relative_dir)
-          {:ok, filter_gitignored(built, repo_root, full_path)}
+          {:ok, maybe_filter_gitignored(built, repo_root, full_path, opts)}
 
         {:error, reason} ->
           {:error, reason}
@@ -298,11 +303,23 @@ defmodule Spotter.Services.FileDetail do
     end)
   end
 
-  defp filter_gitignored([], _repo_root, _full_path), do: []
+  defp maybe_filter_gitignored(entries, _repo_root, _full_path, opts)
+       when entries == [] or not is_list(opts),
+       do: entries
+
+  defp maybe_filter_gitignored(entries, repo_root, full_path, opts) do
+    if Keyword.get(opts, :filter_gitignored, false) do
+      filter_gitignored(entries, repo_root, full_path)
+    else
+      entries
+    end
+  end
 
   defp filter_gitignored(entries, repo_root, full_path) do
     OpenTelemetry.Tracer.with_span "spotter.file_detail.filter_gitignored" do
       relative_dir = Path.relative_to(full_path, repo_root)
+      OpenTelemetry.Tracer.set_attribute("file.relative_dir", relative_dir)
+      OpenTelemetry.Tracer.set_attribute("file.entry_count", length(entries))
 
       paths =
         Enum.map(entries, fn entry ->
@@ -313,15 +330,18 @@ defmodule Spotter.Services.FileDetail do
           end
         end)
 
-      case GitRunner.run(["check-ignore", "--no-index" | paths], cd: repo_root, timeout_ms: 5_000) do
+      case GitRunner.run(["check-ignore" | paths], cd: repo_root, timeout_ms: 5_000) do
         {:ok, output} ->
           ignored = output |> String.split("\n", trim: true) |> MapSet.new(&Path.basename/1)
+          OpenTelemetry.Tracer.set_attribute("file.ignored_count", MapSet.size(ignored))
           Enum.reject(entries, &MapSet.member?(ignored, &1.name))
 
         {:error, %{kind: :exit_nonzero, status: 1}} ->
+          OpenTelemetry.Tracer.set_attribute("file.ignored_count", 0)
           entries
 
-        {:error, _} ->
+        {:error, reason} ->
+          OpenTelemetry.Tracer.set_status(:error, inspect(reason))
           entries
       end
     end
