@@ -3,6 +3,7 @@ defmodule Spotter.Services.FileDetail do
 
   alias Spotter.Observability.ErrorReport
   alias Spotter.Services.CommitDetail
+  alias Spotter.Services.GitRunner
 
   alias Spotter.Transcripts.{
     Annotation,
@@ -90,7 +91,8 @@ defmodule Spotter.Services.FileDetail do
          true <- File.dir?(full_path) do
       case File.ls(full_path) do
         {:ok, entries} ->
-          {:ok, build_directory_entries(entries, full_path, relative_dir)}
+          built = build_directory_entries(entries, full_path, relative_dir)
+          {:ok, filter_gitignored(built, repo_root, full_path)}
 
         {:error, reason} ->
           {:error, reason}
@@ -294,6 +296,35 @@ defmodule Spotter.Services.FileDetail do
     |> Enum.sort_by(fn %{kind: kind, name: name} ->
       {if(kind == :directory, do: 0, else: 1), String.downcase(name)}
     end)
+  end
+
+  defp filter_gitignored([], _repo_root, _full_path), do: []
+
+  defp filter_gitignored(entries, repo_root, full_path) do
+    OpenTelemetry.Tracer.with_span "spotter.file_detail.filter_gitignored" do
+      relative_dir = Path.relative_to(full_path, repo_root)
+
+      paths =
+        Enum.map(entries, fn entry ->
+          if relative_dir == "." do
+            entry.name
+          else
+            Path.join(relative_dir, entry.name)
+          end
+        end)
+
+      case GitRunner.run(["check-ignore", "--no-index" | paths], cd: repo_root, timeout_ms: 5_000) do
+        {:ok, output} ->
+          ignored = output |> String.split("\n", trim: true) |> MapSet.new(&Path.basename/1)
+          Enum.reject(entries, &MapSet.member?(ignored, &1.name))
+
+        {:error, %{kind: :exit_nonzero, status: 1}} ->
+          entries
+
+        {:error, _} ->
+          entries
+      end
+    end
   end
 
   defp build_relative_path("", entry), do: entry

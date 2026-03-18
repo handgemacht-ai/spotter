@@ -5,6 +5,8 @@ defmodule Spotter.Services.FileDetailTest do
   alias Spotter.Repo
   alias Spotter.Services.FileDetail
 
+  alias Spotter.Services.GitRunner
+
   alias Spotter.Transcripts.{
     Annotation,
     AnnotationFileRef,
@@ -146,5 +148,76 @@ defmodule Spotter.Services.FileDetailTest do
 
   test "language_class falls back to extension" do
     assert FileDetail.language_class("file.zig") == "zig"
+  end
+
+  describe "list_directory/2 gitignore filtering" do
+    setup do
+      tmp_dir =
+        Path.join(
+          System.tmp_dir!(),
+          "file_detail_gitignore_#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(tmp_dir)
+
+      GitRunner.run(["init"], cd: tmp_dir)
+      GitRunner.run(["config", "user.email", "test@test.com"], cd: tmp_dir)
+      GitRunner.run(["config", "user.name", "Test"], cd: tmp_dir)
+
+      # Create files and dirs
+      File.write!(Path.join(tmp_dir, "README.md"), "# Hello")
+      File.mkdir_p!(Path.join(tmp_dir, "lib"))
+      File.write!(Path.join(tmp_dir, "lib/app.ex"), "defmodule App, do: nil")
+      File.mkdir_p!(Path.join(tmp_dir, "node_modules/pkg"))
+      File.write!(Path.join(tmp_dir, "node_modules/pkg/index.js"), "")
+      File.mkdir_p!(Path.join(tmp_dir, "_build"))
+      File.write!(Path.join(tmp_dir, "_build/out"), "")
+      File.mkdir_p!(Path.join(tmp_dir, "deps"))
+
+      # Initial commit so git works
+      GitRunner.run(["add", "."], cd: tmp_dir)
+      GitRunner.run(["commit", "-m", "init", "--allow-empty"], cd: tmp_dir)
+
+      project =
+        Ash.create!(Project, %{
+          name: "gitignore-test-#{System.unique_integer([:positive])}",
+          pattern: "^test"
+        })
+
+      Ash.create!(Session, %{
+        session_id: Ash.UUID.generate(),
+        transcript_dir: "test-dir",
+        cwd: tmp_dir,
+        project_id: project.id
+      })
+
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+
+      %{tmp_dir: tmp_dir, project: project}
+    end
+
+    test "filters gitignored directories from listing", %{tmp_dir: tmp_dir, project: project} do
+      File.write!(Path.join(tmp_dir, ".gitignore"), "node_modules/\n_build/\ndeps/\n")
+
+      assert {:ok, entries} = FileDetail.list_directory(project.id, nil)
+      names = Enum.map(entries, & &1.name)
+
+      assert "lib" in names
+      assert "README.md" in names
+      assert ".gitignore" in names
+      refute "node_modules" in names
+      refute "_build" in names
+      refute "deps" in names
+    end
+
+    test "shows all entries when no gitignore exists", %{project: project} do
+      assert {:ok, entries} = FileDetail.list_directory(project.id, nil)
+      names = Enum.map(entries, & &1.name)
+
+      assert "lib" in names
+      assert "node_modules" in names
+      assert "_build" in names
+      assert "deps" in names
+    end
   end
 end
