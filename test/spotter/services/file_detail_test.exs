@@ -160,9 +160,9 @@ defmodule Spotter.Services.FileDetailTest do
 
       File.mkdir_p!(tmp_dir)
 
-      GitRunner.run(["init"], cd: tmp_dir)
-      GitRunner.run(["config", "user.email", "test@test.com"], cd: tmp_dir)
-      GitRunner.run(["config", "user.name", "Test"], cd: tmp_dir)
+      {:ok, _} = GitRunner.run(["init"], cd: tmp_dir)
+      {:ok, _} = GitRunner.run(["config", "user.email", "test@test.com"], cd: tmp_dir)
+      {:ok, _} = GitRunner.run(["config", "user.name", "Test"], cd: tmp_dir)
 
       # Write .gitignore first so ignored dirs stay untracked
       File.write!(Path.join(tmp_dir, ".gitignore"), "node_modules/\n_build/\ndeps/\n")
@@ -180,8 +180,8 @@ defmodule Spotter.Services.FileDetailTest do
       File.mkdir_p!(Path.join(tmp_dir, "deps"))
 
       # Initial commit with tracked files only
-      GitRunner.run(["add", "."], cd: tmp_dir)
-      GitRunner.run(["commit", "-m", "init"], cd: tmp_dir)
+      {:ok, _} = GitRunner.run(["add", "."], cd: tmp_dir)
+      {:ok, _} = GitRunner.run(["commit", "-m", "init"], cd: tmp_dir)
 
       project =
         Ash.create!(Project, %{
