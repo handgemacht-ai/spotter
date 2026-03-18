@@ -342,6 +342,7 @@ defmodule Spotter.Services.FileDetail do
 
         {:error, reason} ->
           OpenTelemetry.Tracer.set_status(:error, inspect(reason))
+          OpenTelemetry.Tracer.set_attribute("git_runner.error_kind", inspect(reason[:kind]))
           entries
       end
     end
