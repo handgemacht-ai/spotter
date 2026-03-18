@@ -1,7 +1,10 @@
 defmodule SpotterWeb.DashboardLive do
   use Phoenix.LiveView
 
+  alias Spotter.Services.SkillFolderReader
   alias Spotter.Transcripts.{Session, SessionPresenter}
+  import SpotterWeb.FolderComponents, only: [folder_card: 1]
+  alias SpotterWeb.ProjectHelpers
 
   require Ash.Query
   require OpenTelemetry.Tracer, as: Tracer
@@ -20,9 +23,30 @@ defmodule SpotterWeb.DashboardLive do
         socket
         |> assign(sessions: sessions)
         |> assign(finished_ids: MapSet.new())
+        |> assign(projects: [])
+        |> assign(current_project_id: nil)
+        |> assign(skill_folders: [])
 
       {:ok, socket}
     end
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {projects, current_project_id} =
+      ProjectHelpers.load_and_resolve(params["project"])
+
+    skill_folders =
+      if connected?(socket),
+        do: detect_skill_folders(current_project_id),
+        else: []
+
+    {:noreply,
+     assign(socket,
+       projects: projects,
+       current_project_id: current_project_id,
+       skill_folders: skill_folders
+     )}
   end
 
   @impl true
@@ -61,6 +85,15 @@ defmodule SpotterWeb.DashboardLive do
     end
   end
 
+  defp detect_skill_folders(nil), do: []
+
+  defp detect_skill_folders(project_id) do
+    case SkillFolderReader.detect_folders(project_id) do
+      {:ok, folders} -> folders
+      _ -> []
+    end
+  end
+
   defp load_ongoing_sessions do
     Session
     |> Ash.Query.filter(not is_nil(started_at) and is_nil(session_ended_at))
@@ -78,6 +111,14 @@ defmodule SpotterWeb.DashboardLive do
           <button class="btn" phx-click="refresh">Refresh</button>
         </div>
       </div>
+
+      <%= if @skill_folders != [] do %>
+        <div class="dashboard-cards" data-testid="dashboard-skill-cards">
+          <.folder_card :for={folder <- @skill_folders}
+            folder={folder}
+            project_id={@current_project_id} />
+        </div>
+      <% end %>
 
       <%= if @sessions == [] do %>
         <div class="empty-state">

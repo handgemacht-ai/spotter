@@ -53,6 +53,9 @@ defmodule SpotterWeb.Router do
       live("/telemetry/instructions", InstructionsTelemetryLive)
       live("/plans", PlansLive)
       live("/plans/:project/:bead_id", PlanDetailLive)
+      live("/repo", RepoLive)
+      live("/repo/*path", RepoLive)
+      live("/projects/:project_id/folders/*folder_path", FolderViewLive)
     end
 
     live("/history/commits/:commit_id", CommitDetailLive)

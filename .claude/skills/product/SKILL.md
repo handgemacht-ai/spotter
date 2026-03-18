@@ -9,7 +9,7 @@ user-invocable: false
 
 ## Product Summary
 
-Spotter reviews Claude Code sessions and generated code. It links sessions to Git commits via deterministic hook capture plus async enrichment, providing transcript browsing, code review annotations, parallel agent lane visualization, file heatmaps, co-change analysis, shell command telemetry, and agent retrospectives. Built on Phoenix/LiveView with SQLite (Ash), Oban background jobs, and OpenTelemetry tracing. Localhost prototype, no authentication.
+Spotter reviews Claude Code sessions and generated code. It links sessions to Git commits via deterministic hook capture plus async enrichment, providing transcript browsing, code review annotations, parallel agent lane visualization, file heatmaps, co-change analysis, shell command telemetry, agent retrospectives, repo tree browsing with inline skill/memory folder rendering, and dashboard quick-link cards. Built on Phoenix/LiveView with SQLite (Ash), Oban background jobs, and OpenTelemetry tracing. Localhost prototype, no authentication.
 
 ## Domain Map
 
@@ -41,6 +41,8 @@ Spotter reviews Claude Code sessions and generated code. It links sessions to Gi
 | MCP Server | `POST /api/mcp` | [mcp-server.md](references/features/mcp-server.md) |
 | Commit Linking | (background) | [commit-linking.md](references/features/commit-linking.md) |
 | Hook Ingestion | `POST /api/hooks/*` | [hook-ingestion.md](references/features/hook-ingestion.md) |
+| Repo Tree | `/repo` | Expandable 3-level-deep repository tree with skill/memory badges |
+| Folder View | `/projects/:id/folders/*` | Inline folder viewer with annotation support |
 | Global Project Selector | (sidebar, all pages) | [sidebar-project-selector.md](references/features/sidebar-project-selector.md) |
 
 ### Transcript Roots Configuration

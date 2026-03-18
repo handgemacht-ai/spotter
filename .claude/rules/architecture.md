@@ -101,9 +101,9 @@ OpenTelemetry bootstrap and trace context utilities.
 ## Web Layer (`lib/spotter_web/`)
 
 **Controllers** (HTTP): HooksController, SessionHookController, SearchController, ReviewsRedirectController, SpotterMcpPlug
-**LiveViews** (17): PaneListLive (dashboard), HistoryLive, CommitDetailLive, FileDetailLive, FileMetricsLive, SessionLive, SubagentLive, ReviewsLive, RetrosLive, ShellTelemetryLive, IngestProgressLive, PlansLive, PlanDetailLive
+**LiveViews** (22): PaneListLive (dashboard), HistoryLive, CommitDetailLive, FileDetailLive, FileMetricsLive, SessionLive, SubagentLive, ReviewsLive, RetrosLive, ShellTelemetryLive, IngestProgressLive, PlansLive, PlanDetailLive, RepoLive, FolderViewLive
 **Channel**: ReviewsChannel (live review-count updates via WebSocket)
-**Components**: Layouts, TranscriptComponents, AnnotationComponents, LanesComponents, ImportModalComponents, PlanComponents
+**Components**: Layouts, TranscriptComponents, AnnotationComponents, LanesComponents, ImportModalComponents, PlanComponents, FolderComponents
 
 ### Web Plugs (`lib/spotter_web/plugs/`)
 
@@ -155,6 +155,8 @@ esbuild-compiled JS (no framework). Key libraries: cytoscape (DAG visualization)
 | Git operations | `spotter.git.*` | `spotter.git.run` |
 | File detail | `spotter.file_detail.*` | `spotter.file_detail.load_file_content` |
 | Plans coordinator | `spotter.plans.*` | `spotter.plans.list_projects` |
+| Repo tree | `spotter.repo_live.*` | `spotter.repo_live.load_tree` |
+| Skill folders | `spotter.skill_folder.*` | `spotter.skill_folder.detect_folders` |
 | Search | `spotter.search.*` | `spotter.search.query` |
 | MCP endpoint | `spotter.mcp.*` | `spotter.mcp.http` |
 | Web controllers | `spotter.web.*` | `spotter.web.search` |

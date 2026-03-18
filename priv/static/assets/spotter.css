@@ -4924,3 +4924,49 @@ span.commit-detail-cochange-member {
 .bead-dep-title { font-size: var(--text-sm); color: var(--text-primary); }
 .bead-dep-link { display: flex; gap: var(--space-2); align-items: center; text-decoration: none; flex: 1; }
 .bead-dep-link:hover .bead-dep-id { text-decoration: underline; }
+
+/* --- Repo Tree --- */
+.repo-tree-node { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); cursor: pointer; transition: background 0.15s; }
+.repo-tree-node:hover { background: var(--surface-3); }
+.repo-tree-node:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; background: var(--surface-3); }
+.repo-tree-children { padding-left: var(--space-4); }
+.repo-tree-chevron { display: inline-flex; align-items: center; color: var(--text-tertiary); transition: transform 0.15s; }
+.repo-tree-chevron.is-expanded { transform: rotate(90deg); }
+.repo-tree-icon--folder { color: var(--accent-amber); display: inline-flex; }
+.repo-tree-icon--file { color: var(--text-tertiary); display: inline-flex; }
+.repo-tree-name { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-primary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repo-tree-node:hover .repo-tree-name { color: var(--accent-blue); text-decoration: underline; }
+
+/* --- Folder File Sections --- */
+.folder-file-section { margin-bottom: var(--space-6); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-1); }
+.folder-file-header { padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--border-subtle); background: var(--surface-2); border-radius: var(--radius-lg) var(--radius-lg) 0 0; font-family: var(--font-mono); font-size: var(--text-sm); }
+.folder-file-header a { color: var(--accent-blue); text-decoration: none; }
+.folder-file-header a:hover { text-decoration: underline; }
+.folder-file-body { padding: var(--space-4); }
+
+/* --- Dashboard Cards --- */
+.dashboard-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-6); }
+.dashboard-card { display: block; background: var(--surface-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-4); transition: border-color 0.15s, background 0.15s; text-decoration: none; color: inherit; }
+.dashboard-card:hover { border-color: var(--border-default); background: var(--surface-3); }
+.dashboard-card:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
+.dashboard-card-icon { margin-bottom: var(--space-2); }
+.dashboard-card-label { font-size: var(--text-base); font-weight: 600; color: var(--text-primary); margin-bottom: var(--space-1); }
+.dashboard-card-path { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-tertiary); margin-bottom: var(--space-2); }
+.dashboard-card-count { font-size: var(--text-xs); color: var(--text-secondary); }
+
+/* --- Folder Badges --- */
+.badge-skill { background: color-mix(in srgb, var(--accent-blue) 15%, transparent); color: var(--accent-blue); font-size: var(--text-xs); padding: 1px var(--space-1); border-radius: var(--radius-sm); font-weight: 600; letter-spacing: 0.05em; }
+.badge-memory { background: color-mix(in srgb, var(--accent-purple) 15%, transparent); color: var(--accent-purple); font-size: var(--text-xs); padding: 1px var(--space-1); border-radius: var(--radius-sm); font-weight: 600; letter-spacing: 0.05em; }
+
+/* --- Folder View Layout --- */
+.folder-view-container { padding: var(--space-4); }
+.folder-view-title { display: flex; align-items: center; gap: var(--space-2); }
+.folder-view-layout { display: flex; height: calc(100vh - 120px); }
+.folder-content { flex: 3; overflow-y: auto; padding: var(--space-4); }
+.folder-annotations-sidebar { flex: 1; min-width: 280px; border-left: 1px solid var(--border-default); overflow-y: auto; padding: var(--space-4); }
+.folder-annotations-sidebar h3 { margin-bottom: var(--space-3); font-size: var(--text-base); color: var(--text-primary); }
+@media (max-width: 1024px) {
+  .folder-view-layout { flex-direction: column; height: auto; }
+  .folder-content { max-height: 60vh; overflow-y: auto; }
+  .folder-annotations-sidebar { border-left: none; border-top: 1px solid var(--border-default); min-width: unset; max-height: 40vh; }
+}
