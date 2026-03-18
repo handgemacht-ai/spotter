@@ -4,7 +4,27 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${PROJECT_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
-WORKSPACE_ROOT="${WORKSPACE_ROOT_OVERRIDE:-$(cd "$PROJECT_ROOT/.." && pwd)}"
+
+# Resolve workspace root robustly — walk up from PROJECT_ROOT looking for the
+# .runtime/docker/ marker. This works from worktrees (nested under .claude/worktrees/)
+# where the naive "../" relative path would land in the wrong directory.
+if [[ -n "${WORKSPACE_ROOT_OVERRIDE:-}" ]]; then
+  WORKSPACE_ROOT="$WORKSPACE_ROOT_OVERRIDE"
+else
+  _dir="$PROJECT_ROOT"
+  WORKSPACE_ROOT=""
+  while [[ "$_dir" != "/" ]]; do
+    if [[ -d "$_dir/.runtime/docker" ]]; then
+      WORKSPACE_ROOT="$_dir"
+      break
+    fi
+    _dir="$(dirname "$_dir")"
+  done
+  if [[ -z "$WORKSPACE_ROOT" ]]; then
+    echo "[obs] Could not locate workspace root (.runtime/docker/) from ${PROJECT_ROOT}" >&2
+    exit 1
+  fi
+fi
 APP_LABEL="${APP_LABEL:-Spotter}"
 REPO_OTEL_COMMAND="${REPO_OTEL_COMMAND:-just otel-up}"
 OBS_CHECK="${OBS_CHECK_OVERRIDE:-${WORKSPACE_ROOT}/.runtime/docker/obs-dev-check.sh}"
