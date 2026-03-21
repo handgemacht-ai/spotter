@@ -45,6 +45,7 @@ defmodule Spotter.MixProject do
       {:igniter, "~> 0.6", only: [:dev, :test]},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:handgemacht_credo, path: "../handgemacht_credo", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
       {:tzdata, "~> 1.1"},
       {:toml, "~> 0.7"},
