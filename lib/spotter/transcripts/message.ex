@@ -33,7 +33,13 @@ defmodule Spotter.Transcripts.Message do
         :agent_id,
         :tool_use_id,
         :session_id,
-        :subagent_id
+        :subagent_id,
+        :ordinal,
+        :source_scope,
+        :record_type,
+        :record_subtype,
+        :normalization_status,
+        :parent_tool_use_id
       ]
     end
 
@@ -51,12 +57,18 @@ defmodule Spotter.Transcripts.Message do
         :agent_id,
         :tool_use_id,
         :session_id,
-        :subagent_id
+        :subagent_id,
+        :ordinal,
+        :source_scope,
+        :record_type,
+        :record_subtype,
+        :normalization_status,
+        :parent_tool_use_id
       ]
 
       upsert? true
-      upsert_identity :unique_session_uuid
-      upsert_fields [:content, :raw_payload, :type, :role]
+      upsert_identity :unique_session_scope_ordinal
+      upsert_fields [:content, :raw_payload, :type, :role, :uuid, :timestamp]
     end
   end
 
@@ -64,7 +76,7 @@ defmodule Spotter.Transcripts.Message do
     uuid_v7_primary_key :id
 
     attribute :uuid, :string do
-      allow_nil? false
+      allow_nil? true
       public? true
     end
 
@@ -96,7 +108,7 @@ defmodule Spotter.Transcripts.Message do
     attribute :raw_payload, :map
 
     attribute :timestamp, :utc_datetime_usec do
-      allow_nil? false
+      allow_nil? true
       public? true
     end
 
@@ -106,6 +118,34 @@ defmodule Spotter.Transcripts.Message do
 
     attribute :agent_id, :string
     attribute :tool_use_id, :string
+
+    attribute :ordinal, :integer do
+      allow_nil? true
+      public? true
+    end
+
+    attribute :source_scope, :string do
+      allow_nil? true
+      public? true
+    end
+
+    attribute :record_type, :string do
+      allow_nil? true
+      public? true
+    end
+
+    attribute :record_subtype, :string do
+      allow_nil? true
+    end
+
+    attribute :normalization_status, :atom do
+      allow_nil? true
+      constraints one_of: [:full, :partial, :raw_only]
+    end
+
+    attribute :parent_tool_use_id, :string do
+      allow_nil? true
+    end
 
     create_timestamp :inserted_at
     update_timestamp :updated_at
@@ -125,5 +165,6 @@ defmodule Spotter.Transcripts.Message do
 
   identities do
     identity :unique_session_uuid, [:session_id, :uuid]
+    identity :unique_session_scope_ordinal, [:session_id, :source_scope, :ordinal]
   end
 end

@@ -11,24 +11,8 @@ defmodule Spotter.Transcripts.JsonlParser do
   """
   @spec parse_session_file(String.t()) :: {:ok, map()} | {:error, term()}
   def parse_session_file(path) do
-    with {:ok, messages} <- parse_lines(path) do
-      metadata = extract_session_metadata(messages)
-      schema_version = detect_schema_version(messages)
-
-      {:ok,
-       %{
-         session_id: metadata[:session_id],
-         slug: metadata[:slug],
-         cwd: metadata[:cwd],
-         git_branch: metadata[:git_branch],
-         version: metadata[:version],
-         schema_version: schema_version,
-         started_at: metadata[:started_at],
-         ended_at: metadata[:ended_at],
-         messages: messages,
-         team_name: metadata[:team_name],
-         agent_name: metadata[:agent_name]
-       }}
+    with {:ok, messages} <- parse_lines(path, "main") do
+      {:ok, build_parsed_result(messages)}
     end
   end
 
@@ -40,25 +24,8 @@ defmodule Spotter.Transcripts.JsonlParser do
   def parse_subagent_file(path) do
     agent_id = extract_agent_id(path)
 
-    with {:ok, messages} <- parse_lines(path) do
-      metadata = extract_session_metadata(messages)
-      schema_version = detect_schema_version(messages)
-
-      {:ok,
-       %{
-         agent_id: agent_id,
-         session_id: metadata[:session_id],
-         slug: metadata[:slug],
-         cwd: metadata[:cwd],
-         git_branch: metadata[:git_branch],
-         version: metadata[:version],
-         schema_version: schema_version,
-         started_at: metadata[:started_at],
-         ended_at: metadata[:ended_at],
-         messages: messages,
-         team_name: metadata[:team_name],
-         agent_name: metadata[:agent_name]
-       }}
+    with {:ok, messages} <- parse_lines(path, "subagent:#{agent_id}") do
+      {:ok, Map.put(build_parsed_result(messages), :agent_id, agent_id)}
     end
   end
 
@@ -216,19 +183,27 @@ defmodule Spotter.Transcripts.JsonlParser do
 
   # Private
 
-  defp parse_lines(path) do
+  defp parse_lines(path, source_scope) do
     if File.exists?(path) do
       messages =
         path
         |> File.stream!()
         |> Stream.map(&String.trim/1)
         |> Stream.reject(&(&1 == ""))
-        |> Stream.map(&decode_line/1)
+        |> Stream.with_index()
+        |> Stream.map(&decode_line_with_ordinal(&1, source_scope))
         |> Enum.reject(&is_nil/1)
 
       {:ok, messages}
     else
       {:error, :file_not_found}
+    end
+  end
+
+  defp decode_line_with_ordinal({line, idx}, source_scope) do
+    case decode_line(line) do
+      nil -> nil
+      msg -> Map.merge(msg, %{ordinal: idx, source_scope: source_scope})
     end
   end
 
@@ -244,15 +219,19 @@ defmodule Spotter.Transcripts.JsonlParser do
   end
 
   defp normalize_message(data) do
+    raw_type = data["type"]
+    {normalized_type, known?} = parse_type_with_known(raw_type)
+    timestamp = parse_timestamp(data["timestamp"])
+
     %{
       uuid: data["uuid"],
       parent_uuid: data["parentUuid"],
       message_id: get_in(data, ["message", "id"]),
-      type: parse_type(data["type"]),
+      type: normalized_type,
       role: parse_role(get_in(data, ["message", "role"])),
       content: extract_content(data),
       raw_payload: data,
-      timestamp: parse_timestamp(data["timestamp"]),
+      timestamp: timestamp,
       is_sidechain: data["isSidechain"] == true,
       agent_id: data["agentId"],
       tool_use_id: data["toolUseId"],
@@ -262,9 +241,17 @@ defmodule Spotter.Transcripts.JsonlParser do
       git_branch: data["gitBranch"],
       version: data["version"],
       team_name: data["teamName"],
-      agent_name: data["agentName"]
+      agent_name: data["agentName"],
+      record_type: raw_type,
+      record_subtype: data["subtype"],
+      normalization_status: normalization_status(known?, timestamp),
+      parent_tool_use_id: data["parentToolUseID"] || data["parentToolUseId"]
     }
   end
+
+  defp normalization_status(true, %DateTime{}), do: :full
+  defp normalization_status(true, _nil_ts), do: :partial
+  defp normalization_status(false, _), do: :raw_only
 
   defp extract_content(data) do
     content = get_in(data, ["message", "content"]) || data["content"]
@@ -277,17 +264,19 @@ defmodule Spotter.Transcripts.JsonlParser do
     end
   end
 
-  defp parse_type(nil), do: :system
-  defp parse_type("user"), do: :user
-  defp parse_type("assistant"), do: :assistant
-  defp parse_type("tool_use"), do: :tool_use
-  defp parse_type("tool_result"), do: :tool_result
-  defp parse_type("progress"), do: :progress
-  defp parse_type("thinking"), do: :thinking
-  defp parse_type("system"), do: :system
-  defp parse_type("file_history_snapshot"), do: :file_history_snapshot
-  defp parse_type("file-history-snapshot"), do: :file_history_snapshot
-  defp parse_type(_), do: :system
+  defp parse_type_with_known(nil), do: {:system, true}
+  defp parse_type_with_known("user"), do: {:user, true}
+  defp parse_type_with_known("assistant"), do: {:assistant, true}
+  defp parse_type_with_known("tool_use"), do: {:tool_use, true}
+  defp parse_type_with_known("tool_result"), do: {:tool_result, true}
+  defp parse_type_with_known("progress"), do: {:progress, true}
+  defp parse_type_with_known("thinking"), do: {:thinking, true}
+  defp parse_type_with_known("system"), do: {:system, true}
+  defp parse_type_with_known("file_history_snapshot"), do: {:file_history_snapshot, true}
+  defp parse_type_with_known("file-history-snapshot"), do: {:file_history_snapshot, true}
+  defp parse_type_with_known("human"), do: {:user, true}
+  defp parse_type_with_known("result"), do: {:tool_result, true}
+  defp parse_type_with_known(_), do: {:system, false}
 
   defp parse_role(nil), do: nil
   defp parse_role("user"), do: :user
@@ -305,6 +294,24 @@ defmodule Spotter.Transcripts.JsonlParser do
   end
 
   defp parse_timestamp(_), do: nil
+
+  defp build_parsed_result(messages) do
+    metadata = extract_session_metadata(messages)
+
+    %{
+      session_id: metadata[:session_id],
+      slug: metadata[:slug],
+      cwd: metadata[:cwd],
+      git_branch: metadata[:git_branch],
+      version: metadata[:version],
+      schema_version: detect_schema_version(messages),
+      started_at: metadata[:started_at],
+      ended_at: metadata[:ended_at],
+      messages: messages,
+      team_name: metadata[:team_name],
+      agent_name: metadata[:agent_name]
+    }
+  end
 
   defp extract_session_metadata(messages) do
     # Session metadata is typically in the first few messages

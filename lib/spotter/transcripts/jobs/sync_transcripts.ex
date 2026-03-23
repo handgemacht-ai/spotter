@@ -415,23 +415,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   end
 
   defp upsert_session!(project, transcript_dir, parsed, index_meta) do
-    base_attrs = %{
-      slug: parsed.slug,
-      cwd: parsed.cwd,
-      git_branch: parsed.git_branch,
-      version: parsed.version,
-      started_at: parsed.started_at,
-      ended_at: parsed.ended_at,
-      schema_version: parsed.schema_version,
-      message_count: length(parsed.messages),
-      custom_title: index_meta[:custom_title],
-      summary: index_meta[:summary],
-      first_prompt: index_meta[:first_prompt],
-      source_created_at: index_meta[:source_created_at],
-      source_modified_at: index_meta[:source_modified_at],
-      team_name: parsed.team_name,
-      agent_name: parsed.agent_name
-    }
+    base_attrs = session_base_attrs(parsed, transcript_dir, index_meta)
 
     case Spotter.Transcripts.Session
          |> Ash.Query.filter(session_id == ^parsed.session_id)
@@ -441,7 +425,6 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
         Ash.update!(session, update_attrs)
 
       [] ->
-        # For new sessions, apply index timestamp fallbacks
         create_attrs =
           base_attrs
           |> Map.put(:started_at, base_attrs.started_at || index_meta[:source_created_at])
@@ -456,7 +439,27 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
     end
   end
 
-  # Never overwrite existing non-nil timestamps with nil
+  defp session_base_attrs(parsed, transcript_dir, index_meta) do
+    %{
+      slug: parsed.slug,
+      cwd: parsed.cwd,
+      git_branch: parsed.git_branch,
+      version: parsed.version,
+      started_at: parsed.started_at,
+      ended_at: parsed.ended_at,
+      schema_version: parsed.schema_version,
+      message_count: length(parsed.messages),
+      transcript_dir: transcript_dir,
+      custom_title: index_meta[:custom_title],
+      summary: index_meta[:summary],
+      first_prompt: index_meta[:first_prompt],
+      source_created_at: index_meta[:source_created_at],
+      source_modified_at: index_meta[:source_modified_at],
+      team_name: parsed.team_name,
+      agent_name: parsed.agent_name
+    }
+  end
+
   defp apply_timestamp_fallbacks(attrs, existing_session) do
     attrs
     |> maybe_preserve(:started_at, existing_session, attrs[:source_created_at])
@@ -473,7 +476,6 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   end
 
   defp create_messages!(session, messages) do
-    # Check if messages already exist for this session
     existing_count =
       Spotter.Transcripts.Message
       |> Ash.Query.filter(session_id == ^session.id)
@@ -486,27 +488,13 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
       )
     else
       messages
-      |> Enum.filter(& &1[:timestamp])
-      |> Enum.map(fn msg ->
-        %{
-          uuid: msg[:uuid] || Ash.UUID.generate(),
-          parent_uuid: msg[:parent_uuid],
-          message_id: msg[:message_id],
-          type: msg[:type],
-          role: msg[:role],
-          content: msg[:content],
-          raw_payload: msg[:raw_payload],
-          timestamp: msg[:timestamp],
-          is_sidechain: msg[:is_sidechain] || false,
-          agent_id: msg[:agent_id],
-          tool_use_id: msg[:tool_use_id],
-          session_id: session.id
-        }
-      end)
+      |> Enum.map(&build_message_attrs(&1, session.id, nil))
       |> Enum.chunk_every(@batch_size)
       |> Enum.each(fn batch ->
         Ash.bulk_create!(batch, Spotter.Transcripts.Message, :create)
       end)
+
+      update_ingest_quality!(session, messages)
     end
   end
 
@@ -532,8 +520,8 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
     |> Map.new()
   end
 
-  defp extract_tool_use_names(%{content: content}) when is_list(content) do
-    content
+  defp extract_tool_use_names(%{content: %{"blocks" => blocks}}) when is_list(blocks) do
+    blocks
     |> Enum.filter(&(is_map(&1) && &1["type"] == "tool_use"))
     |> Enum.map(&{&1["id"], &1["name"]})
   end
@@ -542,8 +530,8 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
 
   defp extract_tool_results(msg) do
     case msg[:content] do
-      content when is_list(content) ->
-        Enum.filter(content, &(is_map(&1) && &1["type"] == "tool_result"))
+      %{"blocks" => blocks} when is_list(blocks) ->
+        Enum.filter(blocks, &(is_map(&1) && &1["type"] == "tool_result"))
 
       _ ->
         []
@@ -642,24 +630,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
       )
     else
       messages
-      |> Enum.filter(& &1[:timestamp])
-      |> Enum.map(fn msg ->
-        %{
-          uuid: msg[:uuid] || Ash.UUID.generate(),
-          parent_uuid: msg[:parent_uuid],
-          message_id: msg[:message_id],
-          type: msg[:type],
-          role: msg[:role],
-          content: msg[:content],
-          raw_payload: msg[:raw_payload],
-          timestamp: msg[:timestamp],
-          is_sidechain: msg[:is_sidechain] || false,
-          agent_id: subagent.agent_id,
-          tool_use_id: msg[:tool_use_id],
-          session_id: session.id,
-          subagent_id: subagent.id
-        }
-      end)
+      |> Enum.map(&build_message_attrs(&1, session.id, subagent.id))
       |> Enum.chunk_every(@batch_size)
       |> Enum.each(fn batch ->
         Ash.bulk_create!(batch, Spotter.Transcripts.Message, :create)
@@ -730,55 +701,24 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   end
 
   defp upsert_existing_session!(session_record, transcript_dir, parsed, index_meta) do
-    base_attrs = %{
-      slug: parsed.slug,
-      cwd: parsed.cwd,
-      git_branch: parsed.git_branch,
-      version: parsed.version,
-      started_at: parsed.started_at,
-      ended_at: parsed.ended_at,
-      schema_version: parsed.schema_version,
-      message_count: length(parsed.messages),
-      transcript_dir: transcript_dir,
-      custom_title: index_meta[:custom_title],
-      summary: index_meta[:summary],
-      first_prompt: index_meta[:first_prompt],
-      source_created_at: index_meta[:source_created_at],
-      source_modified_at: index_meta[:source_modified_at],
-      team_name: parsed.team_name,
-      agent_name: parsed.agent_name
-    }
+    update_attrs =
+      parsed
+      |> session_base_attrs(transcript_dir, index_meta)
+      |> apply_timestamp_fallbacks(session_record)
 
-    update_attrs = apply_timestamp_fallbacks(base_attrs, session_record)
     Ash.update!(session_record, update_attrs)
   end
 
   defp upsert_messages!(session, messages) do
-    msg_attrs =
-      messages
-      |> Enum.filter(& &1[:timestamp])
-      |> Enum.map(fn msg ->
-        %{
-          uuid: msg[:uuid] || Ash.UUID.generate(),
-          parent_uuid: msg[:parent_uuid],
-          message_id: msg[:message_id],
-          type: msg[:type],
-          role: msg[:role],
-          content: msg[:content],
-          raw_payload: msg[:raw_payload],
-          timestamp: msg[:timestamp],
-          is_sidechain: msg[:is_sidechain] || false,
-          agent_id: msg[:agent_id],
-          tool_use_id: msg[:tool_use_id],
-          session_id: session.id
-        }
-      end)
+    msg_attrs = Enum.map(messages, &build_message_attrs(&1, session.id, nil))
 
     msg_attrs
     |> Enum.chunk_every(@batch_size)
     |> Enum.each(fn batch ->
       Ash.bulk_create!(batch, Spotter.Transcripts.Message, :upsert)
     end)
+
+    update_ingest_quality!(session, messages)
 
     length(msg_attrs)
   end
@@ -919,4 +859,70 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   defp latest_non_nil(nil, b), do: b
   defp latest_non_nil(a, nil), do: a
   defp latest_non_nil(a, b), do: if(DateTime.compare(a, b) in [:gt, :eq], do: a, else: b)
+
+  defp build_message_attrs(msg, session_id, subagent_id) do
+    source_scope = msg[:source_scope]
+    ordinal = msg[:ordinal]
+
+    %{
+      uuid: msg[:uuid] || generate_deterministic_uuid(source_scope, ordinal),
+      parent_uuid: msg[:parent_uuid],
+      message_id: msg[:message_id],
+      type: msg[:type],
+      role: msg[:role],
+      content: msg[:content],
+      raw_payload: msg[:raw_payload],
+      timestamp: msg[:timestamp],
+      is_sidechain: msg[:is_sidechain] || false,
+      agent_id: msg[:agent_id],
+      tool_use_id: msg[:tool_use_id],
+      session_id: session_id,
+      subagent_id: subagent_id,
+      ordinal: ordinal,
+      source_scope: source_scope,
+      record_type: msg[:record_type],
+      record_subtype: msg[:record_subtype],
+      normalization_status: msg[:normalization_status],
+      parent_tool_use_id: msg[:parent_tool_use_id]
+    }
+  end
+
+  defp generate_deterministic_uuid(source_scope, ordinal) do
+    hash =
+      :crypto.hash(:sha256, "#{source_scope}:#{ordinal}")
+      |> Base.encode16(case: :lower)
+      |> binary_part(0, 32)
+
+    <<a::binary-size(8), b::binary-size(4), c::binary-size(4), d::binary-size(4),
+      e::binary-size(12)>> = hash
+
+    "#{a}-#{b}-#{c}-#{d}-#{e}"
+  end
+
+  defp update_ingest_quality!(session, messages) do
+    Tracer.with_span "spotter.sync_transcripts.update_ingest_quality" do
+      non_full = Enum.count(messages, &(&1[:normalization_status] != :full))
+      raw_only = Enum.count(messages, &(&1[:normalization_status] == :raw_only))
+      total = length(messages)
+
+      status = if non_full == 0, do: :ok, else: :degraded
+
+      report = %{
+        total: total,
+        full: total - non_full,
+        partial: non_full - raw_only,
+        raw_only: raw_only
+      }
+
+      Tracer.set_attribute("spotter.ingest_status", Atom.to_string(status))
+      Tracer.set_attribute("spotter.ingest_warning_count", non_full)
+
+      Ash.update!(session, %{
+        ingest_status: status,
+        ingest_warning_count: non_full,
+        ingest_error_count: raw_only,
+        ingest_report: report
+      })
+    end
+  end
 end

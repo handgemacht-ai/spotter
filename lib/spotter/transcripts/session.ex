@@ -88,7 +88,11 @@ defmodule Spotter.Transcripts.Session do
         :distilled_at,
         :session_ended_at,
         :team_name,
-        :agent_name
+        :agent_name,
+        :ingest_status,
+        :ingest_warning_count,
+        :ingest_error_count,
+        :ingest_report
       ]
 
       require_atomic? false
@@ -168,6 +172,25 @@ defmodule Spotter.Transcripts.Session do
 
     attribute :team_name, :string, public?: true
     attribute :agent_name, :string, public?: true
+
+    attribute :ingest_status, :atom do
+      allow_nil? true
+      constraints one_of: [:ok, :degraded, :error]
+    end
+
+    attribute :ingest_warning_count, :integer do
+      allow_nil? false
+      default 0
+    end
+
+    attribute :ingest_error_count, :integer do
+      allow_nil? false
+      default 0
+    end
+
+    attribute :ingest_report, :map do
+      allow_nil? true
+    end
 
     attribute :distilled_status, :atom do
       constraints one_of: [:pending, :skipped, :completed, :error]

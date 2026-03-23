@@ -1,6 +1,6 @@
-# Code Explorer Memory for spotter-cp6
+# Code Explorer Memory for spotter-cli worktree
 
-## Epic: Plans/Beads Detail View Rework
+## Epic: Plans/Beads Detail View Rework (spotter-cp6)
 
 **Summary**: Rework plan detail view with full markdown rendering, inline annotations, dependency display, and any-bead navigation.
 
@@ -68,3 +68,15 @@
 
 ### No Existing Image Infrastructure
 - Greenfield — no image modules exist yet
+
+## Epic: Lossless Transcript Analytics (spotter-phd)
+
+### Transcript Pipeline Key Facts
+- Latest migration: `20260313133419_add_bead_id_to_annotations.exs`
+- Message identity: `[:session_id, :uuid]`
+- Two divergent sync paths: public `sync_session_file/2` (upserts) vs private 4-arity (skips if messages exist)
+- Messages without timestamps silently dropped during sync
+- ToolCall resource is minimal: no duration, no input params, no file_path
+- SessionLive has NO `handle_params` — only mount. Not inside project_scoped live_session.
+- TranscriptComputers `messages` input is the natural filter point for slicing
+- Mix task patterns: `spotter.e2e.seed` has rich OptionParser example

@@ -716,4 +716,253 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscriptsTest do
       assert length(members) == 1
     end
   end
+
+  describe "lossless import: timestamp-less messages not dropped" do
+    test "sync does NOT drop messages that lack timestamps", %{tmp_dir: tmp_dir} do
+      session_id = Ash.UUID.generate()
+      dir = Path.join(tmp_dir, "lossless-ts")
+      file = Path.join(dir, "#{session_id}.jsonl")
+      File.mkdir_p!(dir)
+
+      lines = [
+        %{
+          "uuid" => "#{session_id}-system",
+          "type" => "system",
+          "sessionId" => session_id,
+          "cwd" => "/tmp/test",
+          "version" => "1.0.0",
+          "timestamp" => "2026-02-01T12:00:00Z"
+        },
+        %{
+          "uuid" => "#{session_id}-snapshot",
+          "type" => "file_history_snapshot",
+          "sessionId" => session_id
+        },
+        %{
+          "uuid" => "#{session_id}-user",
+          "type" => "human",
+          "role" => "user",
+          "content" => [%{"type" => "text", "text" => "hello"}],
+          "timestamp" => "2026-02-01T12:00:01Z"
+        }
+      ]
+
+      File.write!(file, Enum.map_join(lines, "\n", &Jason.encode!/1))
+
+      result = SyncTranscripts.sync_session_file(file)
+      assert result.status == :ok
+
+      session = Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one!()
+
+      db_messages =
+        Message
+        |> Ash.Query.filter(session_id == ^session.id)
+        |> Ash.read!()
+
+      assert length(db_messages) == 3
+    end
+  end
+
+  describe "lossless import: deterministic synthetic UUID" do
+    test "generates deterministic UUID from source_scope + ordinal when uuid is absent", %{
+      tmp_dir: tmp_dir
+    } do
+      session_id = Ash.UUID.generate()
+      dir = Path.join(tmp_dir, "lossless-uuid")
+      file = Path.join(dir, "#{session_id}.jsonl")
+      File.mkdir_p!(dir)
+
+      lines = [
+        %{
+          "type" => "system",
+          "sessionId" => session_id,
+          "cwd" => "/tmp/test",
+          "version" => "1.0.0",
+          "timestamp" => "2026-02-01T12:00:00Z"
+        },
+        %{
+          "type" => "user",
+          "role" => "user",
+          "content" => [%{"type" => "text", "text" => "hello"}],
+          "timestamp" => "2026-02-01T12:00:01Z"
+        }
+      ]
+
+      File.write!(file, Enum.map_join(lines, "\n", &Jason.encode!/1))
+
+      SyncTranscripts.sync_session_file(file)
+      session = Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one!()
+
+      first_uuids =
+        Message
+        |> Ash.Query.filter(session_id == ^session.id)
+        |> Ash.read!()
+        |> Enum.map(& &1.uuid)
+        |> Enum.sort()
+
+      SyncTranscripts.sync_session_file(file)
+
+      second_uuids =
+        Message
+        |> Ash.Query.filter(session_id == ^session.id)
+        |> Ash.read!()
+        |> Enum.map(& &1.uuid)
+        |> Enum.sort()
+
+      assert first_uuids == second_uuids
+      refute Enum.any?(first_uuids, &is_nil/1)
+    end
+  end
+
+  describe "lossless import: idempotent re-sync" do
+    test "re-syncing the same file produces same message count, no duplicates", %{
+      tmp_dir: tmp_dir
+    } do
+      session_id = Ash.UUID.generate()
+      dir = Path.join(tmp_dir, "lossless-idem")
+      file = write_session_jsonl(dir, session_id)
+
+      SyncTranscripts.sync_session_file(file)
+
+      session = Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one!()
+
+      count_after_first =
+        Message
+        |> Ash.Query.filter(session_id == ^session.id)
+        |> Ash.read!()
+        |> length()
+
+      SyncTranscripts.sync_session_file(file)
+
+      count_after_second =
+        Message
+        |> Ash.Query.filter(session_id == ^session.id)
+        |> Ash.read!()
+        |> length()
+
+      assert count_after_first == count_after_second
+    end
+  end
+
+  describe "lossless import: session ingest_status" do
+    test "session gets ingest_status of :ok when all records normalize fully", %{
+      tmp_dir: tmp_dir
+    } do
+      session_id = Ash.UUID.generate()
+      dir = Path.join(tmp_dir, "lossless-status-ok")
+      file = write_session_jsonl(dir, session_id)
+
+      SyncTranscripts.sync_session_file(file)
+
+      session = Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one!()
+      assert session.ingest_status == :ok
+    end
+
+    test "session gets ingest_status of :degraded when unknown record types are present", %{
+      tmp_dir: tmp_dir
+    } do
+      session_id = Ash.UUID.generate()
+      dir = Path.join(tmp_dir, "lossless-status-degraded")
+      file = Path.join(dir, "#{session_id}.jsonl")
+      File.mkdir_p!(dir)
+
+      lines = [
+        %{
+          "uuid" => "#{session_id}-system",
+          "type" => "system",
+          "sessionId" => session_id,
+          "cwd" => "/tmp/test",
+          "version" => "1.0.0",
+          "timestamp" => "2026-02-01T12:00:00Z"
+        },
+        %{
+          "uuid" => "#{session_id}-unknown",
+          "type" => "custom_widget_v99",
+          "sessionId" => session_id,
+          "timestamp" => "2026-02-01T12:00:01Z"
+        }
+      ]
+
+      File.write!(file, Enum.map_join(lines, "\n", &Jason.encode!/1))
+
+      SyncTranscripts.sync_session_file(file)
+
+      session = Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one!()
+      assert session.ingest_status == :degraded
+    end
+
+    test "session has ingest_warning_count and ingest_error_count", %{tmp_dir: tmp_dir} do
+      session_id = Ash.UUID.generate()
+      dir = Path.join(tmp_dir, "lossless-counts")
+      file = Path.join(dir, "#{session_id}.jsonl")
+      File.mkdir_p!(dir)
+
+      lines = [
+        %{
+          "uuid" => "#{session_id}-system",
+          "type" => "system",
+          "sessionId" => session_id,
+          "cwd" => "/tmp/test",
+          "version" => "1.0.0",
+          "timestamp" => "2026-02-01T12:00:00Z"
+        },
+        %{
+          "uuid" => "#{session_id}-unknown",
+          "type" => "summary",
+          "sessionId" => session_id,
+          "timestamp" => "2026-02-01T12:00:01Z"
+        }
+      ]
+
+      File.write!(file, Enum.map_join(lines, "\n", &Jason.encode!/1))
+
+      SyncTranscripts.sync_session_file(file)
+
+      session = Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one!()
+      assert is_integer(session.ingest_warning_count)
+      assert is_integer(session.ingest_error_count)
+      assert session.ingest_warning_count >= 1
+    end
+  end
+
+  describe "lossless import: ordinal-based upsert identity" do
+    test "upsert identity uses (session_id, source_scope, ordinal)", %{tmp_dir: tmp_dir} do
+      session_id = Ash.UUID.generate()
+      dir = Path.join(tmp_dir, "lossless-identity")
+      file = Path.join(dir, "#{session_id}.jsonl")
+      File.mkdir_p!(dir)
+
+      lines = [
+        %{
+          "uuid" => "#{session_id}-system",
+          "type" => "system",
+          "sessionId" => session_id,
+          "cwd" => "/tmp/test",
+          "version" => "1.0.0",
+          "timestamp" => "2026-02-01T12:00:00Z"
+        },
+        %{
+          "uuid" => "#{session_id}-user",
+          "type" => "human",
+          "role" => "user",
+          "content" => [%{"type" => "text", "text" => "hello"}],
+          "timestamp" => "2026-02-01T12:00:01Z"
+        }
+      ]
+
+      File.write!(file, Enum.map_join(lines, "\n", &Jason.encode!/1))
+
+      SyncTranscripts.sync_session_file(file)
+      session = Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one!()
+
+      messages =
+        Message
+        |> Ash.Query.filter(session_id == ^session.id)
+        |> Ash.read!()
+
+      assert Enum.all?(messages, fn msg ->
+               is_integer(msg.ordinal) and is_binary(msg.source_scope)
+             end)
+    end
+  end
 end

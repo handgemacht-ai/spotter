@@ -443,4 +443,248 @@ defmodule Spotter.Transcripts.JsonlParserTest do
       assert result.agent_name == nil
     end
   end
+
+  describe "lossless import: ordinal tracking" do
+    test "parser assigns 0-based ordinal to each message", %{session_file: file} do
+      {:ok, result} = JsonlParser.parse_session_file(file)
+
+      ordinals = Enum.map(result.messages, & &1.ordinal)
+      assert ordinals == [0, 1, 2]
+    end
+
+    test "ordinals are sequential even when some lines fail to decode" do
+      file = Path.join(@fixtures_dir, "ordinal_with_bad_lines.jsonl")
+
+      lines = [
+        Jason.encode!(%{
+          "uuid" => "msg-1",
+          "type" => "user",
+          "sessionId" => "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+          "timestamp" => "2026-01-01T00:00:00.000Z",
+          "message" => %{"role" => "user", "content" => "First"}
+        }),
+        "this is not valid json",
+        Jason.encode!(%{
+          "uuid" => "msg-2",
+          "type" => "assistant",
+          "timestamp" => "2026-01-01T00:01:00.000Z",
+          "message" => %{"role" => "assistant", "content" => "Second"}
+        })
+      ]
+
+      File.write!(file, Enum.join(lines, "\n"))
+
+      {:ok, result} = JsonlParser.parse_session_file(file)
+
+      assert length(result.messages) == 2
+      ordinals = Enum.map(result.messages, & &1.ordinal)
+      assert ordinals == [0, 2]
+    end
+  end
+
+  describe "lossless import: source_scope" do
+    test "session file messages have source_scope 'main'", %{session_file: file} do
+      {:ok, result} = JsonlParser.parse_session_file(file)
+
+      scopes = Enum.map(result.messages, & &1.source_scope)
+      assert Enum.all?(scopes, &(&1 == "main"))
+    end
+
+    test "subagent file messages have source_scope 'subagent:<agent_id>'" do
+      file = Path.join(@fixtures_dir, "agent-sub123.jsonl")
+
+      File.write!(
+        file,
+        Jason.encode!(%{
+          "uuid" => "x",
+          "type" => "system",
+          "timestamp" => "2026-01-01T00:00:00.000Z"
+        })
+      )
+
+      {:ok, result} = JsonlParser.parse_subagent_file(file)
+      msg = hd(result.messages)
+      assert msg.source_scope == "subagent:sub123"
+    end
+  end
+
+  describe "lossless import: record_type preservation" do
+    test "known types still map correctly and get record_type string", %{session_file: file} do
+      {:ok, result} = JsonlParser.parse_session_file(file)
+
+      system_msg = Enum.at(result.messages, 0)
+      assert system_msg.type == :system
+      assert system_msg.record_type == "system"
+    end
+
+    test "unknown type is preserved as record_type string" do
+      file = Path.join(@fixtures_dir, "unknown_type.jsonl")
+
+      File.write!(
+        file,
+        Jason.encode!(%{
+          "uuid" => "msg-unknown",
+          "type" => "summary",
+          "sessionId" => "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+          "timestamp" => "2026-01-01T00:00:00.000Z"
+        })
+      )
+
+      {:ok, result} = JsonlParser.parse_session_file(file)
+      msg = hd(result.messages)
+      assert msg.record_type == "summary"
+    end
+
+    test "result type is preserved as record_type" do
+      file = Path.join(@fixtures_dir, "result_type.jsonl")
+
+      File.write!(
+        file,
+        Jason.encode!(%{
+          "uuid" => "msg-result",
+          "type" => "result",
+          "sessionId" => "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+          "timestamp" => "2026-01-01T00:00:00.000Z"
+        })
+      )
+
+      {:ok, result} = JsonlParser.parse_session_file(file)
+      msg = hd(result.messages)
+      assert msg.record_type == "result"
+    end
+  end
+
+  describe "lossless import: record_subtype" do
+    test "record_subtype is extracted from upstream data when present" do
+      file = Path.join(@fixtures_dir, "subtype_present.jsonl")
+
+      File.write!(
+        file,
+        Jason.encode!(%{
+          "uuid" => "msg-st",
+          "type" => "progress",
+          "subtype" => "agent_progress",
+          "sessionId" => "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+          "timestamp" => "2026-01-01T00:00:00.000Z"
+        })
+      )
+
+      {:ok, result} = JsonlParser.parse_session_file(file)
+      msg = hd(result.messages)
+      assert msg.record_subtype == "agent_progress"
+    end
+
+    test "record_subtype is nil when not present in upstream data", %{session_file: file} do
+      {:ok, result} = JsonlParser.parse_session_file(file)
+      msg = hd(result.messages)
+      assert msg.record_subtype == nil
+    end
+  end
+
+  describe "lossless import: normalization_status" do
+    test "returns :full when all fields map cleanly", %{session_file: file} do
+      {:ok, result} = JsonlParser.parse_session_file(file)
+
+      user_msg = Enum.at(result.messages, 1)
+      assert user_msg.normalization_status == :full
+    end
+
+    test "returns :partial when timestamp is missing but structure is valid" do
+      file = Path.join(@fixtures_dir, "no_timestamp.jsonl")
+
+      File.write!(
+        file,
+        Jason.encode!(%{
+          "uuid" => "msg-notime",
+          "type" => "user",
+          "sessionId" => "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+          "message" => %{"role" => "user", "content" => "Hello"}
+        })
+      )
+
+      {:ok, result} = JsonlParser.parse_session_file(file)
+      msg = hd(result.messages)
+      assert msg.normalization_status == :partial
+    end
+
+    test "returns :raw_only for completely unknown record types" do
+      file = Path.join(@fixtures_dir, "unknown_raw.jsonl")
+
+      File.write!(
+        file,
+        Jason.encode!(%{
+          "uuid" => "msg-raw",
+          "type" => "custom_widget_v3",
+          "sessionId" => "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+          "timestamp" => "2026-01-01T00:00:00.000Z"
+        })
+      )
+
+      {:ok, result} = JsonlParser.parse_session_file(file)
+      msg = hd(result.messages)
+      assert msg.normalization_status == :raw_only
+    end
+  end
+
+  describe "lossless import: parent_tool_use_id" do
+    test "parent_tool_use_id is extracted from parentToolUseID" do
+      file = Path.join(@fixtures_dir, "parent_tool_use.jsonl")
+
+      File.write!(
+        file,
+        Jason.encode!(%{
+          "uuid" => "msg-ptu",
+          "type" => "progress",
+          "sessionId" => "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+          "timestamp" => "2026-01-01T00:00:00.000Z",
+          "parentToolUseID" => "toolu_abc123"
+        })
+      )
+
+      {:ok, result} = JsonlParser.parse_session_file(file)
+      msg = hd(result.messages)
+      assert msg.parent_tool_use_id == "toolu_abc123"
+    end
+
+    test "parent_tool_use_id is nil when not present", %{session_file: file} do
+      {:ok, result} = JsonlParser.parse_session_file(file)
+      msg = Enum.at(result.messages, 1)
+      assert msg.parent_tool_use_id == nil
+    end
+  end
+
+  describe "lossless import: timestamp-less records preserved" do
+    test "messages without timestamps are NOT dropped from parse results" do
+      file = Path.join(@fixtures_dir, "timestampless.jsonl")
+
+      lines = [
+        Jason.encode!(%{
+          "uuid" => "msg-1",
+          "type" => "file_history_snapshot",
+          "sessionId" => "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        }),
+        Jason.encode!(%{
+          "uuid" => "msg-2",
+          "type" => "user",
+          "timestamp" => "2026-01-01T00:01:00.000Z",
+          "message" => %{"role" => "user", "content" => "Hello"}
+        }),
+        Jason.encode!(%{
+          "uuid" => "msg-3",
+          "type" => "summary",
+          "sessionId" => "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        })
+      ]
+
+      File.write!(file, Enum.join(lines, "\n"))
+
+      {:ok, result} = JsonlParser.parse_session_file(file)
+
+      assert length(result.messages) == 3
+
+      uuids = Enum.map(result.messages, & &1.uuid)
+      assert "msg-1" in uuids
+      assert "msg-3" in uuids
+    end
+  end
 end

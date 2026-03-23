@@ -671,4 +671,40 @@ defmodule SpotterWeb.SessionLiveTest do
       assert classes =~ "is-plan-decision"
     end
   end
+
+  describe "lossless import: ordinal-based display order" do
+    test "messages display in ordinal order, not timestamp order", %{
+      session: session,
+      session_id: session_id
+    } do
+      # Create messages where timestamp order differs from ordinal order.
+      # Message A: ordinal 0, but later timestamp
+      # Message B: ordinal 1, but earlier timestamp
+      # If sorted by ordinal, A appears before B.
+      # If sorted by timestamp, B appears before A (wrong).
+      create_message(session, %{
+        ordinal: 0,
+        source_scope: "main",
+        content: %{"blocks" => [%{"type" => "text", "text" => "FIRST_BY_ORDINAL"}]},
+        timestamp: ~U[2026-01-01 00:05:00Z]
+      })
+
+      create_message(session, %{
+        ordinal: 1,
+        source_scope: "main",
+        content: %{"blocks" => [%{"type" => "text", "text" => "SECOND_BY_ORDINAL"}]},
+        timestamp: ~U[2026-01-01 00:01:00Z]
+      })
+
+      {:ok, _view, html} = live(build_conn(), "/sessions/#{session_id}")
+
+      # FIRST_BY_ORDINAL should appear before SECOND_BY_ORDINAL in the HTML
+      first_pos = :binary.match(html, "FIRST_BY_ORDINAL") |> elem(0)
+      second_pos = :binary.match(html, "SECOND_BY_ORDINAL") |> elem(0)
+
+      assert first_pos < second_pos,
+             "Expected FIRST_BY_ORDINAL (ordinal 0) to appear before SECOND_BY_ORDINAL (ordinal 1), " <>
+               "but they appeared in timestamp order instead"
+    end
+  end
 end
