@@ -140,6 +140,29 @@ defmodule Spotter.Beads.BeadQueries do
   end
 
   @doc """
+  Searches beads with text search, status filtering, sort, and direction.
+
+  Returns a flat list of Epic structs (epics with task_count, orphans with task_count=0).
+  See `Client.search_beads/2` for available options.
+  """
+  @spec search_beads(String.t(), keyword()) ::
+          {:ok, [BeadStructs.Epic.t()]} | {:error, atom()}
+  def search_beads(project, opts \\ []) do
+    Tracer.with_span "spotter.beads.queries.search_beads" do
+      Tracer.set_attribute("spotter.beads.project", project)
+
+      case Client.search_beads(project, opts) do
+        {:ok, rows} ->
+          {:ok, BeadStructs.Epic.from_rows(rows)}
+
+        {:error, reason} = err ->
+          Tracer.set_status(:error, inspect(reason))
+          err
+      end
+    end
+  end
+
+  @doc """
   Fetches a single bead by ID. Delegates to `get_epic/2` since all
   issue types share the same underlying query and struct shape.
   """

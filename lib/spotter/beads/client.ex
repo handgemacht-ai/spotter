@@ -145,6 +145,40 @@ defmodule Spotter.Beads.Client do
   end
 
   @doc """
+  Searches beads with text search, status filtering, sort, and direction.
+
+  Returns a unified list of epics (with task counts) and orphan beads.
+
+  ## Options
+
+    * `:query` - substring search across id, title, description (default: nil)
+    * `:status` - `:open | :closed | :all` (default: `:open`)
+    * `:sort` - `:priority | :created_at` (default: `:priority`)
+    * `:dir` - `:asc | :desc` (default: `:desc`)
+    * `:types` - `[:epic | :orphan]` (default: `[:epic, :orphan]`)
+  """
+  @spec search_beads(String.t(), keyword()) :: {:ok, [map()]} | {:error, atom()}
+  def search_beads(project, opts \\ []) do
+    Tracer.with_span "spotter.beads.client.search_beads" do
+      Tracer.set_attribute("spotter.beads.database", DoltConfig.database_name(project))
+      Tracer.set_attribute("spotter.beads.query_name", "search_beads")
+
+      search_opts = %{
+        query: normalize_query(opts[:query]),
+        status: opts[:status] || :open,
+        order: "ORDER BY #{validate_sort(opts[:sort])} #{validate_dir(opts[:dir])}",
+        types: opts[:types] || [:epic, :orphan]
+      }
+
+      with {:ok, pool} <- ensure_pool(project) do
+        epics = search_epics(pool, search_opts)
+        orphans = search_orphans(pool, search_opts)
+        {:ok, epics ++ orphans}
+      end
+    end
+  end
+
+  @doc """
   Lists non-epic issues with no parent dependency (orphans).
   """
   @spec list_orphan_issues(String.t(), :all | :open | :closed) ::
@@ -276,6 +310,92 @@ defmodule Spotter.Beads.Client do
   defp orphan_filter_clause(:all), do: {"", []}
   defp orphan_filter_clause(:open), do: {"AND status = ?", ["open"]}
   defp orphan_filter_clause(:closed), do: {"AND status = ?", ["closed"]}
+
+  defp search_epics(pool, %{types: types} = opts) do
+    if :epic in types, do: do_search_epics(pool, opts), else: []
+  end
+
+  defp do_search_epics(pool, %{status: status, query: query, order: order}) do
+    {where, params} = search_where_clause(status, query, "i.issue_type = 'epic'")
+
+    sql = """
+    SELECT i.*, (
+      SELECT COUNT(*) FROM dependencies d
+      WHERE d.depends_on_id = i.id AND d.type IN ('parent-child', 'parent')
+    ) AS task_count
+    FROM issues i
+    WHERE #{where}
+    #{order}
+    """
+
+    case run_query(pool, sql, params) do
+      {:ok, result} -> rows_to_maps(result)
+      {:error, _} -> []
+    end
+  end
+
+  defp search_orphans(pool, %{types: types} = opts) do
+    if :orphan in types, do: do_search_orphans(pool, opts), else: []
+  end
+
+  defp do_search_orphans(pool, %{status: status, query: query, order: order}) do
+    base =
+      "i.issue_type != 'epic' AND i.id NOT IN (SELECT issue_id FROM dependencies WHERE type IN ('parent-child', 'parent'))"
+
+    {where, params} = search_where_clause(status, query, base)
+
+    sql = """
+    SELECT i.*, 0 AS task_count
+    FROM issues i
+    WHERE #{where}
+    #{order}
+    """
+
+    case run_query(pool, sql, params) do
+      {:ok, result} -> rows_to_maps(result)
+      {:error, _} -> []
+    end
+  end
+
+  defp normalize_query(nil), do: nil
+
+  defp normalize_query(q) when is_binary(q) do
+    trimmed = String.trim(q)
+    if trimmed == "", do: nil, else: trimmed
+  end
+
+  @allowed_sorts %{priority: "i.priority", created_at: "i.created_at"}
+  defp validate_sort(col) when is_atom(col), do: Map.get(@allowed_sorts, col, "i.priority")
+  defp validate_sort(_), do: "i.priority"
+
+  defp validate_dir(:asc), do: "ASC"
+  defp validate_dir(:desc), do: "DESC"
+  defp validate_dir(_), do: "DESC"
+
+  defp search_where_clause(status, query, base_condition) do
+    {status_clause, status_params} = search_status_clause(status)
+    {query_clause, query_params} = search_query_clause(query)
+
+    where =
+      Enum.join(
+        [base_condition, status_clause, query_clause] |> Enum.reject(&(&1 == "")),
+        " AND "
+      )
+
+    {where, status_params ++ query_params}
+  end
+
+  defp search_status_clause(:all), do: {"", []}
+  defp search_status_clause(:open), do: {"i.status = ?", ["open"]}
+  defp search_status_clause(:closed), do: {"i.status = ?", ["closed"]}
+  defp search_status_clause(_), do: {"i.status = ?", ["open"]}
+
+  defp search_query_clause(nil), do: {"", []}
+
+  defp search_query_clause(q) do
+    pattern = "%#{q}%"
+    {"(i.id LIKE ? OR i.title LIKE ? OR i.description LIKE ?)", [pattern, pattern, pattern]}
+  end
 
   defp rows_to_maps(%MyXQL.Result{columns: columns, rows: rows}) do
     Enum.map(rows, fn row ->
