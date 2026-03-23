@@ -4,7 +4,7 @@ import { PlansPage } from "../support/pages/plans";
 import { SidebarHelper } from "../support/sidebar";
 import { seedPlans, cleanupPlans } from "../support/seed-plans";
 
-test.describe("plans list — /plans (sidebar project selector)", () => {
+test.describe("plans list — /plans (search/filter/sort)", () => {
   let plans: PlansPage;
   let sidebar: SidebarHelper;
 
@@ -16,39 +16,19 @@ test.describe("plans list — /plans (sidebar project selector)", () => {
     sidebar = new SidebarHelper(page);
   });
 
-  test("local project chip filters are removed", async () => {
-    await test.step("GIVEN plans page is loaded", async () => {
-      await plans.goto();
-      await plans.expectVisible();
-    });
-
-    await test.step("THEN no local project filter chips exist", async () => {
-      await plans.expectNoProjectChips();
-    });
-
-    await test.step("THEN sidebar project selector is visible instead", async () => {
-      await sidebar.expectVisible();
-    });
-  });
-
-  test("no sidebar project selection shows all projects grouped with headers", async ({ page }) => {
+  test("no project selected shows select-project prompt", async ({ page }) => {
     await test.step("GIVEN plans page loads without project param", async () => {
       await page.goto("/plans");
       await waitForLiveViewReady(page, "plans-root");
       await plans.expectVisible();
     });
 
-    await test.step("THEN epics are grouped by project with section headers", async () => {
-      await plans.expectGroupedByProject();
+    await test.step("THEN select-project prompt is shown", async () => {
+      await plans.expectSelectProjectPrompt();
     });
 
-    await test.step("THEN at least one project group header is rendered", async () => {
-      await plans.expectProjectGroupHeaders(1);
-    });
-
-    await test.step("THEN epic rows appear under the group headers", async () => {
-      const rowCount = await plans.allEpicRows().count();
-      expect(rowCount, "expected at least 1 epic row").toBeGreaterThanOrEqual(1);
+    await test.step("THEN no epic table is visible", async () => {
+      await expect(plans.epicTable).not.toBeVisible();
     });
   });
 
@@ -72,7 +52,11 @@ test.describe("plans list — /plans (sidebar project selector)", () => {
       await expect(page).toHaveURL(/project=/);
     });
 
-    await test.step("THEN epic table shows filtered rows (no group headers)", async () => {
+    await test.step("THEN filter bar is visible", async () => {
+      await expect(plans.filterBar()).toBeVisible();
+    });
+
+    await test.step("THEN epic table shows rows", async () => {
       await expect(plans.allEpicRows().first()).toBeVisible({ timeout: 5000 });
 
       const firstRow = plans.allEpicRows().first();
@@ -80,18 +64,127 @@ test.describe("plans list — /plans (sidebar project selector)", () => {
       await expect(firstRow.locator("[data-status]")).toBeVisible();
       await expect(firstRow.locator("[data-priority]")).toBeVisible();
     });
+  });
 
-    await test.step("THEN no project group headers are visible (flat list)", async () => {
-      await expect(plans.allProjectGroupHeaders()).toHaveCount(0);
+  test("search filters beads by title substring", async ({ page }) => {
+    await test.step("GIVEN plans page with a project selected", async () => {
+      await plans.gotoWithProject("e2e_plans");
+      await expect(plans.allEpicRows().first()).toBeVisible({ timeout: 5000 });
+    });
+
+    const initialCount = await plans.allEpicRows().count();
+
+    await test.step("WHEN user types a search query", async () => {
+      await plans.search("nonexistent-query-xyz");
+    });
+
+    await test.step("THEN results are filtered (fewer or no rows)", async () => {
+      await plans.expectEmptyState("No plans match your search");
+    });
+
+    await test.step("WHEN user clears the search", async () => {
+      await plans.search("");
+    });
+
+    await test.step("THEN all beads reappear", async () => {
+      await expect(plans.allEpicRows().first()).toBeVisible({ timeout: 5000 });
+      const count = await plans.allEpicRows().count();
+      expect(count).toBe(initialCount);
+    });
+  });
+
+  test("hide_closed toggle excludes/includes closed beads", async ({ page }) => {
+    await test.step("GIVEN plans page with project (hide_closed default on)", async () => {
+      await plans.gotoWithProject("e2e_plans");
+      await expect(plans.allEpicRows().first()).toBeVisible({ timeout: 5000 });
+    });
+
+    const openCount = await plans.allEpicRows().count();
+
+    await test.step("WHEN user clicks 'Show closed'", async () => {
+      await plans.toggleClosed();
+      await page.waitForTimeout(500);
+    });
+
+    await test.step("THEN closed beads appear (count >= open count)", async () => {
+      await expect(plans.allEpicRows().first()).toBeVisible({ timeout: 5000 });
+      const allCount = await plans.allEpicRows().count();
+      expect(allCount).toBeGreaterThanOrEqual(openCount);
+    });
+
+    await test.step("THEN URL has hide_closed=false", async () => {
+      await expect(page).toHaveURL(/hide_closed=false/);
+    });
+  });
+
+  test("sort by created_at toggles direction", async ({ page }) => {
+    await test.step("GIVEN plans page with project selected", async () => {
+      await plans.gotoWithProject("e2e_plans");
+      await expect(plans.allEpicRows().first()).toBeVisible({ timeout: 5000 });
+    });
+
+    await test.step("WHEN user clicks 'Created' column header", async () => {
+      await plans.sortBy("created_at");
+    });
+
+    await test.step("THEN URL includes sort=created_at", async () => {
+      await expect(page).toHaveURL(/sort=created_at/);
+    });
+
+    await test.step("WHEN user clicks 'Created' again", async () => {
+      await plans.sortBy("created_at");
+    });
+
+    await test.step("THEN sort direction toggles", async () => {
+      await expect(page).toHaveURL(/dir=asc/);
+    });
+  });
+
+  test("URL params persist filter state across navigation", async ({ page }) => {
+    await test.step("GIVEN user has search and sort applied", async () => {
+      await page.goto("/plans?project=e2e_plans&q=e2e&hide_closed=false&sort=created_at&dir=asc");
+      await waitForLiveViewReady(page, "plans-root");
+    });
+
+    await test.step("THEN search value is restored", async () => {
+      await plans.expectSearchValue("e2e");
+    });
+
+    await test.step("WHEN user navigates to a detail and presses back", async () => {
+      const firstRow = plans.allEpicRows().first();
+      if (await firstRow.isVisible()) {
+        await plans.epicLink(firstRow).click();
+        await waitForLiveViewReady(page, "plan-detail-root");
+        await page.goBack();
+        await waitForLiveViewReady(page, "plans-root");
+      }
+    });
+
+    await test.step("THEN filter state is preserved in URL", async () => {
+      await expect(page).toHaveURL(/q=e2e/);
+      await expect(page).toHaveURL(/sort=created_at/);
+    });
+  });
+
+  test("task count displays actual child count", async ({ page }) => {
+    await test.step("GIVEN plans page with epics", async () => {
+      await plans.gotoWithProject("e2e_plans");
+      await expect(plans.allEpicRows().first()).toBeVisible({ timeout: 5000 });
+    });
+
+    await test.step("THEN task count column shows a number for epics with children", async () => {
+      const firstRow = plans.allEpicRows().first();
+      const countCell = plans.taskCount(firstRow);
+      await expect(countCell).toBeVisible();
+      const text = await countCell.textContent();
+      // Should be a number or em-dash (for 0 tasks)
+      expect(text!.trim()).toMatch(/^\d+$|^\u2014$/);
     });
   });
 
   test("epic row link navigates to plan detail", async ({ page }) => {
-    await test.step("GIVEN plans page with epics visible via sidebar project", async () => {
-      await plans.goto();
-      await plans.expectVisible();
-
-      // Ensure we have epics — either grouped or filtered
+    await test.step("GIVEN plans page with epics visible via project param", async () => {
+      await plans.gotoWithProject("e2e_plans");
       await expect(plans.allEpicRows().first()).toBeVisible({ timeout: 5000 });
     });
 
@@ -107,9 +200,8 @@ test.describe("plans list — /plans (sidebar project selector)", () => {
   });
 
   test("viewport snapshot", async ({ page }) => {
-    await test.step("GIVEN plans page with epics visible", async () => {
-      await plans.goto();
-      await plans.expectVisible();
+    await test.step("GIVEN plans page with project and epics", async () => {
+      await plans.gotoWithProject("e2e_plans");
       await expect(plans.allEpicRows().first()).toBeVisible({ timeout: 5000 });
     });
 

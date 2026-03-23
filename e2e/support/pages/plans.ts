@@ -4,8 +4,8 @@ import { waitForLiveViewReady } from "../liveview";
 /**
  * Page Object Model for the Plans list view (/plans).
  *
- * Encapsulates all data-testid selectors and provides
- * assertion helpers for project chip filtering and epic table.
+ * Encapsulates selectors for search/filter/sort controls, epic table,
+ * and provides assertion helpers.
  */
 export class PlansPage {
   readonly page: Page;
@@ -30,28 +30,36 @@ export class PlansPage {
     await waitForLiveViewReady(this.page, "plans-root");
   }
 
-  // --- Project chip selectors ---
+  // --- Filter bar selectors ---
 
-  /** All project filter chip buttons. */
-  allProjectChips(): Locator {
-    return this.page.locator(".filter-btn");
+  /** The search text input. */
+  searchInput(): Locator {
+    return this.page.getByTestId("search-input");
   }
 
-  /** A specific project chip by project name (data-project attribute). */
-  projectChip(project: string): Locator {
-    return this.page.locator(`.filter-btn[data-project="${project}"]`);
+  /** The show/hide closed toggle button. */
+  toggleClosedButton(): Locator {
+    return this.page.getByTestId("toggle-closed");
   }
 
-  /** Click a project chip to filter. */
-  async selectProject(project: string) {
-    await this.projectChip(project).click();
+  /** A clickable sort column header. */
+  columnHeader(col: string): Locator {
+    return this.page.getByTestId(`sort-${col}`);
   }
 
-  /** Get the epic count badge text from a project chip. */
-  async chipEpicCount(project: string): Promise<string> {
-    const chip = this.projectChip(project);
-    const count = chip.locator(".plan-chip-count");
-    return (await count.textContent()) ?? "";
+  /** The filter bar container. */
+  filterBar(): Locator {
+    return this.page.getByTestId("filter-bar");
+  }
+
+  /** The error state message element. */
+  errorState(): Locator {
+    return this.page.getByTestId("plans-error");
+  }
+
+  /** The "Select a project" prompt. */
+  selectProjectPrompt(): Locator {
+    return this.page.getByTestId("select-project-prompt");
   }
 
   // --- Epic table selectors ---
@@ -71,18 +79,9 @@ export class PlansPage {
     return row.locator(".plan-epic-title");
   }
 
-  // --- Project group headers (post-migration: grouped-by-project view) ---
-
-  /** All project group header elements (visible when no project filter). */
-  allProjectGroupHeaders(): Locator {
-    return this.root.getByTestId("project-group-header");
-  }
-
-  /** A specific project group header by project name. */
-  projectGroupHeader(project: string): Locator {
-    return this.root.locator(
-      `[data-testid="project-group-header"][data-project="${project}"]`,
-    );
+  /** Task count cell within a row. */
+  taskCount(row: Locator): Locator {
+    return row.getByTestId("task-count");
   }
 
   // --- Empty state ---
@@ -92,28 +91,30 @@ export class PlansPage {
     return this.root.locator(".empty-state");
   }
 
+  // --- Actions ---
+
+  /** Type in the search input and wait for debounce + response. */
+  async search(query: string) {
+    await this.searchInput().fill(query);
+    // Wait for 300ms debounce + LiveView response
+    await this.page.waitForTimeout(500);
+  }
+
+  /** Click the toggle-closed button. */
+  async toggleClosed() {
+    await this.toggleClosedButton().click();
+  }
+
+  /** Click a sortable column header. */
+  async sortBy(col: string) {
+    await this.columnHeader(col).click();
+  }
+
   // --- Assertion helpers ---
 
   /** Assert the plans root is visible. */
   async expectVisible() {
     await expect(this.root).toBeVisible();
-  }
-
-  /** Assert the expected number of project chips. */
-  async expectChipCount(count: number) {
-    await expect(this.allProjectChips()).toHaveCount(count);
-  }
-
-  /** Assert a project chip is active (selected). */
-  async expectChipActive(project: string) {
-    await expect(this.projectChip(project)).toHaveClass(/is-active/);
-  }
-
-  /** Assert a project chip is not active. */
-  async expectChipInactive(project: string) {
-    const chip = this.projectChip(project);
-    const cls = await chip.getAttribute("class");
-    expect(cls).not.toContain("is-active");
   }
 
   /** Assert the expected number of epic rows. */
@@ -133,25 +134,23 @@ export class PlansPage {
     await expect(this.epicTable).toBeVisible();
   }
 
-  /** Assert that local project chip filters are NOT present (removed post-migration). */
-  async expectNoProjectChips() {
-    await expect(this.allProjectChips()).toHaveCount(0);
+  /** Assert error state is visible with expected text. */
+  async expectErrorState(text: string) {
+    const el = this.errorState();
+    await expect(el).toBeVisible();
+    await expect(el).toContainText(text);
   }
 
-  /** Assert project group headers are visible with at least the given count. */
-  async expectProjectGroupHeaders(minCount: number) {
-    const count = await this.allProjectGroupHeaders().count();
-    expect(
-      count,
-      `expected at least ${minCount} project group headers`,
-    ).toBeGreaterThanOrEqual(minCount);
+  /** Assert "Select a project" prompt is visible. */
+  async expectSelectProjectPrompt() {
+    await expect(this.selectProjectPrompt()).toBeVisible();
+    await expect(this.selectProjectPrompt()).toContainText(
+      "Select a project",
+    );
   }
 
-  /** Assert that epics are shown under project group headers (grouped view). */
-  async expectGroupedByProject() {
-    await expect(this.allProjectGroupHeaders().first()).toBeVisible({
-      timeout: 5000,
-    });
-    await expect(this.allEpicRows().first()).toBeVisible({ timeout: 5000 });
+  /** Assert the search input has the given value. */
+  async expectSearchValue(value: string) {
+    await expect(this.searchInput()).toHaveValue(value);
   }
 }
