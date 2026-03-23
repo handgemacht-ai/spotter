@@ -5,7 +5,7 @@ defmodule SpotterWeb.DashboardLiveTest do
   import Phoenix.LiveViewTest
 
   alias Ecto.Adapters.SQL.Sandbox
-  alias Spotter.Transcripts.{Project, Session}
+  alias Spotter.Transcripts.{Project, Session, SessionSlice}
 
   @endpoint SpotterWeb.Endpoint
 
@@ -199,6 +199,66 @@ defmodule SpotterWeb.DashboardLiveTest do
       assert row_html =~ "active"
       refute row_html =~ "finished"
       refute row_html =~ "dashboard-row-finished"
+    end
+  end
+
+  describe "saved slices section" do
+    test "shows slice cards when slices exist for project", %{project: project} do
+      session =
+        Ash.create!(Session, %{
+          session_id: Ash.UUID.generate(),
+          transcript_dir: "/tmp/slice-dash",
+          cwd: "/home/user/slice-dash",
+          project_id: project.id,
+          started_at: DateTime.utc_now()
+        })
+
+      slice =
+        Ash.create!(SessionSlice, %{
+          session_id: session.id,
+          project_id: project.id,
+          title: "Test Slice Alpha",
+          highlight_tool_use_ids: ["toolu_1", "toolu_2"]
+        })
+
+      {:ok, _view, html} = live(build_conn(), "/?project=#{project.id}")
+
+      assert html =~ "Saved Slices"
+      assert html =~ "Test Slice Alpha"
+      assert html =~ "2 highlighted runs"
+      assert html =~ ~s(data-slice-id="#{slice.id}")
+      assert html =~ "/sessions/#{session.session_id}?slice=#{slice.id}"
+    end
+
+    test "hides slices section when no slices exist", %{project: project} do
+      {:ok, _view, html} = live(build_conn(), "/?project=#{project.id}")
+
+      refute html =~ "Saved Slices"
+      refute html =~ "dashboard-slice-card"
+    end
+
+    test "filters slices by current project", %{project: project} do
+      other_project = Ash.create!(Project, %{name: "other-proj", pattern: "^other-proj"})
+
+      session =
+        Ash.create!(Session, %{
+          session_id: Ash.UUID.generate(),
+          transcript_dir: "/tmp/other-slice",
+          cwd: "/home/user/other-proj",
+          project_id: other_project.id,
+          started_at: DateTime.utc_now()
+        })
+
+      Ash.create!(SessionSlice, %{
+        session_id: session.id,
+        project_id: other_project.id,
+        title: "Other Project Slice",
+        highlight_tool_use_ids: ["toolu_x"]
+      })
+
+      {:ok, _view, html} = live(build_conn(), "/?project=#{project.id}")
+
+      refute html =~ "Other Project Slice"
     end
   end
 end

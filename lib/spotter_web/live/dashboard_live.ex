@@ -1,7 +1,7 @@
 defmodule SpotterWeb.DashboardLive do
   use Phoenix.LiveView
 
-  alias Spotter.Services.SkillFolderReader
+  alias Spotter.Services.{SessionSliceQuery, SkillFolderReader}
   alias Spotter.Transcripts.{Session, SessionPresenter}
   import SpotterWeb.FolderComponents, only: [folder_card: 1]
   alias SpotterWeb.ProjectHelpers
@@ -26,6 +26,7 @@ defmodule SpotterWeb.DashboardLive do
         |> assign(projects: [])
         |> assign(current_project_id: nil)
         |> assign(skill_folders: [])
+        |> assign(slices: [])
 
       {:ok, socket}
     end
@@ -41,11 +42,17 @@ defmodule SpotterWeb.DashboardLive do
         do: detect_skill_folders(current_project_id),
         else: []
 
+    slices =
+      if connected?(socket),
+        do: load_slices(current_project_id),
+        else: []
+
     {:noreply,
      assign(socket,
        projects: projects,
        current_project_id: current_project_id,
-       skill_folders: skill_folders
+       skill_folders: skill_folders,
+       slices: slices
      )}
   end
 
@@ -81,7 +88,8 @@ defmodule SpotterWeb.DashboardLive do
   def handle_event("refresh", _params, socket) do
     Tracer.with_span "spotter.dashboard.refresh" do
       sessions = load_ongoing_sessions()
-      {:noreply, assign(socket, sessions: sessions, finished_ids: MapSet.new())}
+      slices = load_slices(socket.assigns.current_project_id)
+      {:noreply, assign(socket, sessions: sessions, finished_ids: MapSet.new(), slices: slices)}
     end
   end
 
@@ -94,11 +102,50 @@ defmodule SpotterWeb.DashboardLive do
     end
   end
 
+  defp load_slices(nil), do: []
+
+  defp load_slices(project_id) do
+    Tracer.with_span "spotter.dashboard.load_slices",
+                     %{attributes: %{"project_id" => project_id}} do
+      case SessionSliceQuery.list_for_project(project_id) do
+        {:ok, slices} -> slices
+        _ -> []
+      end
+    end
+  end
+
   defp load_ongoing_sessions do
     Session
     |> Ash.Query.filter(not is_nil(started_at) and is_nil(session_ended_at))
     |> Ash.Query.sort(started_at: :desc)
     |> Ash.read!()
+  end
+
+  defp slice_session_label(slice) do
+    case slice.session do
+      %Session{} = session -> SessionPresenter.primary_label(session)
+      _ -> "Unknown session"
+    end
+  end
+
+  defp slice_session_id(slice) do
+    case slice.session do
+      %Session{session_id: sid} when is_binary(sid) -> sid
+      _ -> nil
+    end
+  end
+
+  defp slice_ingest_status(slice) do
+    case slice.session do
+      %Session{ingest_status: status} -> status
+      _ -> nil
+    end
+  end
+
+  defp format_slice_time(nil), do: ""
+
+  defp format_slice_time(dt) do
+    Calendar.strftime(dt, "%Y-%m-%d %H:%M")
   end
 
   @impl true
@@ -117,6 +164,33 @@ defmodule SpotterWeb.DashboardLive do
           <.folder_card :for={folder <- @skill_folders}
             folder={folder}
             project_id={@current_project_id} />
+        </div>
+      <% end %>
+
+      <%= if @slices != [] do %>
+        <div class="dashboard-section" data-testid="dashboard-slices">
+          <h2>Saved Slices</h2>
+          <div class="dashboard-cards">
+            <%= for slice <- @slices do %>
+              <% sid = slice_session_id(slice) %>
+              <a
+                href={if sid, do: "/sessions/#{sid}?slice=#{slice.id}", else: "#"}
+                class="dashboard-card"
+                data-testid="dashboard-slice-card"
+                data-slice-id={slice.id}
+              >
+                <div class="dashboard-card-label">{slice.title || "Untitled slice"}</div>
+                <div class="dashboard-card-path">{slice_session_label(slice)}</div>
+                <div class="dashboard-card-count">
+                  {length(slice.highlight_tool_use_ids)} highlighted runs
+                </div>
+                <div class="text-muted text-xs">{format_slice_time(slice.inserted_at)}</div>
+                <%= if slice_ingest_status(slice) == :degraded do %>
+                  <span class="badge session-status-inactive">degraded</span>
+                <% end %>
+              </a>
+            <% end %>
+          </div>
         </div>
       <% end %>
 
