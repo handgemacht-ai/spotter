@@ -119,14 +119,28 @@ export class PlanDetailPage {
     return this.childTaskRow(taskId).locator(".plan-task-link");
   }
 
-  // --- Annotations ---
+  // --- Sidebar ---
 
-  annotationsSection(): Locator {
-    return this.page.getByTestId("bead-annotations");
+  sidebar(): Locator {
+    return this.page.getByTestId("plan-detail-sidebar");
   }
 
-  selectionActive(): Locator {
-    return this.page.getByTestId("selection-active");
+  sidebarAnnotationsTab(): Locator {
+    return this.page.locator("#sidebar-tab-annotations");
+  }
+
+  annotationEditor(): Locator {
+    return this.sidebar().locator(".annotation-form");
+  }
+
+  annotationCardList(): Locator {
+    return this.sidebar().locator(".annotation-card");
+  }
+
+  // --- Annotations (sidebar) ---
+
+  annotationsSection(): Locator {
+    return this.sidebar().locator(".sidebar-tab-content");
   }
 
   // --- Not found ---
