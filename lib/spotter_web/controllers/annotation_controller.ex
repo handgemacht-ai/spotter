@@ -204,6 +204,32 @@ defmodule SpotterWeb.AnnotationController do
     end
   end
 
+  def delete(conn, %{"id" => annotation_id}) do
+    OtelTraceHelpers.with_span "spotter.web.annotation.delete", %{
+      "spotter.annotation.id" => annotation_id
+    } do
+      case fetch_annotation(annotation_id) do
+        {:ok, annotation} ->
+          if annotation.image_ref, do: ImageStore.delete(annotation.image_ref)
+          Ash.destroy!(annotation)
+
+          conn
+          |> OtelTraceHelpers.put_trace_response_header()
+          |> json(%{ok: true})
+
+        {:error, :not_found} ->
+          OtelTraceHelpers.set_error("annotation_not_found", %{
+            "error.source" => "annotation_controller"
+          })
+
+          conn
+          |> put_status(:not_found)
+          |> OtelTraceHelpers.put_trace_response_header()
+          |> json(%{error: "annotation not found"})
+      end
+    end
+  end
+
   # --- Private helpers ---
 
   defp resolve_project(%{"project_id" => project_id}) when is_binary(project_id) do

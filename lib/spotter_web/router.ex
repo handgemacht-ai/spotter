@@ -38,6 +38,7 @@ defmodule SpotterWeb.Router do
     post("/annotations", AnnotationController, :create)
     post("/annotations/:id/image", AnnotationController, :attach_image)
     get("/annotations/:id/image", AnnotationController, :show_image)
+    delete("/annotations/:id", AnnotationController, :delete)
 
     post("/e2e/seed-plans", E2eSeedController, :seed_plans)
     delete("/e2e/seed-plans", E2eSeedController, :cleanup_plans)
