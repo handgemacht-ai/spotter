@@ -163,6 +163,34 @@ defmodule Spotter.Beads.BeadQueries do
   end
 
   @doc """
+  Returns the sibling dependency graph for a bead.
+
+  Finds the parent epic, fetches all siblings, and returns nodes + edges
+  suitable for graph visualization. Returns `{:ok, nil}` when the graph
+  would have fewer than 2 nodes.
+  """
+  @spec sibling_graph(String.t(), String.t()) ::
+          {:ok, map() | nil} | {:error, atom()}
+  def sibling_graph(project, issue_id) do
+    Tracer.with_span "spotter.beads.queries.sibling_graph" do
+      Tracer.set_attribute("spotter.beads.project", project)
+      Tracer.set_attribute("spotter.beads.issue_id", issue_id)
+
+      case Client.get_sibling_graph(project, issue_id) do
+        {:ok, nil} ->
+          {:ok, nil}
+
+        {:ok, graph} ->
+          {:ok, graph}
+
+        {:error, reason} = err ->
+          Tracer.set_status(:error, inspect(reason))
+          err
+      end
+    end
+  end
+
+  @doc """
   Fetches a single bead by ID. Delegates to `get_epic/2` since all
   issue types share the same underlying query and struct shape.
   """

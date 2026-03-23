@@ -121,6 +121,34 @@ config :spotter, :plan_detail_test_data, %{
         closed_at: nil,
         assignee: nil
       }
-    ]
+    ],
+    graph: %{
+      nodes: [
+        %{
+          id: "spotter-uok",
+          title: "Plans Navigation",
+          status: "open",
+          priority: 1,
+          issue_type: "epic"
+        },
+        %{
+          id: "spotter-task-1",
+          title: "Implement BeadQueries",
+          status: "open",
+          priority: 2,
+          issue_type: "task"
+        },
+        %{
+          id: "spotter-task-2",
+          title: "Create PlanDetailLive",
+          status: "in_progress",
+          priority: 1,
+          issue_type: "task"
+        }
+      ],
+      edges: [
+        %{from: "spotter-task-2", to: "spotter-task-1", type: "blocks"}
+      ]
+    }
   }
 }

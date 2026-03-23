@@ -133,12 +133,14 @@ defmodule SpotterWeb.PlanDetailLiveTest do
   end
 
   describe "bead-centric data loading" do
-    test "loads and renders dependencies section" do
+    test "loads and renders dependency graph" do
       {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
 
       html = render(view)
 
-      assert html =~ ~s(data-testid="bead-dependencies")
+      assert html =~ ~s(data-testid="dep-graph")
+      assert html =~ ~s(phx-hook="DepGraphHook")
+      assert html =~ ~s(data-testid="dep-graph-toggle")
     end
   end
 
@@ -419,19 +421,27 @@ defmodule SpotterWeb.PlanDetailLiveTest do
     end
   end
 
-  describe "dependency_list/1" do
-    test "renders navigable dependency rows with status badges" do
+  describe "dependency graph" do
+    test "renders graph container with node data from fixture" do
       {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
 
       html = render(view)
 
-      assert html =~ ~s(data-testid="bead-dependencies")
-      assert html =~ ~s(data-testid="dependency-row")
-      assert html =~ "spotter-dep-1"
-      assert html =~ "Setup Infrastructure"
-      assert html =~ ~s(data-status="closed")
+      assert html =~ ~s(data-testid="dep-graph")
+      assert html =~ ~s(data-graph=)
+      assert html =~ "spotter-uok"
+      assert html =~ "spotter-task-1"
+      assert html =~ "spotter-task-2"
       assert html =~ "blocks"
-      assert html =~ ~r/href="[^"]*spotter-dep-1/
+    end
+
+    test "graph includes current_id matching the viewed bead" do
+      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
+
+      html = render(view)
+
+      assert html =~ ~s("current_id":"spotter-uok") or
+               html =~ ~s(current_id&quot;:&quot;spotter-uok)
     end
   end
 
