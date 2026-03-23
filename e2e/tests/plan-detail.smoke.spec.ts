@@ -286,12 +286,17 @@ test.describe("plan detail — /plans/:project/:bead_id", () => {
     });
   });
 
-  test("annotation display section", async ({ page }) => {
+  test("annotation display in sidebar", async ({ page }) => {
     await test.step("GIVEN a bead detail page is loaded", async () => {
       await navigateToTestBead(page, detail);
     });
 
-    await test.step("WHEN user creates an annotation via text selection", async () => {
+    await test.step("THEN sidebar is visible with annotations tab", async () => {
+      await expect(detail.sidebar()).toBeVisible();
+      await expect(detail.sidebarAnnotationsTab()).toBeVisible();
+    });
+
+    await test.step("WHEN user creates an annotation via text selection with comment", async () => {
       await expect(detail.sectionsContainer()).toBeVisible();
 
       await pushPlanTextSelected(page, {
@@ -301,12 +306,16 @@ test.describe("plan detail — /plans/:project/:bead_id", () => {
       });
     });
 
-    await test.step("THEN annotation section appears with the annotation", async () => {
-      await expect(detail.annotationsSection()).toBeVisible({ timeout: 5000 });
+    await test.step("THEN annotation card appears in sidebar", async () => {
+      await expect(detail.annotationCardList().first()).toBeVisible({ timeout: 5000 });
+    });
+
+    await test.step("THEN annotations tab shows updated count", async () => {
+      await expect(detail.sidebarAnnotationsTab()).toContainText("Annotations");
     });
   });
 
-  test("text selection shows annotation form", async ({ page }) => {
+  test("text selection shows annotation form in sidebar", async ({ page }) => {
     await test.step("GIVEN detail view with sections", async () => {
       await navigateToTestBead(page, detail);
       await expect(detail.sectionsContainer()).toBeVisible();
@@ -319,16 +328,18 @@ test.describe("plan detail — /plans/:project/:bead_id", () => {
       });
     });
 
-    await test.step("THEN annotation creation form appears", async () => {
-      await expect(detail.selectionActive()).toBeVisible({ timeout: 3000 });
-      const preview = detail
-        .selectionActive()
-        .locator(".plan-annotation-selected-text");
-      await expect(preview).toBeVisible();
-      await expect(detail.selectionActive().locator("textarea")).toBeVisible();
-      await expect(
-        detail.selectionActive().locator('button[type="submit"]'),
-      ).toBeVisible();
+    await test.step("THEN annotation editor appears in sidebar", async () => {
+      await expect(detail.annotationEditor()).toBeVisible({ timeout: 3000 });
+    });
+
+    await test.step("THEN editor shows selected text preview and form controls", async () => {
+      const editor = detail.annotationEditor();
+      await expect(editor.locator("textarea")).toBeVisible();
+      await expect(editor.locator('button[type="submit"]')).toBeVisible();
+    });
+
+    await test.step("THEN annotations tab is active", async () => {
+      await expect(detail.sidebarAnnotationsTab()).toHaveClass(/is-active/);
     });
   });
 
