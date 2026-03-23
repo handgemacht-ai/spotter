@@ -27,7 +27,9 @@ defmodule SpotterWeb.PlanDetailLive do
        dolt_available: nil,
        selection: nil,
        highlighted_annotation: nil,
-       active_sidebar_tab: :annotations
+       active_sidebar_tab: :annotations,
+       graph_data: nil,
+       graph_expanded: false
      )}
   end
 
@@ -119,6 +121,19 @@ defmodule SpotterWeb.PlanDetailLive do
   end
 
   @impl true
+  def handle_event("dep_graph_navigate", %{"bead_id" => bead_id}, socket) do
+    path =
+      "/plans/#{URI.encode_www_form(socket.assigns.project)}/#{URI.encode_www_form(bead_id)}"
+
+    {:noreply, push_patch(socket, to: path)}
+  end
+
+  @impl true
+  def handle_event("toggle_dep_graph", _params, socket) do
+    {:noreply, assign(socket, graph_expanded: !socket.assigns.graph_expanded)}
+  end
+
+  @impl true
   def handle_event("clear_selection", _params, socket) do
     {:noreply, assign(socket, selection: nil)}
   end
@@ -175,25 +190,36 @@ defmodule SpotterWeb.PlanDetailLive do
       Tracer.set_attribute("spotter.beads.project", project)
       Tracer.set_attribute("spotter.beads.bead_id", bead_id)
 
-      {bead, children, deps, annotations} = fetch_data(project, bead_id)
+      {bead, children, deps, annotations, graph} = fetch_data(project, bead_id)
 
       parsed = parse_bead_content(bead && bead.description)
 
       dolt_available = bead != nil
 
+      graph_data = build_graph_payload(graph, bead_id)
+
       Tracer.set_attribute("spotter.plan_detail.dolt_available", dolt_available)
       Tracer.set_attribute("spotter.plan_detail.child_count", length(children))
       Tracer.set_attribute("spotter.plan_detail.dep_count", length(deps))
       Tracer.set_attribute("spotter.plan_detail.annotation_count", length(annotations))
+      Tracer.set_attribute("spotter.plan_detail.has_graph", graph_data != nil)
 
-      assign(socket,
-        bead: bead,
-        children: children,
-        dependencies: deps,
-        annotations: annotations,
-        parsed_content: parsed,
-        dolt_available: dolt_available
-      )
+      socket =
+        assign(socket,
+          bead: bead,
+          children: children,
+          dependencies: deps,
+          annotations: annotations,
+          parsed_content: parsed,
+          dolt_available: dolt_available,
+          graph_data: graph_data
+        )
+
+      if graph_data do
+        push_event(socket, "dep_graph_data", graph_data)
+      else
+        socket
+      end
     end
   end
 
@@ -251,8 +277,9 @@ defmodule SpotterWeb.PlanDetailLive do
         dep_maps -> BeadStructs.Dependency.from_rows(dep_maps)
       end
 
+    graph = Map.get(fixture, :graph)
     annotations = fetch_annotations(bead_id)
-    {bead, children, deps, annotations}
+    {bead, children, deps, annotations, graph}
   end
 
   defp lookup_test_fixture(project, bead_id) do
@@ -273,14 +300,18 @@ defmodule SpotterWeb.PlanDetailLive do
     deps_task =
       Task.async(fn -> safe_call(fn -> Plans.list_dependencies(project, bead_id) end, []) end)
 
+    graph_task =
+      Task.async(fn -> safe_call(fn -> Plans.dependency_graph(project, bead_id) end, nil) end)
+
     annotations_task = Task.async(fn -> fetch_annotations(bead_id) end)
 
     bead = Task.await(bead_task, @query_timeout)
     children = Task.await(children_task, @query_timeout)
     deps = Task.await(deps_task, @query_timeout)
+    graph = Task.await(graph_task, @query_timeout)
     annotations = Task.await(annotations_task, @query_timeout)
 
-    {bead, children, deps, annotations}
+    {bead, children, deps, annotations, graph}
   end
 
   defp fetch_annotations(bead_id) do
@@ -291,6 +322,31 @@ defmodule SpotterWeb.PlanDetailLive do
       _ -> []
     end
   end
+
+  defp build_graph_payload(nil, _bead_id), do: nil
+
+  defp build_graph_payload(%{nodes: nodes, edges: edges}, bead_id) do
+    js_nodes =
+      Enum.map(nodes, fn n ->
+        %{
+          id: n.id,
+          title: truncate_title(n.title, 25),
+          status: n.status,
+          type: n.issue_type
+        }
+      end)
+
+    js_edges =
+      Enum.map(edges, fn e ->
+        %{from: e.from, to: e.to, type: e.type}
+      end)
+
+    %{nodes: js_nodes, edges: js_edges, current_id: bead_id}
+  end
+
+  defp truncate_title(nil, _max), do: ""
+  defp truncate_title(s, max) when byte_size(s) <= max, do: s
+  defp truncate_title(s, max), do: String.slice(s, 0, max - 1) <> "…"
 
   defp safe_call(fun, default) do
     case fun.() do
@@ -318,6 +374,24 @@ defmodule SpotterWeb.PlanDetailLive do
       <%= if @bead do %>
         <div class="plan-bead-detail" data-testid="bead-detail">
           <.bead_header bead={@bead} />
+
+          <%= if @graph_data do %>
+            <button
+              class="dep-graph-toggle"
+              phx-click="toggle_dep_graph"
+              data-testid="dep-graph-toggle"
+            >
+              {if @graph_expanded, do: "Hide", else: "Show"} dependency graph ({length(@graph_data.nodes)} beads)
+            </button>
+            <div
+              id="dep-graph"
+              phx-hook="DepGraphHook"
+              class={"dep-graph-container #{if @graph_expanded, do: "is-expanded"}"}
+              data-testid="dep-graph"
+              data-graph={Jason.encode!(@graph_data)}
+            >
+            </div>
+          <% end %>
 
           <div class="plan-detail-layout">
             <div class="plan-detail-content">
@@ -363,8 +437,6 @@ defmodule SpotterWeb.PlanDetailLive do
                   <.acceptance_cards rows={@parsed_content.acceptance_rows} />
                 </div>
               <% end %>
-
-              <.dependency_list deps={@dependencies} project={@project} />
 
               <%= if @children != [] do %>
                 <div class="plan-children" data-testid="child-tasks">

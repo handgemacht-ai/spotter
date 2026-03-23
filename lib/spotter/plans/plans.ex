@@ -94,6 +94,22 @@ defmodule Spotter.Plans do
   """
   def get_bead(project, bead_id), do: get_plan(project, bead_id)
 
+  @doc """
+  Returns the sibling dependency graph for a bead.
+
+  Direct delegation to BeadQueries — this is a view-level aggregation,
+  not a core PlanSource operation.
+  """
+  @spec dependency_graph(String.t(), String.t()) ::
+          {:ok, map() | nil} | {:error, atom()}
+  def dependency_graph(project, bead_id) do
+    Tracer.with_span "spotter.plans.dependency_graph" do
+      Tracer.set_attribute("plans.project", project)
+      Tracer.set_attribute("plans.bead_id", bead_id)
+      Spotter.Beads.BeadQueries.sibling_graph(project, bead_id)
+    end
+  end
+
   defp sources do
     Application.get_env(:spotter, __MODULE__, [])
     |> Keyword.get(:sources, [BeadsSource])

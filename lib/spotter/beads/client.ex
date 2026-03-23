@@ -239,6 +239,112 @@ defmodule Spotter.Beads.Client do
     end
   end
 
+  @doc """
+  Builds the sibling dependency graph for a bead.
+
+  Finds the parent epic, fetches all sibling issues under that parent,
+  then fetches non-parent dependencies among those siblings.
+
+  Returns `{:ok, graph}` where graph is `%{nodes: [...], edges: [...]}` or
+  `{:ok, nil}` when there are fewer than 2 siblings.
+  """
+  @spec get_sibling_graph(String.t(), String.t()) ::
+          {:ok, map() | nil} | {:error, atom()}
+  def get_sibling_graph(project, issue_id) do
+    Tracer.with_span "spotter.beads.client.get_sibling_graph" do
+      Tracer.set_attribute("spotter.beads.database", DoltConfig.database_name(project))
+      Tracer.set_attribute("spotter.beads.issue_id", issue_id)
+
+      with {:ok, pool} <- ensure_pool(project) do
+        parent_id = find_parent_id(pool, issue_id)
+        build_sibling_graph(pool, parent_id || issue_id)
+      end
+    end
+  end
+
+  defp build_sibling_graph(pool, parent_id) do
+    with {:ok, siblings} when length(siblings) >= 2 <- fetch_siblings(pool, parent_id),
+         sibling_ids = Enum.map(siblings, & &1["id"]),
+         {:ok, edges} <- fetch_cross_deps(pool, sibling_ids) do
+      {:ok, %{nodes: siblings_to_nodes(siblings), edges: edges}}
+    else
+      {:ok, _few} -> {:ok, nil}
+      {:error, _} = err -> err
+    end
+  end
+
+  defp siblings_to_nodes(siblings) do
+    Enum.map(siblings, fn s ->
+      %{
+        id: s["id"],
+        title: s["title"],
+        status: s["status"],
+        priority: s["priority"],
+        issue_type: s["issue_type"]
+      }
+    end)
+  end
+
+  defp find_parent_id(pool, issue_id) do
+    sql = """
+    SELECT depends_on_id FROM dependencies
+    WHERE issue_id = ? AND type IN ('parent-child', 'parent')
+    LIMIT 1
+    """
+
+    case run_query(pool, sql, [issue_id]) do
+      {:ok, %{num_rows: 1} = result} ->
+        result |> rows_to_maps() |> hd() |> Map.get("depends_on_id")
+
+      _ ->
+        nil
+    end
+  end
+
+  defp fetch_siblings(pool, parent_id) do
+    sql = """
+    SELECT i.id, i.title, i.status, i.priority, i.issue_type
+    FROM issues i
+    INNER JOIN dependencies d ON d.issue_id = i.id
+    WHERE d.depends_on_id = ? AND d.type IN ('parent-child', 'parent')
+    ORDER BY i.priority ASC, i.created_at ASC
+    """
+
+    case run_query(pool, sql, [parent_id]) do
+      {:ok, result} -> {:ok, rows_to_maps(result)}
+      {:error, _} = err -> err
+    end
+  end
+
+  defp fetch_cross_deps(pool, sibling_ids) when sibling_ids != [] do
+    placeholders = Enum.map_join(sibling_ids, ", ", fn _ -> "?" end)
+
+    sql = """
+    SELECT d.issue_id AS `from`, d.depends_on_id AS `to`, d.type
+    FROM dependencies d
+    WHERE d.issue_id IN (#{placeholders})
+      AND d.depends_on_id IN (#{placeholders})
+      AND d.type NOT IN ('parent-child', 'parent')
+    """
+
+    params = sibling_ids ++ sibling_ids
+
+    case run_query(pool, sql, params) do
+      {:ok, result} ->
+        edges =
+          Enum.map(rows_to_maps(result), fn row ->
+            %{from: row["from"], to: row["to"], type: row["type"]}
+          end)
+
+        {:ok, edges}
+
+      {:error, _} = err ->
+        err
+    end
+  end
+
+  defp fetch_cross_deps(_pool, []), do: {:ok, []}
+
   # -- Pool Management --
 
   defp ensure_pool(project) do
