@@ -7,7 +7,8 @@ defmodule SpotterWeb.SpotterMcpPlug do
 
   @behaviour Plug
 
-  alias Spotter.Transcripts.Sessions
+  alias Spotter.ImageStore
+  alias Spotter.Transcripts.{Annotation, Session, Sessions}
   alias SpotterWeb.OtelTraceHelpers
 
   require Logger
@@ -94,9 +95,23 @@ defmodule SpotterWeb.SpotterMcpPlug do
         OtelTraceHelpers.with_span "spotter.mcp.http", attrs do
           conn
           |> OtelTraceHelpers.put_trace_response_header()
-          |> call_router_with_rescue(router_opts, tool_name)
+          |> handle_post(router_opts, jsonrpc_method, tool_name)
         end
     end
+  end
+
+  defp handle_post(conn, _router_opts, "tools/call", "get_annotation_image") do
+    handle_get_annotation_image(conn)
+  end
+
+  defp handle_post(conn, router_opts, "tools/list", _tool_name) do
+    conn
+    |> Plug.Conn.register_before_send(&inject_custom_tools/1)
+    |> call_router_with_rescue(router_opts, nil)
+  end
+
+  defp handle_post(conn, router_opts, _jsonrpc_method, tool_name) do
+    call_router_with_rescue(conn, router_opts, tool_name)
   end
 
   defp resolve_mcp_project_scope(conn, _attrs) do
@@ -144,8 +159,6 @@ defmodule SpotterWeb.SpotterMcpPlug do
     require OpenTelemetry.Tracer, as: Tracer
     require Ash.Query
 
-    alias Spotter.Transcripts.Session
-
     case Session
          |> Ash.Query.filter(session_id == ^session_id)
          |> Ash.read_one() do
@@ -171,7 +184,7 @@ defmodule SpotterWeb.SpotterMcpPlug do
     require OpenTelemetry.Tracer, as: Tracer
     require Ash.Query
 
-    case Spotter.Transcripts.Session
+    case Session
          |> Ash.Query.filter(not is_nil(project_id))
          |> Ash.Query.sort(started_at: :desc)
          |> Ash.Query.limit(1)
@@ -296,6 +309,130 @@ defmodule SpotterWeb.SpotterMcpPlug do
   end
 
   defp maybe_log_get_fingerprint(_method, _peer_ip, _accepts_sse, _accept, _user_agent), do: :ok
+
+  defp handle_get_annotation_image(conn) do
+    require OpenTelemetry.Tracer, as: Tracer
+
+    Tracer.with_span "spotter.mcp.get_annotation_image" do
+      annotation_id = get_in(conn.body_params, ["params", "arguments", "id"])
+      request_id = conn.body_params["id"]
+
+      scope = Ash.PlugHelpers.get_context(conn)[:spotter_mcp_scope]
+
+      result =
+        with {:scope, %{project_id: project_id}} <- {:scope, scope},
+             {:id, id} when is_binary(id) and id != "" <- {:id, annotation_id},
+             {:ok, annotation} <- Ash.get(Annotation, id, not_found_error?: true),
+             :ok <- validate_annotation_project(annotation, project_id),
+             image_ref when is_binary(image_ref) <- annotation.image_ref,
+             {:ok, image_binary} <- ImageStore.fetch(image_ref) do
+          Tracer.set_attribute("spotter.mcp.annotation_id", id)
+
+          %{
+            "content" => [
+              %{
+                "type" => "image",
+                "mimeType" => "image/png",
+                "data" => Base.encode64(image_binary)
+              }
+            ]
+          }
+        else
+          {:scope, _} ->
+            mcp_error_with_status(Tracer, "MCP project scope is required")
+
+          {:id, _} ->
+            mcp_error_with_status(Tracer, "annotation id is required")
+
+          {:error, %Ash.Error.Invalid{} = err} ->
+            mcp_error_with_status(Tracer, "annotation not found: #{Exception.message(err)}")
+
+          {:error, :not_found} ->
+            mcp_error_with_status(Tracer, "no image stored for this annotation")
+
+          nil ->
+            mcp_error_with_status(Tracer, "annotation has no image_ref")
+
+          {:error, :project_mismatch} ->
+            mcp_error_with_status(
+              Tracer,
+              "annotation belongs to a different project than the current scope"
+            )
+
+          {:error, reason} ->
+            mcp_error_with_status(Tracer, "failed to fetch image: #{inspect(reason)}")
+        end
+
+      send_jsonrpc_response(conn, request_id, result)
+    end
+  end
+
+  defp validate_annotation_project(annotation, project_id) do
+    if is_nil(annotation.project_id) or
+         to_string(annotation.project_id) == to_string(project_id) do
+      :ok
+    else
+      {:error, :project_mismatch}
+    end
+  end
+
+  defp mcp_error_with_status(tracer, message) do
+    tracer.set_status(:error, message)
+
+    %{
+      "isError" => true,
+      "content" => [%{"type" => "text", "text" => message}]
+    }
+  end
+
+  defp send_jsonrpc_response(conn, request_id, result) do
+    body =
+      Jason.encode!(%{
+        "jsonrpc" => "2.0",
+        "id" => request_id,
+        "result" => result
+      })
+
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(200, body)
+  end
+
+  @get_annotation_image_tool %{
+    "name" => "get_annotation_image",
+    "description" =>
+      "Retrieve the screenshot image attached to a review annotation. Returns base64-encoded PNG. Use has_image flag from list_review_annotations to check availability.",
+    "inputSchema" => %{
+      "type" => "object",
+      "properties" => %{
+        "id" => %{
+          "type" => "string",
+          "description" => "The annotation ID (UUID)"
+        }
+      },
+      "required" => ["id"]
+    }
+  }
+
+  defp inject_custom_tools(conn) do
+    if conn.status == 200 do
+      case Jason.decode(conn.resp_body) do
+        {:ok, %{"result" => %{"tools" => tools} = result} = body} ->
+          updated_body =
+            Jason.encode!(%{
+              body
+              | "result" => %{result | "tools" => tools ++ [@get_annotation_image_tool]}
+            })
+
+          %{conn | resp_body: updated_body}
+
+        _ ->
+          conn
+      end
+    else
+      conn
+    end
+  end
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)

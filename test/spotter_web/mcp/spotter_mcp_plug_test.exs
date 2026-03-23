@@ -114,6 +114,7 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
       # Exact retained tool set — no more, no less
       assert tool_names == [
                "create_hotspot",
+               "get_annotation_image",
                "list_review_annotations",
                "resolve_annotation",
                "submit_retro"

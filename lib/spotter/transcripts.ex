@@ -82,8 +82,8 @@ defmodule Spotter.Transcripts do
 
   tools do
     tool :list_review_annotations, Spotter.Transcripts.Annotation, :mcp_read_review_annotations do
-      description "List review annotations for the current project (filter by state/session_id; includes refs)."
-      load [:subagent, :file_refs, message_refs: [:message]]
+      description "List review annotations for the current project (filter by state/session_id; includes refs). Each annotation includes has_image flag."
+      load [:subagent, :file_refs, :has_image, message_refs: [:message]]
     end
 
     tool :resolve_annotation, Spotter.Transcripts.Annotation, :mcp_resolve do

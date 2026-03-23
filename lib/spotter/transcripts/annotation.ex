@@ -235,4 +235,8 @@ defmodule Spotter.Transcripts.Annotation do
     has_many :message_refs, Spotter.Transcripts.AnnotationMessageRef
     has_many :file_refs, Spotter.Transcripts.AnnotationFileRef
   end
+
+  calculations do
+    calculate :has_image, :boolean, expr(not is_nil(image_ref))
+  end
 end
