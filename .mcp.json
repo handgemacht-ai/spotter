@@ -10,8 +10,10 @@
         "-y",
         "chrome-devtools-mcp@latest",
         "--headless",
+        "--isolated",
         "--chromeArg=--no-sandbox",
-        "--chromeArg=--disable-setuid-sandbox"
+        "--chromeArg=--disable-setuid-sandbox",
+        "--chromeArg=--ignore-certificate-errors"
       ]
     }
   }
