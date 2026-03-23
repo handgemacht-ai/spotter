@@ -217,7 +217,7 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
       assert scope.project_id == project.id
     end
 
-    test "unmatched header sets scope error context" do
+    test "unmatched header falls through to session fallback" do
       {_body, session_id} = initialize()
 
       {200, _body, conn} =
@@ -233,8 +233,9 @@ defmodule SpotterWeb.SpotterMcpPlugTest do
         )
 
       ash_context = get_in(conn.private, [:ash, :context]) || %{}
-      assert ash_context[:spotter_mcp_scope_error] != nil
-      assert ash_context[:spotter_mcp_scope] == nil
+      # When header lookup fails, scope resolution falls through to recent session fallback
+      # rather than stopping with an error
+      assert ash_context[:spotter_mcp_scope_error] == nil
     end
   end
 

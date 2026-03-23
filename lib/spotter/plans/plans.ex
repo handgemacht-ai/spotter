@@ -14,6 +14,7 @@ defmodule Spotter.Plans do
 
   require OpenTelemetry.Tracer, as: Tracer
 
+  alias Spotter.Beads.BeadQueries
   alias Spotter.Plans.BeadsSource
 
   @doc """
@@ -106,7 +107,7 @@ defmodule Spotter.Plans do
     Tracer.with_span "spotter.plans.dependency_graph" do
       Tracer.set_attribute("plans.project", project)
       Tracer.set_attribute("plans.bead_id", bead_id)
-      Spotter.Beads.BeadQueries.sibling_graph(project, bead_id)
+      BeadQueries.sibling_graph(project, bead_id)
     end
   end
 

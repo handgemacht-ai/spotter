@@ -118,31 +118,36 @@ defmodule SpotterWeb.SpotterMcpPlug do
     require OpenTelemetry.Tracer, as: Tracer
 
     # Priority: 1) x-spotter-project-dir header, 2) session_id query param, 3) recent session fallback
-    case Plug.Conn.get_req_header(conn, "x-spotter-project-dir") do
-      [project_dir | _] when project_dir != "" ->
-        Tracer.set_attribute("spotter.mcp.scope.project_dir_present", true)
-        Tracer.set_attribute("spotter.mcp.scope.strategy", "header")
+    header_result =
+      case Plug.Conn.get_req_header(conn, "x-spotter-project-dir") do
+        [project_dir | _] when project_dir != "" ->
+          Tracer.set_attribute("spotter.mcp.scope.project_dir_present", true)
+          Tracer.set_attribute("spotter.mcp.scope.strategy", "header")
 
-        case Sessions.resolve_project_by_cwd(project_dir) do
-          {:ok, project} ->
-            Tracer.set_attribute("spotter.mcp.scope.project_id", project.id)
+          case Sessions.resolve_project_by_cwd(project_dir) do
+            {:ok, project} ->
+              Tracer.set_attribute("spotter.mcp.scope.project_id", project.id)
 
-            Ash.PlugHelpers.set_context(conn, %{
-              spotter_mcp_scope: %{project_id: project.id, project_dir: project_dir}
-            })
+              {:ok,
+               Ash.PlugHelpers.set_context(conn, %{
+                 spotter_mcp_scope: %{project_id: project.id, project_dir: project_dir}
+               })}
 
-          {:error, reason} ->
-            error_str = inspect(reason)
-            Tracer.set_attribute("spotter.mcp.scope.error", error_str)
+            {:error, reason} ->
+              Tracer.set_attribute("spotter.mcp.scope.header_error", inspect(reason))
+              :fallthrough
+          end
 
-            Ash.PlugHelpers.set_context(conn, %{spotter_mcp_scope_error: error_str})
-        end
+        _ ->
+          Tracer.set_attribute("spotter.mcp.scope.project_dir_present", false)
+          :fallthrough
+      end
 
-      _ ->
-        Tracer.set_attribute("spotter.mcp.scope.project_dir_present", false)
+    case header_result do
+      {:ok, conn} ->
+        conn
 
-        # Claude Code bug #14977: custom headers in .mcp.json are not sent for
-        # HTTP MCP servers. Try session_id from query param (set via CLAUDE_ENV_FILE).
+      :fallthrough ->
         conn = Plug.Conn.fetch_query_params(conn)
 
         case conn.query_params do
