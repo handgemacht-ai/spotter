@@ -60,7 +60,8 @@ defmodule Spotter.Transcripts.Session do
         :source_modified_at,
         :session_ended_at,
         :team_name,
-        :agent_name
+        :agent_name,
+        :ingest_status
       ]
     end
 
@@ -175,7 +176,7 @@ defmodule Spotter.Transcripts.Session do
 
     attribute :ingest_status, :atom do
       allow_nil? true
-      constraints one_of: [:ok, :degraded, :error]
+      constraints one_of: [:ok, :degraded, :error, :complete, :partial]
     end
 
     attribute :ingest_warning_count, :integer do

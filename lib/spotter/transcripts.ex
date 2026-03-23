@@ -127,5 +127,7 @@ defmodule Spotter.Transcripts do
     resource Spotter.Transcripts.RetroItem
     resource Spotter.Transcripts.ShellCommandEvent
     resource Spotter.Transcripts.InstructionsLoadedEvent
+    resource Spotter.Transcripts.ToolCallRun
+    resource Spotter.Transcripts.SessionSlice
   end
 end

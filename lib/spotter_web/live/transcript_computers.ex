@@ -30,6 +30,10 @@ defmodule SpotterWeb.Live.TranscriptComputers do
       initial MapSet.new()
     end
 
+    input :slice_visible_ids do
+      initial nil
+    end
+
     val :rendered_lines do
       compute(fn %{messages: messages, session_cwd: session_cwd} ->
         opts = if session_cwd, do: [session_cwd: session_cwd], else: []
@@ -43,15 +47,33 @@ defmodule SpotterWeb.Live.TranscriptComputers do
       compute(fn %{
                    rendered_lines: rendered_lines,
                    expanded_tool_groups: expanded_tools,
-                   expanded_hook_groups: expanded_hooks
+                   expanded_hook_groups: expanded_hooks,
+                   slice_visible_ids: slice_visible_ids
                  } ->
-        Enum.reject(rendered_lines, fn line ->
+        rendered_lines
+        |> Enum.reject(fn line ->
           hidden_tool_result?(line, expanded_tools) or
             hidden_hook_detail?(line, expanded_hooks)
         end)
+        |> then(fn lines ->
+          case slice_visible_ids do
+            nil ->
+              lines
+
+            %MapSet{} = ids ->
+              Enum.filter(lines, fn line ->
+                MapSet.member?(ids, line[:message_id])
+              end)
+          end
+        end)
       end)
 
-      depends_on([:rendered_lines, :expanded_tool_groups, :expanded_hook_groups])
+      depends_on([
+        :rendered_lines,
+        :expanded_tool_groups,
+        :expanded_hook_groups,
+        :slice_visible_ids
+      ])
     end
 
     val :task_actions do

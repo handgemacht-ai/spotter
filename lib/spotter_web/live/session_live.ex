@@ -9,7 +9,13 @@ defmodule SpotterWeb.SessionLive do
   import SpotterWeb.AnnotationComponents
   import SpotterWeb.LanesComponents
 
-  alias Spotter.Services.{ReviewUpdates, TranscriptFileLinks, TranscriptTaskActions}
+  alias Spotter.Services.{
+    ReviewUpdates,
+    SessionSliceResolver,
+    TranscriptFileLinks,
+    TranscriptTaskActions
+  }
+
   alias Spotter.Transcripts.ParallelLanes
 
   alias Spotter.Transcripts.{
@@ -21,6 +27,7 @@ defmodule SpotterWeb.SessionLive do
     Session,
     SessionCommitLink,
     SessionRework,
+    SessionSlice,
     Subagent,
     Team,
     ToolCall
@@ -37,6 +44,49 @@ defmodule SpotterWeb.SessionLive do
       Phoenix.PubSub.subscribe(Spotter.PubSub, "session_transcripts:#{session_id}")
     end
 
+    socket =
+      socket
+      |> assign(
+        session_id: session_id,
+        session_status: nil,
+        session_record: nil,
+        annotations: [],
+        selected_text: nil,
+        selection_source: nil,
+        selection_message_ids: [],
+        errors: [],
+        rework_events: [],
+        commit_links: [],
+        subagent_labels: %{},
+        current_message_id: nil,
+        show_transcript: true,
+        clicked_subagent: nil,
+        active_sidebar_tab: :commits,
+        explain_streams: %{},
+        transcript_link_project_id: nil,
+        transcript_link_fileset: nil,
+        view_mode: :list,
+        lanes: [],
+        active_lane_index: 0,
+        timeline: nil,
+        overlaps: [],
+        message_links: [],
+        rows: [],
+        expanded_messages: %{},
+        slice_active: false,
+        active_slice: nil,
+        visible_message_ids: nil
+      )
+      |> mount_computers(%{
+        transcript_view: %{messages: [], session_cwd: nil}
+      })
+
+    {:ok, socket}
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    session_id = socket.assigns.session_id
     {session_record, messages} = load_session_data(session_id)
     annotations = load_annotations(session_record)
     errors = load_errors(session_record)
@@ -49,38 +99,22 @@ defmodule SpotterWeb.SessionLive do
     socket =
       socket
       |> assign(
-        session_id: session_id,
-        session_status: nil,
         session_record: session_record,
         annotations: annotations,
-        selected_text: nil,
-        selection_source: nil,
-        selection_message_ids: [],
         errors: errors,
         rework_events: rework_events,
         commit_links: commit_links,
         subagent_labels: subagent_labels,
-        current_message_id: nil,
-        show_transcript: true,
-        clicked_subagent: nil,
-        active_sidebar_tab: :commits,
-        explain_streams: %{},
         transcript_link_project_id: link_project_id,
-        transcript_link_fileset: link_fileset,
-        view_mode: :list,
-        lanes: [],
-        active_lane_index: 0,
-        timeline: nil,
-        overlaps: [],
-        message_links: [],
-        rows: [],
-        expanded_messages: %{}
+        transcript_link_fileset: link_fileset
       )
-      |> mount_computers(%{
-        transcript_view: %{messages: messages, session_cwd: session_cwd}
+      |> apply_slice_mode(params, session_record, messages)
+      |> update_computer_inputs(:transcript_view, %{
+        messages: messages,
+        session_cwd: session_cwd
       })
 
-    {:ok, socket}
+    {:noreply, socket}
   end
 
   @impl true
@@ -149,6 +183,10 @@ defmodule SpotterWeb.SessionLive do
        selection_source: nil,
        selection_message_ids: []
      )}
+  end
+
+  def handle_event("clear_slice", _params, socket) do
+    {:noreply, push_patch(socket, to: "/sessions/#{socket.assigns.session_id}")}
   end
 
   def handle_event("save_annotation", params, socket) do
@@ -264,14 +302,12 @@ defmodule SpotterWeb.SessionLive do
   def handle_event("reorder_lanes", %{"order" => order}, socket) when is_list(order) do
     lanes = socket.assigns.lanes
 
-    # Build a lookup from session_id to lane
     lane_by_session_id =
       Map.new(lanes, fn lane ->
         sid = lane.session && lane.session.session_id
         {sid, lane}
       end)
 
-    # Reorder lanes according to the new order, skipping unknown session_ids
     reordered =
       order
       |> Enum.flat_map(fn sid ->
@@ -281,7 +317,6 @@ defmodule SpotterWeb.SessionLive do
         end
       end)
 
-    # If reordering produced a valid list with the same count, apply it
     if length(reordered) == length(lanes) do
       {:noreply, assign(socket, lanes: reordered, active_lane_index: 0)}
     else
@@ -293,7 +328,7 @@ defmodule SpotterWeb.SessionLive do
 
   def handle_event("reset_column_order", _params, socket) do
     lanes = socket.assigns.lanes
-    # Re-sort lanes by started_at (original order from ParallelLanes.compute)
+
     sorted =
       Enum.sort_by(lanes, & &1.started_at, fn
         nil, nil -> true
@@ -331,6 +366,38 @@ defmodule SpotterWeb.SessionLive do
     {:noreply, socket}
   end
 
+  defp apply_slice_mode(socket, %{"slice" => slice_id}, session_record, _messages)
+       when is_binary(slice_id) and slice_id != "" and not is_nil(session_record) do
+    Tracer.with_span "spotter.session_live.apply_slice_mode" do
+      Tracer.set_attribute("slice_id", slice_id)
+
+      with {:ok, slice} <- Ash.get(SessionSlice, slice_id),
+           true <- slice.session_id == session_record.id,
+           {:ok, windows} <- SessionSliceResolver.resolve(session_record, slice) do
+        visible_ids =
+          windows
+          |> List.flatten()
+          |> MapSet.new(& &1.id)
+
+        socket
+        |> assign(slice_active: true, active_slice: slice, visible_message_ids: visible_ids)
+        |> update_computer_inputs(:transcript_view, %{slice_visible_ids: visible_ids})
+      else
+        _ -> clear_slice_assigns(put_flash(socket, :error, "Slice not found or invalid"))
+      end
+    end
+  end
+
+  defp apply_slice_mode(socket, _params, _session_record, _messages) do
+    clear_slice_assigns(socket)
+  end
+
+  defp clear_slice_assigns(socket) do
+    socket
+    |> assign(slice_active: false, active_slice: nil, visible_message_ids: nil)
+    |> update_computer_inputs(:transcript_view, %{slice_visible_ids: nil})
+  end
+
   defp collect_message_ids(rows) do
     rows
     |> Enum.flat_map(fn row ->
@@ -347,7 +414,6 @@ defmodule SpotterWeb.SessionLive do
   defp load_lanes_data(socket) do
     team_name = socket.assigns.session_record && socket.assigns.session_record.team_name
 
-    # Socket-level memoization: skip recompute if already loaded for this team
     cached_team_id = socket.assigns[:lanes_team_id]
 
     case team_name && Team |> Ash.Query.filter(name == ^team_name) |> Ash.read_one() do
@@ -392,7 +458,6 @@ defmodule SpotterWeb.SessionLive do
     end
   end
 
-  # Try DB cache first, fall back to live computation.
   defp load_lanes_result(team_id) do
     case ParallelLanes.load_cached(team_id) do
       {:ok, _result} = hit -> hit
@@ -510,7 +575,6 @@ defmodule SpotterWeb.SessionLive do
        when is_nil(count) or count == 0 do
     case SyncTranscripts.sync_session_by_id(session.session_id) do
       %{status: :ok} ->
-        # Reload session to get updated attributes
         case Session |> Ash.Query.filter(session_id == ^session.session_id) |> Ash.read_one() do
           {:ok, %Session{} = refreshed} -> refreshed
           _ -> session
@@ -595,6 +659,12 @@ defmodule SpotterWeb.SessionLive do
         <span :if={@session_status} class={"badge session-status-#{@session_status}"}>
           {@session_status}
         </span>
+      </div>
+      <div :if={@slice_active && @active_slice} class="slice-banner" data-testid="slice-banner">
+        <span class="slice-title">{@active_slice.title || "Slice active"}</span>
+        <button data-action="clear-slice" phx-click="clear_slice" class="btn btn-sm">
+          Show full transcript
+        </button>
       </div>
       <div :if={@session_record && @session_record.team_name} data-testid="view-mode-toggle" style="display: flex; gap: var(--space-1); margin-bottom: var(--space-2);">
         <button phx-click="switch_view_mode" phx-value-mode="list" class={"lanes-tab#{if @view_mode == :list, do: " is-active", else: ""}"}>
