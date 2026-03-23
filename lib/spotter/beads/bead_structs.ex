@@ -9,7 +9,7 @@ defmodule Spotter.Beads.BeadStructs do
   defmodule Epic do
     @moduledoc "An epic issue from the beads database."
 
-    @fields [
+    @base_fields [
       :id,
       :title,
       :status,
@@ -22,6 +22,8 @@ defmodule Spotter.Beads.BeadStructs do
       :assignee
     ]
 
+    @all_fields @base_fields ++ [:task_count]
+
     @type t :: %__MODULE__{
             id: String.t(),
             title: String.t(),
@@ -32,14 +34,15 @@ defmodule Spotter.Beads.BeadStructs do
             created_at: NaiveDateTime.t(),
             updated_at: NaiveDateTime.t() | nil,
             closed_at: NaiveDateTime.t() | nil,
-            assignee: String.t() | nil
+            assignee: String.t() | nil,
+            task_count: integer()
           }
 
     @enforce_keys [:id, :title, :status, :priority, :issue_type, :created_at]
-    defstruct @fields
+    defstruct @base_fields ++ [task_count: 0]
 
     @spec from_row(map()) :: t()
-    def from_row(row) when is_map(row), do: struct!(__MODULE__, Map.take(row, @fields))
+    def from_row(row) when is_map(row), do: struct!(__MODULE__, Map.take(row, @all_fields))
 
     @spec from_rows([map()]) :: [t()]
     def from_rows(rows) when is_list(rows), do: Enum.map(rows, &from_row/1)
