@@ -17,6 +17,8 @@
 | Method | Path | Purpose | Controller |
 |--------|------|---------|------------|
 | GET | `/api/search` | Full-text search (FTS5) | SearchController |
+| POST | `/api/annotations` | Create annotation (external) | AnnotationController |
+| POST | `/api/annotations/:id/image` | Attach image to annotation | AnnotationController |
 | POST/GET | `/api/mcp` | MCP server (4 tools) | SpotterMcpPlug |
 
 ## LiveView Pages

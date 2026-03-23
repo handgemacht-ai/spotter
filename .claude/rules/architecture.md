@@ -50,6 +50,15 @@ Read-only Dolt client for querying beads issue data across projects.
 - **BeadStructs**: Typed structs — Epic, Task, Dependency — with `from_row/1` converters
 - **BeadContentParser**: Markdown parser — section splitting, mermaid extraction, GIVEN/WHEN/THEN tables
 
+## ImageStore (`lib/spotter/image_store.ex`, `lib/spotter/image_store/`)
+
+DI-based image storage for annotation screenshots. Follows the same behaviour + config pattern as `Spotter.Plans.PlanSource`.
+
+- **Spotter.ImageStore**: Behaviour (`store/fetch/delete` callbacks) + public API delegating to configured adapter via `Application.get_env(:spotter, Spotter.ImageStore, adapter: ...)`
+- **SqliteAdapter**: Default adapter — stores image blobs in `annotation_images` table via raw `Ecto.Adapters.SQL` against `Spotter.Repo`. 5MB size limit, upsert on duplicate `annotation_id`.
+
+Config: `config :spotter, Spotter.ImageStore, adapter: Spotter.ImageStore.SqliteAdapter`
+
 ## Search Subsystem (`lib/spotter/search/`)
 
 Unified full-text search over sessions, commits, hotspots, annotations, and files.
@@ -100,7 +109,7 @@ OpenTelemetry bootstrap and trace context utilities.
 
 ## Web Layer (`lib/spotter_web/`)
 
-**Controllers** (HTTP): HooksController, SessionHookController, SearchController, ReviewsRedirectController, SpotterMcpPlug
+**Controllers** (HTTP): HooksController, SessionHookController, SearchController, AnnotationController, ReviewsRedirectController, SpotterMcpPlug
 **LiveViews** (22): PaneListLive (dashboard), HistoryLive, CommitDetailLive, FileDetailLive, FileMetricsLive, SessionLive, SubagentLive, ReviewsLive, RetrosLive, ShellTelemetryLive, IngestProgressLive, PlansLive, PlanDetailLive, RepoLive, FolderViewLive
 **Channel**: ReviewsChannel (live review-count updates via WebSocket)
 **Components**: Layouts, TranscriptComponents, AnnotationComponents, LanesComponents, ImportModalComponents, PlanComponents, FolderComponents

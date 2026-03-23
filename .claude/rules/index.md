@@ -25,9 +25,11 @@
 | `lib/spotter/telemetry/` | OpenTelemetry setup (OTLP exporter, trace context) |
 | `lib/spotter/plans/` | Plans coordinator, PlanSource behaviour, BeadsSource impl |
 | `lib/spotter/beads/` | Dolt beads client, queries, structs, content parser |
+| `lib/spotter/image_store.ex` | ImageStore behaviour + DI public API |
+| `lib/spotter/image_store/` | ImageStore adapters (SqliteAdapter) |
 | `lib/spotter/config/` | Runtime configuration (EnvParser, Setting) |
 | `lib/spotter/search/` | Full-text search (FTS5/LIKE, indexer, reindex job) |
-| `lib/spotter_web/controllers/` | HTTP endpoints (hooks, search, MCP) |
+| `lib/spotter_web/controllers/` | HTTP endpoints (hooks, search, annotations, MCP) |
 | `lib/spotter_web/live/` | LiveView pages (23 modules) |
 | `lib/spotter_web/components/` | Reusable HEEX components (FolderComponents, PlanComponents, etc.) |
 | `lib/spotter_web/channels/` | WebSocket channels (ReviewsChannel) |

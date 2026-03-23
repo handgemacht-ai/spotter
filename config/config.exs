@@ -26,6 +26,8 @@ config :spotter, Oban,
 
 config :spotter, Spotter.Plans, sources: [Spotter.Plans.BeadsSource]
 
+config :spotter, Spotter.ImageStore, adapter: Spotter.ImageStore.SqliteAdapter
+
 config :spotter, ecto_repos: [Spotter.Repo], ash_domains: [Spotter.Transcripts, Spotter.Config]
 
 config :spotter, SpotterWeb.Endpoint,
