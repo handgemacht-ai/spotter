@@ -39,6 +39,28 @@ defmodule Spotter.Transcripts.Annotation do
       end
     end
 
+    read :rest_list do
+      argument :project_id, :uuid, allow_nil?: true
+      argument :bead_id, :string, allow_nil?: true
+
+      filter expr(purpose == :review and state == :open)
+
+      prepare fn query, _context ->
+        require Ash.Query
+
+        query =
+          case Ash.Query.get_argument(query, :project_id) do
+            nil -> query
+            pid -> Ash.Query.filter(query, project_id == ^pid)
+          end
+
+        case Ash.Query.get_argument(query, :bead_id) do
+          nil -> query
+          bid -> Ash.Query.filter(query, bead_id == ^bid)
+        end
+      end
+    end
+
     read :list_for_bead do
       argument :bead_id, :string, allow_nil?: false
 

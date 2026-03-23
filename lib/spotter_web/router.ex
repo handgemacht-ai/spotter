@@ -34,6 +34,7 @@ defmodule SpotterWeb.Router do
     post("/hooks/raw-event", HooksController, :raw_event)
     post("/hooks/waiting-summary", SessionHookController, :waiting_summary)
 
+    get("/annotations", AnnotationController, :index)
     post("/annotations", AnnotationController, :create)
     post("/annotations/:id/image", AnnotationController, :attach_image)
     get("/annotations/:id/image", AnnotationController, :show_image)

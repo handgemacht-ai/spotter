@@ -12,6 +12,37 @@ defmodule SpotterWeb.AnnotationController do
 
   @max_image_bytes 5 * 1024 * 1024
 
+  def index(conn, params) do
+    OtelTraceHelpers.with_span "spotter.web.annotation.index", %{} do
+      case resolve_project(params) do
+        {:ok, project_id} ->
+          args = %{project_id: project_id}
+          args = if params["bead_id"], do: Map.put(args, :bead_id, params["bead_id"]), else: args
+
+          annotations =
+            Annotation
+            |> Ash.Query.for_read(:rest_list, args)
+            |> Ash.Query.load(:has_image)
+            |> Ash.Query.sort(inserted_at: :desc)
+            |> Ash.read!()
+
+          conn
+          |> OtelTraceHelpers.put_trace_response_header()
+          |> json(Enum.map(annotations, &serialize_annotation/1))
+
+        {:error, :project_not_found} ->
+          OtelTraceHelpers.set_error("project_not_found", %{
+            "error.source" => "annotation_controller"
+          })
+
+          conn
+          |> put_status(:not_found)
+          |> OtelTraceHelpers.put_trace_response_header()
+          |> json(%{error: "project not found"})
+      end
+    end
+  end
+
   def create(conn, params) do
     OtelTraceHelpers.with_span "spotter.web.annotation.create", %{
       "spotter.annotation.source" => params["source"] || "unknown"
@@ -258,4 +289,18 @@ defmodule SpotterWeb.AnnotationController do
   end
 
   defp format_ash_error(err), do: Exception.message(err)
+
+  defp serialize_annotation(ann) do
+    %{
+      id: ann.id,
+      comment: ann.comment,
+      selected_text: ann.selected_text,
+      source: ann.source,
+      bead_id: ann.bead_id,
+      state: ann.state,
+      has_image: ann.has_image,
+      metadata: ann.metadata,
+      inserted_at: ann.inserted_at
+    }
+  end
 end
