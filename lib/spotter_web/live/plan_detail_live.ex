@@ -184,13 +184,24 @@ defmodule SpotterWeb.PlanDetailLive do
 
   defp parse_bead_content(description) do
     sections =
-      description
-      |> BeadContentParser.extract_sections_ordered()
-      |> Enum.map(fn {heading, body} ->
-        type = BeadContentParser.classify_section(heading)
-        rendered = BeadContentParser.render_section_body(body)
-        {heading, body, type, rendered}
-      end)
+      case BeadContentParser.extract_sections_ordered(description) do
+        [] when is_binary(description) and description != "" ->
+          trimmed = String.trim(description)
+
+          if trimmed != "" do
+            rendered = BeadContentParser.render_section_body(trimmed)
+            [{"Description", trimmed, :narrative, rendered}]
+          else
+            []
+          end
+
+        ordered ->
+          Enum.map(ordered, fn {heading, body} ->
+            type = BeadContentParser.classify_section(heading)
+            rendered = BeadContentParser.render_section_body(body)
+            {heading, body, type, rendered}
+          end)
+      end
 
     %{
       sections: sections,
