@@ -19,7 +19,7 @@
 | GET | `/api/search` | Full-text search (FTS5) | SearchController |
 | POST | `/api/annotations` | Create annotation (external) | AnnotationController |
 | POST | `/api/annotations/:id/image` | Attach image to annotation | AnnotationController |
-| POST/GET | `/api/mcp` | MCP server (4 tools) | SpotterMcpPlug |
+| POST/GET | `/api/mcp` | MCP server (5 tools) | SpotterMcpPlug |
 
 ## LiveView Pages
 
@@ -46,6 +46,18 @@
 | GET | `/projects/:project_id/telemetry/commands` | Project shell telemetry | ShellTelemetryLive |
 | GET | `/projects/:project_id/telemetry/instructions` | Project instructions telemetry | InstructionsTelemetryLive |
 | GET | `/projects/:project_id/files/*relative_path` | File detail / browser | FileDetailLive |
+
+## MCP Tools (via SpotterMcpPlug)
+
+| Tool | Purpose | Handler |
+|------|---------|---------|
+| `list_review_annotations` | List annotations for scoped project (includes `has_image` flag) | AshAi |
+| `resolve_annotation` | Resolve an annotation with resolution note | AshAi |
+| `create_hotspot` | Create a code hotspot for a commit | AshAi |
+| `submit_retro` | Submit a session retrospective | AshAi |
+| `get_annotation_image` | Retrieve base64 PNG screenshot attached to annotation | Custom handler |
+
+`get_annotation_image` is a custom MCP tool (not routed through AshAi) because AshAi doesn't support MCP image content types. It returns `{"type": "image", "mimeType": "image/png", "data": "<base64>"}`. Project scope validation ensures annotations from other projects are rejected.
 
 ## WebSocket
 
