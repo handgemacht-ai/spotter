@@ -264,7 +264,7 @@ defmodule Spotter.Beads.Client do
 
   defp build_sibling_graph(pool, parent_id) do
     with {:ok, siblings} when length(siblings) >= 2 <- fetch_siblings(pool, parent_id),
-         sibling_ids = Enum.map(siblings, & &1["id"]),
+         sibling_ids = Enum.map(siblings, & &1.id),
          {:ok, edges} <- fetch_cross_deps(pool, sibling_ids) do
       {:ok, %{nodes: siblings_to_nodes(siblings), edges: edges}}
     else
@@ -276,11 +276,11 @@ defmodule Spotter.Beads.Client do
   defp siblings_to_nodes(siblings) do
     Enum.map(siblings, fn s ->
       %{
-        id: s["id"],
-        title: s["title"],
-        status: s["status"],
-        priority: s["priority"],
-        issue_type: s["issue_type"]
+        id: s.id,
+        title: s.title,
+        status: s.status,
+        priority: s.priority,
+        issue_type: s.issue_type
       }
     end)
   end
@@ -294,7 +294,7 @@ defmodule Spotter.Beads.Client do
 
     case run_query(pool, sql, [issue_id]) do
       {:ok, %{num_rows: 1} = result} ->
-        result |> rows_to_maps() |> hd() |> Map.get("depends_on_id")
+        result |> rows_to_maps() |> hd() |> Map.get(:depends_on_id)
 
       _ ->
         nil
@@ -333,7 +333,7 @@ defmodule Spotter.Beads.Client do
       {:ok, result} ->
         edges =
           Enum.map(rows_to_maps(result), fn row ->
-            %{from: row["from"], to: row["to"], type: row["type"]}
+            %{from: row.from, to: row.to, type: row.type}
           end)
 
         {:ok, edges}

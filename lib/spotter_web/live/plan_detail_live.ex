@@ -330,7 +330,7 @@ defmodule SpotterWeb.PlanDetailLive do
       Enum.map(nodes, fn n ->
         %{
           id: n.id,
-          title: truncate_title(n.title, 25),
+          title: n.title,
           status: n.status,
           type: n.issue_type
         }
@@ -343,10 +343,6 @@ defmodule SpotterWeb.PlanDetailLive do
 
     %{nodes: js_nodes, edges: js_edges, current_id: bead_id}
   end
-
-  defp truncate_title(nil, _max), do: ""
-  defp truncate_title(s, max) when byte_size(s) <= max, do: s
-  defp truncate_title(s, max), do: String.slice(s, 0, max - 1) <> "…"
 
   defp safe_call(fun, default) do
     case fun.() do
@@ -386,7 +382,7 @@ defmodule SpotterWeb.PlanDetailLive do
             <div
               id="dep-graph"
               phx-hook="DepGraphHook"
-              class={"dep-graph-container #{if @graph_expanded, do: "is-expanded"}"}
+              class={["dep-graph-container", @graph_expanded && "is-expanded"]}
               data-testid="dep-graph"
               data-graph={Jason.encode!(@graph_data)}
             >

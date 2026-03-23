@@ -9,13 +9,13 @@ const STATUS_COLORS = {
   closed: "#555a6e",
 }
 
-const EDGE_STYLES = {
-  blocks: { color: "#ef4444", style: "solid" },
-  "discovered-from": { color: "#6b7280", style: "dashed" },
-}
-
 const CURRENT_BORDER = "#f59e0b"
 const CURRENT_BG = "#2a2520"
+
+const EDGE_COLORS = {
+  blocks: "#ef4444",
+  "discovered-from": "#6b7280",
+}
 
 const style = [
   {
@@ -64,8 +64,8 @@ const style = [
     selector: "edge",
     style: {
       width: 1.5,
-      "line-color": "#6b7280",
-      "target-arrow-color": "#6b7280",
+      "line-color": EDGE_COLORS["discovered-from"],
+      "target-arrow-color": EDGE_COLORS["discovered-from"],
       "target-arrow-shape": "triangle",
       "curve-style": "bezier",
       "arrow-scale": 0.8,
@@ -74,16 +74,16 @@ const style = [
   {
     selector: "edge[dep_type='blocks']",
     style: {
-      "line-color": "#ef4444",
-      "target-arrow-color": "#ef4444",
+      "line-color": EDGE_COLORS.blocks,
+      "target-arrow-color": EDGE_COLORS.blocks,
       "line-style": "solid",
     },
   },
   {
     selector: "edge[dep_type='discovered-from']",
     style: {
-      "line-color": "#6b7280",
-      "target-arrow-color": "#6b7280",
+      "line-color": EDGE_COLORS["discovered-from"],
+      "target-arrow-color": EDGE_COLORS["discovered-from"],
       "line-style": "dashed",
     },
   },
@@ -140,6 +140,8 @@ const DepGraphHook = {
     const data = JSON.parse(raw)
     if (!data || !data.nodes || data.nodes.length < 2) return
 
+    this._currentId = data.current_id
+
     this._cy = cytoscape({
       container: this.el,
       style: style,
@@ -152,7 +154,7 @@ const DepGraphHook = {
 
     this._cy.on("tap", "node", (evt) => {
       const beadId = evt.target.id()
-      if (beadId !== data.current_id) {
+      if (beadId !== this._currentId) {
         this.pushEvent("dep_graph_navigate", { bead_id: beadId })
       }
     })
@@ -160,6 +162,7 @@ const DepGraphHook = {
     this.handleEvent("dep_graph_data", (newData) => {
       if (!this._cy || !newData || !newData.nodes || newData.nodes.length < 2)
         return
+      this._currentId = newData.current_id
       this._cy.elements().remove()
       this._cy.add(buildElements(newData))
       this._cy.layout(layoutOpts()).run()
