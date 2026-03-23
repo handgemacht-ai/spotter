@@ -25,6 +25,7 @@ const PlanContentHook = {
     this._highlightCode()
     this._applyAnnotations()
     this._setupSelection()
+    this._setupAttentionHandler()
   },
   updated() {
     this._highlightCode()
@@ -102,6 +103,28 @@ const PlanContentHook = {
         break
       }
     }
+  },
+
+  _setupAttentionHandler() {
+    const pulseClass = (el, cls, ms) => {
+      if (!el) return
+      el.classList.add(cls)
+      setTimeout(() => el.classList.remove(cls), ms)
+    }
+
+    this.handleEvent("annotations_attention", () => {
+      const tick = (remaining) => {
+        pulseClass(document.getElementById("sidebar-tab-annotations"), "is-attention", 550)
+        const editor = document.querySelector(".plan-detail-sidebar .annotation-form")
+        const panel = document.querySelector(".plan-detail-sidebar .sidebar-tab-content")
+        if (editor || panel || remaining <= 0) {
+          pulseClass(editor || panel, "is-attention", 700)
+        } else {
+          requestAnimationFrame(() => tick(remaining - 1))
+        }
+      }
+      requestAnimationFrame(() => tick(2))
+    })
   },
 
   _setupSelection() {

@@ -26,7 +26,8 @@ defmodule SpotterWeb.PlanDetailLive do
        parsed_content: nil,
        dolt_available: nil,
        selection: nil,
-       highlighted_annotation: nil
+       highlighted_annotation: nil,
+       active_sidebar_tab: :annotations
      )}
   end
 
@@ -64,7 +65,17 @@ defmodule SpotterWeb.PlanDetailLive do
 
   @impl true
   def handle_event("plan_text_selected", %{"selected_text" => text} = params, socket) do
-    {:noreply, assign(socket, selection: %{text: text, section: params["section"]})}
+    socket =
+      socket
+      |> assign(selection: %{text: text, section: params["section"]})
+      |> maybe_focus_annotations_tab()
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("switch_sidebar_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, active_sidebar_tab: String.to_existing_atom(tab))}
   end
 
   @impl true
@@ -110,6 +121,12 @@ defmodule SpotterWeb.PlanDetailLive do
   @impl true
   def handle_event("clear_selection", _params, socket) do
     {:noreply, assign(socket, selection: nil)}
+  end
+
+  defp maybe_focus_annotations_tab(socket) do
+    socket
+    |> assign(active_sidebar_tab: :annotations)
+    |> push_event("annotations_attention", %{})
   end
 
   defp maybe_create_annotation(nil, _project, _text, _comment), do: :skip
@@ -302,93 +319,90 @@ defmodule SpotterWeb.PlanDetailLive do
         <div class="plan-bead-detail" data-testid="bead-detail">
           <.bead_header bead={@bead} />
 
-          <%= if @parsed_content do %>
-            <.classification_chips items={@parsed_content.classification} />
+          <div class="plan-detail-layout">
+            <div class="plan-detail-content">
+              <%= if @parsed_content do %>
+                <.classification_chips items={@parsed_content.classification} />
 
-            <div
-              data-testid="bead-sections"
-              id="plan-sections"
-              phx-hook="PlanContentHook"
-              data-annotations={encode_annotations(@annotations)}
-            >
-              <%= for {heading, _body, type, rendered} <- @parsed_content.sections, type == :narrative do %>
                 <div
-                  class="plan-section bead-content-section"
-                  data-plan-section={heading}
-                  data-section-type={type}
+                  data-testid="bead-sections"
+                  id="plan-sections"
+                  phx-hook="PlanContentHook"
+                  data-annotations={encode_annotations(@annotations)}
                 >
-                  <h3
-                    class="plan-section-heading bead-section-heading"
-                    data-testid="section-heading"
-                  >
-                    {heading}
-                  </h3>
-                  <div class="plan-section-body bead-content">
-                    {render_section(rendered)}
+                  <%= for {heading, _body, type, rendered} <- @parsed_content.sections, type == :narrative do %>
+                    <div
+                      class="plan-section bead-content-section"
+                      data-plan-section={heading}
+                      data-section-type={type}
+                    >
+                      <h3
+                        class="plan-section-heading bead-section-heading"
+                        data-testid="section-heading"
+                      >
+                        {heading}
+                      </h3>
+                      <div class="plan-section-body bead-content">
+                        {render_section(rendered)}
+                      </div>
+                    </div>
+                  <% end %>
+
+                  <%= for {block, idx} <- Enum.with_index(@parsed_content.mermaid_blocks) do %>
+                    <div
+                      class="plan-mermaid-block"
+                      id={"mermaid-block-#{idx}"}
+                      phx-hook="MermaidHook"
+                      data-mermaid-source={block}
+                      data-testid="mermaid-block"
+                    >
+                      <pre class="mermaid-fallback"><code>{block}</code></pre>
+                    </div>
+                  <% end %>
+
+                  <.acceptance_cards rows={@parsed_content.acceptance_rows} />
+                </div>
+              <% end %>
+
+              <.dependency_list deps={@dependencies} project={@project} />
+
+              <%= if @children != [] do %>
+                <div class="plan-children" data-testid="child-tasks">
+                  <h3>Tasks ({length(@children)})</h3>
+                  <div class="plan-task-list">
+                    <%= for task <- @children do %>
+                      <.task_row task={task} project={@project} />
+                    <% end %>
                   </div>
                 </div>
               <% end %>
-
-              <%= for {block, idx} <- Enum.with_index(@parsed_content.mermaid_blocks) do %>
-                <div
-                  class="plan-mermaid-block"
-                  id={"mermaid-block-#{idx}"}
-                  phx-hook="MermaidHook"
-                  data-mermaid-source={block}
-                  data-testid="mermaid-block"
-                >
-                  <pre class="mermaid-fallback"><code>{block}</code></pre>
-                </div>
-              <% end %>
-
-              <.acceptance_cards rows={@parsed_content.acceptance_rows} />
             </div>
 
-            <%= if @selection do %>
-              <div class="plan-annotation-form" data-testid="selection-active">
-                <p class="plan-annotation-selected-text">
-                  &ldquo;{String.slice(@selection.text, 0, 200)}&rdquo;
-                </p>
-                <form phx-submit="save_annotation">
-                  <textarea
-                    name="comment"
-                    placeholder="Add your annotation..."
-                    rows="3"
-                    class="plan-annotation-textarea"
-                  ></textarea>
-                  <div class="plan-annotation-actions">
-                    <button type="submit" class="btn btn-primary">Save Annotation</button>
-                    <button type="button" phx-click="clear_selection" class="btn btn-secondary">
-                      Cancel
-                    </button>
-                  </div>
-                </form>
+            <div class="plan-detail-sidebar" data-testid="plan-detail-sidebar">
+              <div class="sidebar-tabs">
+                <button
+                  id="sidebar-tab-annotations"
+                  class={"sidebar-tab #{if @active_sidebar_tab == :annotations, do: "is-active"}"}
+                  phx-click="switch_sidebar_tab"
+                  phx-value-tab="annotations"
+                >
+                  Annotations ({length(@annotations)})
+                </button>
               </div>
-            <% end %>
-          <% end %>
-
-          <.dependency_list deps={@dependencies} project={@project} />
-
-          <div
-            :if={@annotations != []}
-            class="bead-annotations-section"
-            data-testid="bead-annotations"
-            data-highlighted-annotation={@highlighted_annotation}
-          >
-            <h4 class="bead-section-heading">Annotations ({length(@annotations)})</h4>
-            <.annotation_cards annotations={@annotations} />
+              <div
+                :if={@active_sidebar_tab == :annotations}
+                class="sidebar-tab-content"
+                data-highlighted-annotation={@highlighted_annotation}
+              >
+                <.annotation_editor
+                  :if={@selection}
+                  selected_text={@selection.text}
+                  selection_label="Selected plan text"
+                />
+                <.annotation_cards annotations={@annotations} />
+              </div>
+            </div>
           </div>
-
-          <%= if @children != [] do %>
-            <div class="plan-children" data-testid="child-tasks">
-              <h3>Tasks ({length(@children)})</h3>
-              <div class="plan-task-list">
-                <%= for task <- @children do %>
-                  <.task_row task={task} project={@project} />
-                <% end %>
-              </div>
-            </div>
-          <% end %>
         </div>
       <% else %>
         <div class="empty-state" data-testid="plan-not-found">

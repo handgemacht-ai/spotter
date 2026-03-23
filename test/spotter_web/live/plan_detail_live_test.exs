@@ -184,7 +184,7 @@ defmodule SpotterWeb.PlanDetailLiveTest do
 
       html = render(view)
 
-      assert html =~ ~s(data-testid="bead-annotations")
+      assert html =~ ~s(data-testid="plan-detail-sidebar")
     end
   end
 
@@ -447,7 +447,6 @@ defmodule SpotterWeb.PlanDetailLiveTest do
       assert html =~ "Implement BeadQueries"
       assert html =~ ~r/href="[^"]*spotter-task-1/
       refute html =~ "toggle_task"
-      refute html =~ "phx-click"
     end
   end
 
