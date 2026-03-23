@@ -198,4 +198,80 @@ defmodule SpotterWeb.AnnotationControllerTest do
       assert trace_id != nil
     end
   end
+
+  defp delete_annotation(id, headers \\ []) do
+    conn =
+      Enum.reduce(headers, Phoenix.ConnTest.build_conn(), fn {k, v}, conn ->
+        Plug.Conn.put_req_header(conn, k, v)
+      end)
+      |> Phoenix.ConnTest.dispatch(@endpoint, :delete, "/api/annotations/#{id}")
+
+    {conn.status, Jason.decode!(conn.resp_body), conn}
+  end
+
+  describe "DELETE /api/annotations/:id" do
+    test "deletes annotation and returns ok", %{project: project} do
+      annotation =
+        Ash.create!(Annotation, %{
+          selected_text: "to delete",
+          comment: "delete me",
+          source: :file,
+          project_id: project.id
+        })
+
+      {status, body, _conn} = delete_annotation(annotation.id)
+
+      assert status == 200
+      assert body["ok"] == true
+
+      assert {:error, _} = Ash.get(Annotation, annotation.id)
+    end
+
+    test "deletes annotation with image and cleans up image", %{project: project} do
+      annotation =
+        Ash.create!(Annotation, %{
+          selected_text: "img delete",
+          comment: "has image",
+          source: :file,
+          project_id: project.id
+        })
+
+      png_body = :crypto.strong_rand_bytes(128)
+      {200, _, _} = post_image(annotation.id, png_body)
+
+      updated = Ash.get!(Annotation, annotation.id)
+      assert updated.image_ref != nil
+
+      {status, body, _conn} = delete_annotation(annotation.id)
+
+      assert status == 200
+      assert body["ok"] == true
+
+      assert {:error, _} = Ash.get(Annotation, annotation.id)
+      assert {:error, _} = Spotter.ImageStore.fetch(updated.image_ref)
+    end
+
+    test "returns 404 for non-existent annotation" do
+      {status, body, _conn} = delete_annotation(Ash.UUID.generate())
+
+      assert status == 404
+      assert body["error"] =~ "annotation not found"
+    end
+
+    test "includes x-spotter-trace-id in response headers", %{project: project} do
+      annotation =
+        Ash.create!(Annotation, %{
+          selected_text: "trace delete",
+          comment: "trace",
+          source: :file,
+          project_id: project.id
+        })
+
+      {_status, _body, conn} =
+        delete_annotation(annotation.id, [{"traceparent", @valid_traceparent}])
+
+      trace_id = conn |> Plug.Conn.get_resp_header("x-spotter-trace-id") |> List.first()
+      assert trace_id != nil
+    end
+  end
 end
