@@ -40,6 +40,7 @@ Spotter reviews Claude Code sessions and generated code. It links sessions to Gi
 | Search | `GET /api/search` | [search.md](references/features/search.md) |
 | MCP Server | `POST /api/mcp` | [mcp-server.md](references/features/mcp-server.md) |
 | Commit Linking | (background) | [commit-linking.md](references/features/commit-linking.md) |
+| Annotations REST | `POST /api/annotations`, `POST /api/annotations/:id/image` | External annotation creation + image attachment |
 | Hook Ingestion | `POST /api/hooks/*` | [hook-ingestion.md](references/features/hook-ingestion.md) |
 | Repo Tree | `/repo` | Expandable 3-level-deep repository tree with skill/memory badges |
 | Folder View | `/projects/:id/folders/*` | Inline folder viewer with annotation support |

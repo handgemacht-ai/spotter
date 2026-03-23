@@ -155,11 +155,24 @@ defmodule SpotterWeb.AnnotationComponents do
   def source_badge_text(:transcript), do: "Transcript"
   def source_badge_text(:terminal), do: "Transcript"
   def source_badge_text(:file), do: "File"
+  def source_badge_text(:prompt_pattern), do: "Pattern"
+  def source_badge_text(:plan), do: "Plan"
+  def source_badge_text(:commit_message), do: "Commit"
+  def source_badge_text(:code), do: "Code"
+  def source_badge_text(:product_feedback), do: "Feedback"
 
   def source_badge_text(source) when is_atom(source),
     do: source |> to_string() |> String.capitalize()
 
   def source_badge_text(_), do: "Unknown"
+
+  @doc false
+  def source_badge_class(:transcript), do: "badge badge-agent"
+  def source_badge_class(:file), do: "badge badge-verified"
+  def source_badge_class(:prompt_pattern), do: "badge badge-pattern"
+  def source_badge_class(:plan), do: "badge badge-info"
+  def source_badge_class(:product_feedback), do: "badge badge-warning"
+  def source_badge_class(_), do: "badge badge-agent"
 
   @doc """
   Returns a human-readable label for a selection, based on source and message IDs.

@@ -73,4 +73,22 @@ defmodule SpotterWeb.AnnotationComponentsTest do
       assert html =~ "Explaining..."
     end
   end
+
+  describe "source_badge_text/1" do
+    test "returns 'Feedback' for :product_feedback source" do
+      assert AnnotationComponents.source_badge_text(:product_feedback) == "Feedback"
+    end
+
+    test "returns 'Transcript' for :transcript source" do
+      assert AnnotationComponents.source_badge_text(:transcript) == "Transcript"
+    end
+
+    test "returns 'File' for :file source" do
+      assert AnnotationComponents.source_badge_text(:file) == "File"
+    end
+
+    test "capitalizes unknown atom sources" do
+      assert AnnotationComponents.source_badge_text(:plan) == "Plan"
+    end
+  end
 end

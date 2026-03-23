@@ -42,7 +42,10 @@ defmodule Spotter.Transcripts.Annotation do
     read :list_for_bead do
       argument :bead_id, :string, allow_nil?: false
 
-      filter expr(source == :plan and state == :open and bead_id == ^arg(:bead_id))
+      filter expr(
+               source in [:plan, :product_feedback] and state == :open and
+                 bead_id == ^arg(:bead_id)
+             )
     end
 
     create :create do
@@ -67,13 +70,14 @@ defmodule Spotter.Transcripts.Annotation do
         :commit_id,
         :commit_hotspot_id,
         :purpose,
-        :bead_id
+        :bead_id,
+        :image_ref
       ]
     end
 
     update :update do
       primary? true
-      accept [:comment, :metadata]
+      accept [:comment, :metadata, :image_ref]
     end
 
     update :close do
@@ -138,18 +142,12 @@ defmodule Spotter.Transcripts.Annotation do
                source = Ash.Changeset.get_attribute(changeset, :source)
                session_id = Ash.Changeset.get_attribute(changeset, :session_id)
 
-               bead_id = Ash.Changeset.get_attribute(changeset, :bead_id)
-
-               cond do
-                 source not in [:file, :plan] && is_nil(session_id) ->
-                   {:error,
-                    field: :session_id, message: "is required when source is not :file or :plan"}
-
-                 source == :plan && is_nil(bead_id) ->
-                   {:error, field: :bead_id, message: "is required when source is :plan"}
-
-                 true ->
-                   :ok
+               if source not in [:file, :plan, :product_feedback] && is_nil(session_id) do
+                 {:error,
+                  field: :session_id,
+                  message: "is required when source is not :file, :plan, or :product_feedback"}
+               else
+                 :ok
                end
              end,
              on: [:create]
@@ -170,11 +168,13 @@ defmodule Spotter.Transcripts.Annotation do
                     :commit_message,
                     :code,
                     :prompt_pattern,
-                    :plan
+                    :plan,
+                    :product_feedback
                   ]
     end
 
     attribute :bead_id, :string, public?: true
+    attribute :image_ref, :string, public?: true
     attribute :relative_path, :string
     attribute :line_start, :integer
     attribute :line_end, :integer

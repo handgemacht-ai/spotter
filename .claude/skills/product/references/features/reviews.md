@@ -39,7 +39,7 @@ The shared ProjectContext on_mount hook provides the selected project from the s
 
 ## Data Model
 
-`Annotation` with `state` (open/closed), `source` (terminal/transcript/file/commit_message/code/prompt_pattern/plan), `purpose` (review/explain), optional `bead_id` (string, links to beads issue ID for plan-source annotations). Has_many `AnnotationMessageRef` and `AnnotationFileRef` for linking to messages and files. Belongs_to `Session`, `Subagent`, `Project`, `Commit`, `CommitHotspot` (all nullable). Plan-source annotations do not require `session_id`.
+`Annotation` with `state` (open/closed), `source` (terminal/transcript/file/commit_message/code/prompt_pattern/plan/product_feedback), `purpose` (review/explain), optional `bead_id` (string, links to beads issue ID — available for all source types). Has_many `AnnotationMessageRef` and `AnnotationFileRef` for linking to messages and files. Belongs_to `Session`, `Subagent`, `Project`, `Commit`, `CommitHotspot` (all nullable). Plan, file, and product_feedback annotations do not require `session_id`.
 
 ## Constraints & Edge Cases
 

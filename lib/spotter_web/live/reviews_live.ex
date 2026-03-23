@@ -1,6 +1,8 @@
 defmodule SpotterWeb.ReviewsLive do
   use Phoenix.LiveView
 
+  import SpotterWeb.AnnotationComponents, only: [source_badge_text: 1, source_badge_class: 1]
+
   alias Spotter.Services.ReviewUpdates
   alias Spotter.Transcripts.{Annotation, Project, Session}
   require Ash.Query
@@ -219,18 +221,6 @@ defmodule SpotterWeb.ReviewsLive do
     session.slug || String.slice(session.session_id, 0, 8)
   end
 
-  defp source_badge(:transcript), do: "Transcript"
-  defp source_badge(:file), do: "File"
-  defp source_badge(:prompt_pattern), do: "Pattern"
-  defp source_badge(:plan), do: "Plan"
-  defp source_badge(_), do: "Transcript"
-
-  defp source_badge_class(:transcript), do: "badge badge-agent"
-  defp source_badge_class(:file), do: "badge badge-verified"
-  defp source_badge_class(:prompt_pattern), do: "badge badge-pattern"
-  defp source_badge_class(:plan), do: "badge badge-info"
-  defp source_badge_class(_), do: "badge badge-agent"
-
   defp subagent_label(%{subagent: %{slug: slug}} = _ann) when is_binary(slug), do: slug
   defp subagent_label(%{subagent: %{agent_id: aid}}), do: String.slice(aid, 0, 8)
   defp subagent_label(_), do: nil
@@ -268,7 +258,7 @@ defmodule SpotterWeb.ReviewsLive do
           phx-value-id={@ann.id}
         />
         <span class={source_badge_class(@ann.source)}>
-          {source_badge(@ann.source)}
+          {source_badge_text(@ann.source)}
         </span>
         <span :if={@ann.source == :transcript && @ann.message_refs != []} class="text-muted text-xs">
           {length(@ann.message_refs)} messages

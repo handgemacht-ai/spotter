@@ -34,6 +34,9 @@ defmodule SpotterWeb.Router do
     post("/hooks/raw-event", HooksController, :raw_event)
     post("/hooks/waiting-summary", SessionHookController, :waiting_summary)
 
+    post("/annotations", AnnotationController, :create)
+    post("/annotations/:id/image", AnnotationController, :attach_image)
+
     post("/e2e/seed-plans", E2eSeedController, :seed_plans)
     delete("/e2e/seed-plans", E2eSeedController, :cleanup_plans)
   end
