@@ -1046,6 +1046,44 @@ input::placeholder, textarea::placeholder {
   }
 }
 
+/* --- Plan Detail Layout --- */
+.plan-detail-layout {
+  display: flex;
+  gap: 0;
+  height: calc(100vh - 120px);
+}
+
+.plan-detail-content {
+  flex: 3;
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+.plan-detail-sidebar {
+  flex: 1;
+  background: var(--surface-1);
+  overflow-y: auto;
+  border-left: 1px solid var(--border-default);
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 1024px) {
+  .plan-detail-layout {
+    flex-direction: column;
+    height: auto;
+  }
+  .plan-detail-content {
+    flex: none;
+  }
+  .plan-detail-sidebar {
+    flex: none;
+    max-height: 40vh;
+    border-left: none;
+    border-top: 1px solid var(--border-default);
+  }
+}
+
 /* --- Commit cards --- */
 .commit-card {
   background: var(--surface-2);
