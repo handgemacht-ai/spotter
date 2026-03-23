@@ -34,10 +34,44 @@ defmodule SpotterWeb.PlanComponents do
   end
 
   @doc """
-  Renders a full epic table with header and rows.
+  Renders the filter bar with search input and hide-closed toggle.
+  """
+  attr(:search, :string, required: true)
+  attr(:hide_closed, :boolean, required: true)
+
+  def filter_bar(assigns) do
+    ~H"""
+    <div class="filter-bar" data-testid="filter-bar">
+      <form phx-change="search" class="filter-bar-search">
+        <input
+          type="text"
+          name="q"
+          value={@search}
+          placeholder="Search plans…"
+          phx-debounce="300"
+          class="filter-search-input"
+          data-testid="search-input"
+        />
+      </form>
+      <button
+        type="button"
+        phx-click="toggle_closed"
+        class={"btn filter-btn #{if !@hide_closed, do: "btn-active"}"}
+        data-testid="toggle-closed"
+      >
+        <%= if @hide_closed, do: "Show closed", else: "Hide closed" %>
+      </button>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders a full epic table with sortable header and rows.
   """
   attr(:epics, :list, required: true)
   attr(:project, :string, required: true)
+  attr(:sort, :atom, default: :priority)
+  attr(:dir, :atom, default: :desc)
 
   def epic_table(assigns) do
     ~H"""
@@ -47,9 +81,13 @@ defmodule SpotterWeb.PlanComponents do
           <th>ID</th>
           <th>Title</th>
           <th>Status</th>
-          <th>Priority</th>
+          <th>
+            <.sort_header col="priority" label="Priority" sort={@sort} dir={@dir} />
+          </th>
           <th>Tasks</th>
-          <th>Created</th>
+          <th>
+            <.sort_header col="created_at" label="Created" sort={@sort} dir={@dir} />
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -61,8 +99,31 @@ defmodule SpotterWeb.PlanComponents do
     """
   end
 
+  attr(:col, :string, required: true)
+  attr(:label, :string, required: true)
+  attr(:sort, :atom, required: true)
+  attr(:dir, :atom, required: true)
+
+  defp sort_header(assigns) do
+    active = to_string(assigns.sort) == assigns.col
+    assigns = assign(assigns, :active, active)
+
+    ~H"""
+    <a
+      href="#"
+      phx-click="sort"
+      phx-value-col={@col}
+      class={"sort-header #{if @active, do: "sort-header--active"}"}
+      data-testid={"sort-#{@col}"}
+    >
+      {@label}
+      <span :if={@active} class="sort-indicator">{if @dir == :asc, do: "↑", else: "↓"}</span>
+    </a>
+    """
+  end
+
   @doc """
-  Renders an epic table row.
+  Renders an epic table row with task count.
   """
   attr(:epic, :map, required: true)
   attr(:project, :string, required: true)
@@ -71,7 +132,10 @@ defmodule SpotterWeb.PlanComponents do
     ~H"""
     <tr class="plan-epic-row" data-testid="epic-row">
       <td>
-        <.link patch={"/plans/#{URI.encode_www_form(@project)}/#{URI.encode_www_form(@epic.id)}"} class="plan-epic-link">
+        <.link
+          patch={"/plans/#{URI.encode_www_form(@project)}/#{URI.encode_www_form(@epic.id)}"}
+          class="plan-epic-link"
+        >
           {@epic.id}
         </.link>
       </td>
@@ -84,8 +148,8 @@ defmodule SpotterWeb.PlanComponents do
       <td>
         <.priority_badge priority={@epic.priority} />
       </td>
-      <td class="text-muted">
-        \u2014
+      <td class="text-muted" data-testid="task-count">
+        {format_task_count(Map.get(@epic, :task_count))}
       </td>
       <td class="text-muted">
         {format_date(@epic.created_at)}
@@ -231,6 +295,10 @@ defmodule SpotterWeb.PlanComponents do
   defp priority_label(3), do: "Low"
   defp priority_label(4), do: "Backlog"
   defp priority_label(_), do: "Unknown"
+
+  defp format_task_count(nil), do: "\u2014"
+  defp format_task_count(0), do: "\u2014"
+  defp format_task_count(count) when is_integer(count), do: to_string(count)
 
   defp format_date(nil), do: "\u2014"
 
