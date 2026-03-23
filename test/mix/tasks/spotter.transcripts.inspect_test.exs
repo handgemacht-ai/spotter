@@ -4,11 +4,23 @@ defmodule Mix.Tasks.Spotter.Transcripts.InspectTest do
   import ExUnit.CaptureIO
 
   alias Ecto.Adapters.SQL.Sandbox
+  alias Spotter.Transcripts.{Project, Session}
 
   setup do
     pid = Sandbox.start_owner!(Spotter.Repo, shared: true)
     on_exit(fn -> Sandbox.stop_owner(pid) end)
-    :ok
+
+    project = Ash.create!(Project, %{name: "inspect-test", pattern: "^inspect"})
+    session_id = Ash.UUID.generate()
+
+    Ash.create!(Session, %{
+      session_id: session_id,
+      transcript_dir: "test-dir",
+      cwd: "/tmp/test",
+      project_id: project.id
+    })
+
+    %{session_id: session_id}
   end
 
   describe "option parsing" do
@@ -22,28 +34,25 @@ defmodule Mix.Tasks.Spotter.Transcripts.InspectTest do
       end
     end
 
-    test "accepts --session option" do
+    test "accepts --session option", %{session_id: sid} do
       Mix.Task.reenable("spotter.transcripts.inspect")
 
       output =
         capture_io(fn ->
-          Mix.Task.run("spotter.transcripts.inspect", [
-            "--session",
-            "abc-123"
-          ])
+          Mix.Task.run("spotter.transcripts.inspect", ["--session", sid])
         end)
 
       assert is_binary(output)
     end
 
-    test "accepts --tool-use-id option" do
+    test "accepts --tool-use-id option", %{session_id: sid} do
       Mix.Task.reenable("spotter.transcripts.inspect")
 
       output =
         capture_io(fn ->
           Mix.Task.run("spotter.transcripts.inspect", [
             "--session",
-            "abc-123",
+            sid,
             "--tool-use-id",
             "toolu_xyz"
           ])
@@ -52,17 +61,12 @@ defmodule Mix.Tasks.Spotter.Transcripts.InspectTest do
       assert is_binary(output)
     end
 
-    test "accepts --context option for surrounding lines" do
+    test "accepts --context option for surrounding lines", %{session_id: sid} do
       Mix.Task.reenable("spotter.transcripts.inspect")
 
       output =
         capture_io(fn ->
-          Mix.Task.run("spotter.transcripts.inspect", [
-            "--session",
-            "abc-123",
-            "--context",
-            "5"
-          ])
+          Mix.Task.run("spotter.transcripts.inspect", ["--session", sid, "--context", "5"])
         end)
 
       assert is_binary(output)
@@ -70,33 +74,23 @@ defmodule Mix.Tasks.Spotter.Transcripts.InspectTest do
   end
 
   describe "output formats" do
-    test "supports --format table (default)" do
+    test "supports --format table (default)", %{session_id: sid} do
       Mix.Task.reenable("spotter.transcripts.inspect")
 
       output =
         capture_io(fn ->
-          Mix.Task.run("spotter.transcripts.inspect", [
-            "--session",
-            "abc-123",
-            "--format",
-            "table"
-          ])
+          Mix.Task.run("spotter.transcripts.inspect", ["--session", sid, "--format", "table"])
         end)
 
       assert is_binary(output)
     end
 
-    test "supports --format json" do
+    test "supports --format json", %{session_id: sid} do
       Mix.Task.reenable("spotter.transcripts.inspect")
 
       output =
         capture_io(fn ->
-          Mix.Task.run("spotter.transcripts.inspect", [
-            "--session",
-            "abc-123",
-            "--format",
-            "json"
-          ])
+          Mix.Task.run("spotter.transcripts.inspect", ["--session", sid, "--format", "json"])
         end)
 
       assert is_binary(output)

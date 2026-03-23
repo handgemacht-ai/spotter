@@ -56,13 +56,15 @@ defmodule Spotter.Repo.Migrations.LosslessTranscriptImport do
 
     execute("DROP TABLE messages_old")
 
-    create unique_index(:messages, [:session_id, :uuid],
-             name: "messages_unique_session_uuid_index"
-           )
+    execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS "messages_unique_session_uuid_index"
+    ON "messages" ("session_id", "uuid")
+    """)
 
-    create unique_index(:messages, [:session_id, :source_scope, :ordinal],
-             name: "messages_unique_session_scope_ordinal_index"
-           )
+    execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS "messages_unique_session_scope_ordinal_index"
+    ON "messages" ("session_id", "source_scope", "ordinal")
+    """)
 
     execute("PRAGMA foreign_keys = ON")
     execute("PRAGMA legacy_alter_table = OFF")

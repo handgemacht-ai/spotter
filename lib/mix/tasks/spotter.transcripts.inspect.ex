@@ -4,6 +4,9 @@ defmodule Mix.Tasks.Spotter.Transcripts.Inspect do
   use Mix.Task
 
   alias Spotter.Services.TranscriptAnalytics
+  alias Spotter.Transcripts.Session
+
+  require Ash.Query
 
   @impl true
   def run(args) do
@@ -25,8 +28,10 @@ defmodule Mix.Tasks.Spotter.Transcripts.Inspect do
       Mix.raise("--session is required")
     end
 
+    internal_id = resolve_session_id(session_id)
+
     inspect_opts =
-      %{session_id: session_id}
+      %{session_id: internal_id}
       |> put_if(:tool_use_id, opts[:tool_use_id])
       |> put_if(:context, opts[:context])
 
@@ -72,6 +77,13 @@ defmodule Mix.Tasks.Spotter.Transcripts.Inspect do
       started_at: run.started_at && DateTime.to_iso8601(run.started_at),
       finished_at: run.finished_at && DateTime.to_iso8601(run.finished_at)
     }
+  end
+
+  defp resolve_session_id(external_id) do
+    case Session |> Ash.Query.filter(session_id == ^external_id) |> Ash.read_one() do
+      {:ok, %Session{id: id}} -> id
+      _ -> Mix.raise("Session not found: #{external_id}")
+    end
   end
 
   defp put_if(map, _key, nil), do: map

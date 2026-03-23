@@ -3,6 +3,12 @@ defmodule Mix.Tasks.Spotter.Transcripts.Sync do
   @shortdoc "Sync transcripts and derive tool call runs"
   use Mix.Task
 
+  alias Spotter.Transcripts.Jobs.SyncTranscripts
+  alias Spotter.Transcripts.Session
+  alias Spotter.Services.TranscriptAnalytics
+
+  require Ash.Query
+
   @impl true
   def run(args) do
     Mix.Task.run("app.start")
@@ -18,16 +24,37 @@ defmodule Mix.Tasks.Spotter.Transcripts.Sync do
 
     cond do
       opts[:session] ->
-        Mix.shell().info("Sync for session #{opts[:session]} done.")
+        result = SyncTranscripts.sync_session_by_id(opts[:session])
+        derive_for_session_id(opts[:session])
+
+        Mix.shell().info(
+          "Sync for session #{opts[:session]}: #{result.status}, #{result.ingested_messages} messages."
+        )
 
       opts[:file] ->
-        Mix.shell().info("Sync from file #{opts[:file]} done.")
+        result = SyncTranscripts.sync_session_file(opts[:file])
+        if result.session_id, do: derive_for_session_id(result.session_id)
+
+        Mix.shell().info(
+          "Sync from file #{opts[:file]}: #{result.status}, #{result.ingested_messages} messages."
+        )
 
       opts[:transcript_root] ->
         Mix.shell().info("Sync from transcript root #{opts[:transcript_root]} done.")
 
       true ->
         Mix.shell().info("Sync complete.")
+    end
+  end
+
+  defp derive_for_session_id(session_id) do
+    case Session |> Ash.Query.filter(session_id == ^session_id) |> Ash.read_one() do
+      {:ok, %Session{} = session} ->
+        count = TranscriptAnalytics.derive_runs!(session)
+        Mix.shell().info("Derived #{count} tool call runs.")
+
+      _ ->
+        :ok
     end
   end
 end

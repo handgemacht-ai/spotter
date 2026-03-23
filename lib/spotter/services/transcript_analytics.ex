@@ -4,9 +4,167 @@ defmodule Spotter.Services.TranscriptAnalytics do
   require Ash.Query
   require OpenTelemetry.Tracer
 
-  alias Spotter.Transcripts.ToolCallRun
+  alias Spotter.Transcripts.{Message, ToolCallRun}
 
   @default_limit 50
+  @batch_size 500
+
+  @doc """
+  Derives ToolCallRun records from a session's messages.
+
+  Walks messages in ordinal order, pairs tool_use blocks with tool_result blocks,
+  and upserts ToolCallRun records.
+  """
+  def derive_runs!(session) do
+    OpenTelemetry.Tracer.with_span "spotter.transcript_analytics.derive_runs" do
+      OpenTelemetry.Tracer.set_attribute("session_id", session.id)
+
+      messages =
+        Message
+        |> Ash.Query.filter(session_id == ^session.id and is_nil(subagent_id))
+        |> Ash.Query.sort(ordinal: :asc_nils_last, timestamp: :asc)
+        |> Ash.read!()
+
+      # Build tool_use_id → tool_use info map from assistant/tool_use messages
+      tool_uses = extract_tool_uses(messages)
+
+      # Build tool_use_id → tool_result info map
+      tool_results = extract_tool_result_info(messages)
+
+      # Create ToolCallRun records by pairing uses with results
+      runs =
+        Enum.map(tool_uses, fn {tool_use_id, use_info} ->
+          result_info = Map.get(tool_results, tool_use_id, %{})
+          build_run_attrs(tool_use_id, use_info, result_info, session)
+        end)
+
+      runs
+      |> Enum.chunk_every(@batch_size)
+      |> Enum.each(fn batch ->
+        Ash.bulk_create!(batch, ToolCallRun, :upsert, return_records?: false)
+      end)
+
+      length(runs)
+    end
+  end
+
+  defp extract_tool_uses(messages) do
+    messages
+    |> Enum.flat_map(&tool_use_pairs_from_message/1)
+    |> Map.new()
+  end
+
+  defp tool_use_pairs_from_message(msg) do
+    msg.content
+    |> content_blocks()
+    |> Enum.filter(&(is_map(&1) && &1["type"] == "tool_use" && is_binary(&1["id"])))
+    |> Enum.map(fn block ->
+      {block["id"],
+       %{
+         tool_name: block["name"] || "Unknown",
+         command: extract_command(block),
+         input_summary: extract_input_summary(block),
+         started_at: msg.timestamp,
+         start_ordinal: msg.ordinal,
+         source_scope: msg.source_scope,
+         agent_id: msg.agent_id
+       }}
+    end)
+  end
+
+  defp extract_tool_result_info(messages) do
+    messages
+    |> Enum.flat_map(&tool_result_pairs_from_message/1)
+    |> Map.new()
+  end
+
+  defp tool_result_pairs_from_message(msg) do
+    msg.content
+    |> content_blocks()
+    |> Enum.filter(&(is_map(&1) && &1["type"] == "tool_result" && is_binary(&1["tool_use_id"])))
+    |> Enum.map(fn block ->
+      {block["tool_use_id"],
+       %{
+         is_error: block["is_error"] == true,
+         finished_at: msg.timestamp,
+         end_ordinal: msg.ordinal
+       }}
+    end)
+  end
+
+  defp content_blocks(%{"blocks" => blocks}) when is_list(blocks), do: blocks
+  defp content_blocks(_), do: []
+
+  defp build_run_attrs(tool_use_id, use_info, result_info, session) do
+    status =
+      cond do
+        result_info[:is_error] == true -> :error
+        result_info[:finished_at] != nil -> :completed
+        use_info[:started_at] == nil -> :orphan
+        true -> :ongoing
+      end
+
+    duration_ms =
+      if use_info[:started_at] && result_info[:finished_at] do
+        DateTime.diff(result_info[:finished_at], use_info[:started_at], :millisecond)
+      end
+
+    %{
+      tool_use_id: tool_use_id,
+      tool_name: use_info.tool_name,
+      command: use_info[:command],
+      command_fingerprint: normalize_fingerprint(use_info[:command]),
+      input_summary: use_info[:input_summary],
+      status: status,
+      started_at: use_info[:started_at],
+      finished_at: result_info[:finished_at],
+      duration_ms: duration_ms,
+      start_ordinal: use_info[:start_ordinal],
+      end_ordinal: result_info[:end_ordinal],
+      source_scope: use_info[:source_scope],
+      agent_id: use_info[:agent_id],
+      session_id: session.id,
+      project_id: session.project_id,
+      worktree_name: extract_worktree_name(session.cwd),
+      canonical_cwd: session.cwd
+    }
+  end
+
+  defp extract_command(block) do
+    case get_in(block, ["input", "command"]) do
+      cmd when is_binary(cmd) -> String.slice(cmd, 0, 500)
+      _ -> nil
+    end
+  end
+
+  defp extract_input_summary(block) do
+    case block["input"] do
+      input when is_map(input) ->
+        input
+        |> Map.take(["file_path", "pattern", "command", "description"])
+        |> Enum.map_join(", ", fn {k, v} -> "#{k}=#{String.slice(to_string(v), 0, 80)}" end)
+        |> String.slice(0, 200)
+
+      _ ->
+        nil
+    end
+  end
+
+  defp normalize_fingerprint(nil), do: nil
+
+  defp normalize_fingerprint(cmd) do
+    cmd
+    |> String.replace(~r{/[^\s]+/}, "<path>/")
+    |> String.replace(~r{\s+}, " ")
+    |> String.trim()
+    |> String.slice(0, 200)
+  end
+
+  defp extract_worktree_name(nil), do: nil
+
+  defp extract_worktree_name(cwd) do
+    cwd |> Path.basename()
+  end
 
   @doc "Search tool call runs with dynamic filters."
   def search(opts \\ %{}) do
