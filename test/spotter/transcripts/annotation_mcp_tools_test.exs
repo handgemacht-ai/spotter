@@ -3,8 +3,8 @@ defmodule Spotter.Transcripts.AnnotationMcpToolsTest do
 
   require Ash.Query
 
-  alias Spotter.Transcripts.{Annotation, Project, Session}
   alias Spotter.ImageStore
+  alias Spotter.Transcripts.{Annotation, Project, Session}
 
   @endpoint SpotterWeb.Endpoint
 

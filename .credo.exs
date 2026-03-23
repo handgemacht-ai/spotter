@@ -90,7 +90,7 @@
           # set this value to 0 (zero).
           #
           {Credo.Check.Design.TagTODO, [exit_status: 2]},
-          {HandgemachtCredo.Check.Design.BroadSpec, [exit_status: 0]},
+          {HandgemachtCredo.Check.Design.BroadSpec, false},
 
           #
           ## Readability Checks

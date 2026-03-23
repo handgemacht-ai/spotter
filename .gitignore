@@ -44,3 +44,6 @@ test-results
 *.db
 # bd worktree
 test-bd/
+
+# Spotter annotations
+.annotations/

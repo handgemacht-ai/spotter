@@ -32,3 +32,39 @@
 ### JS Hooks — Unchanged.
 
 ### E2E — `plans.smoke.spec.ts`, `plan-detail.smoke.spec.ts`, POMs in `e2e/support/pages/`.
+
+## Epic: Product Feedback Annotations with Image Support (spotter-3t2)
+
+**Summary**: Extend annotation system for visual product feedback with images.
+
+### Annotation System Touch Points
+- `annotation.ex` source enum (line 166): add `:product_feedback`
+- `annotation.ex` validation (line 144): exempt `product_feedback` from `session_id` requirement
+- `annotation.ex` create action (line 48): accept image-related fields
+- `AnnotationFileRef` — pattern for join resources (separate Ash resource with belongs_to)
+- `ApplyResolution` change — shared metadata merge logic
+
+### MCP Touch Points
+- `transcripts.ex` tools block (line 83): add image-aware annotation tools
+- `spotter_mcp_plug.ex` tools list (line 24): register new tools
+- MCP scope resolution: 3-tier (header → session_id param → recent session fallback)
+
+### Controller Patterns
+- All controllers: `use Phoenix.Controller, formats: [:json]`
+- OTEL: `OtelTraceHelpers.with_span` + `put_trace_response_header`
+- API routes: `scope "/api", SpotterWeb` with `:api` pipeline
+
+### Reviews Dashboard Touch Points
+- `reviews_live.ex` source_badge/1 (line 222): add `product_feedback` case
+- `reviews_live.ex` source_badge_class/1 (line 228): add CSS class
+- `reviews_live.ex` annotation_card (line 247): add image display
+- `annotation_components.ex` source_badge_text/1: add `product_feedback` case
+- `project_review_live.ex`: similar badge functions need update
+
+### DI Pattern (from plan_source.ex)
+- Behaviour file with `@callback` + type specs
+- Config: `config :spotter, Module, key: [Impl]`
+- Used by Plans layer, reuse for ImageStore
+
+### No Existing Image Infrastructure
+- Greenfield — no image modules exist yet
