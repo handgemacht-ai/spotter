@@ -126,6 +126,53 @@ defmodule SpotterWeb.AnnotationController do
     end
   end
 
+  def show_image(conn, %{"id" => annotation_id}) do
+    OtelTraceHelpers.with_span "spotter.web.annotation.show_image", %{
+      "spotter.annotation.id" => annotation_id
+    } do
+      with {:ok, annotation} <- fetch_annotation(annotation_id),
+           {:ok, image_ref} <- require_image_ref(annotation),
+           {:ok, image_binary} <- ImageStore.fetch(image_ref) do
+        conn
+        |> put_resp_content_type("image/png")
+        |> put_resp_header("cache-control", "private, max-age=3600")
+        |> OtelTraceHelpers.put_trace_response_header()
+        |> send_resp(200, image_binary)
+      else
+        {:error, :not_found} ->
+          OtelTraceHelpers.set_error("not_found", %{
+            "error.source" => "annotation_controller"
+          })
+
+          conn
+          |> put_status(:not_found)
+          |> OtelTraceHelpers.put_trace_response_header()
+          |> json(%{error: "not found"})
+
+        {:error, :no_image} ->
+          OtelTraceHelpers.set_error("no_image", %{
+            "error.source" => "annotation_controller"
+          })
+
+          conn
+          |> put_status(:not_found)
+          |> OtelTraceHelpers.put_trace_response_header()
+          |> json(%{error: "no image attached"})
+
+        {:error, reason} ->
+          OtelTraceHelpers.set_error("show_image_failed", %{
+            "error.source" => "annotation_controller",
+            "error.message" => inspect(reason)
+          })
+
+          conn
+          |> put_status(:internal_server_error)
+          |> OtelTraceHelpers.put_trace_response_header()
+          |> json(%{error: "image retrieval failed"})
+      end
+    end
+  end
+
   # --- Private helpers ---
 
   defp resolve_project(%{"project_id" => project_id}) when is_binary(project_id) do
@@ -182,6 +229,9 @@ defmodule SpotterWeb.AnnotationController do
 
     if content_type in @allowed_image_types, do: :ok, else: {:error, :unsupported_content_type}
   end
+
+  defp require_image_ref(%{image_ref: ref}) when is_binary(ref), do: {:ok, ref}
+  defp require_image_ref(_), do: {:error, :no_image}
 
   defp fetch_annotation(id) do
     case Ash.get(Annotation, id) do

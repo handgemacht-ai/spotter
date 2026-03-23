@@ -338,9 +338,10 @@ defmodule Spotter.Transcripts.AnnotationMcpToolsTest do
       [content | _] = body["result"]["content"]
       annotations = Jason.decode!(content["text"])
 
-      project_ids = Enum.map(annotations, & &1["project_id"])
-      assert Enum.all?(project_ids, &(&1 == project.id))
-      refute other_project.id in project_ids
+      # Verify scoping: only our project's annotation is returned
+      assert length(annotations) == 1
+      [annotation] = annotations
+      assert annotation["comment"] == "belongs to test-mcp-image"
     end
   end
 end

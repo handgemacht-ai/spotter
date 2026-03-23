@@ -19,7 +19,8 @@ defmodule SpotterWeb.ReviewsLive do
        delete_target: nil,
        show_confirm_modal: false,
        selection_mode: false,
-       selected_ids: MapSet.new()
+       selected_ids: MapSet.new(),
+       show_image_ann: nil
      )}
   end
 
@@ -133,11 +134,24 @@ defmodule SpotterWeb.ReviewsLive do
     end
   end
 
+  def handle_event("show_image", %{"id" => id}, socket) do
+    {:noreply, assign(socket, show_image_ann: find_annotation(socket, id))}
+  end
+
+  def handle_event("close_image", _params, socket) do
+    {:noreply, assign(socket, show_image_ann: nil)}
+  end
+
   def handle_event("keydown", %{"key" => "Escape"}, socket) do
-    {:noreply, assign(socket, delete_target: nil, show_confirm_modal: false)}
+    {:noreply, assign(socket, delete_target: nil, show_confirm_modal: false, show_image_ann: nil)}
   end
 
   def handle_event("keydown", _params, socket), do: {:noreply, socket}
+
+  defp find_annotation(socket, id) do
+    Enum.find(socket.assigns.open_annotations, &(&1.id == id)) ||
+      Enum.find(socket.assigns.resolved_annotations, &(&1.id == id))
+  end
 
   defp load_review_data(socket) do
     project_id = socket.assigns.current_project_id
@@ -151,12 +165,12 @@ defmodule SpotterWeb.ReviewsLive do
     open_annotations =
       load_review_annotations(session_ids, project_id, :open)
       |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
-      |> Ash.load!([:subagent, :file_refs, message_refs: :message])
+      |> Ash.load!([:has_image, :subagent, :file_refs, message_refs: :message])
 
     resolved_annotations =
       load_review_annotations(session_ids, project_id, :closed)
       |> Enum.sort_by(& &1.updated_at, {:desc, DateTime})
-      |> Ash.load!([:subagent, :file_refs, message_refs: :message])
+      |> Ash.load!([:has_image, :subagent, :file_refs, message_refs: :message])
 
     assign(socket,
       open_annotations: open_annotations,
@@ -239,15 +253,15 @@ defmodule SpotterWeb.ReviewsLive do
     session = Map.get(assigns.sessions_by_id, ann.session_id)
     project = session && Map.get(assigns.projects_by_id, session.project_id)
 
-    selected =
-      assigns[:selection_mode] && MapSet.member?(assigns[:selected_ids] || MapSet.new(), ann.id)
+    selected = assigns.selection_mode && MapSet.member?(assigns.selected_ids, ann.id)
+    sub_label = subagent_label(ann)
 
     assigns =
       assigns
-      |> assign(session: session, project: project, selected: selected)
+      |> assign(session: session, project: project, selected: selected, sub_label: sub_label)
 
     ~H"""
-    <div class={["annotation-card", @selected && "border-[var(--accent-blue)] bg-[color-mix(in_srgb,var(--accent-blue)_4%,transparent)]"]}>
+    <div class={["annotation-card", @selected && "border-[var(--accent-blue)] bg-[color-mix(in_srgb,var(--accent-blue)_4%,transparent)]"]} data-testid={"annotation-card-#{@ann.id}"}>
       <div class="flex items-center gap-2 mb-2">
         <input
           :if={@selection_mode}
@@ -269,9 +283,9 @@ defmodule SpotterWeb.ReviewsLive do
         <span :if={@session} class="text-muted text-xs">
           {session_label(@session)}
         </span>
-        <%= if subagent_label(@ann) do %>
+        <%= if @sub_label do %>
           <span class="badge badge-agent">Subagent</span>
-          <span class="text-muted text-xs">{subagent_label(@ann)}</span>
+          <span class="text-muted text-xs">{@sub_label}</span>
         <% else %>
           <%= if @ann.subagent_id do %>
             <span class="badge badge-agent">Subagent (missing)</span>
@@ -280,6 +294,16 @@ defmodule SpotterWeb.ReviewsLive do
       </div>
       <pre class="annotation-text"><%= @ann.selected_text %></pre>
       <p class="annotation-comment"><%= @ann.comment %></p>
+      <div :if={@ann.has_image} class="annotation-thumbnail-wrap" data-testid="annotation-thumbnail">
+        <img
+          src={"/api/annotations/#{@ann.id}/image"}
+          alt="Annotation screenshot"
+          class="annotation-thumbnail"
+          loading="lazy"
+          phx-click="show_image"
+          phx-value-id={@ann.id}
+        />
+      </div>
       <%= if @ann.state == :closed do %>
         <.resolution_block ann={@ann} />
       <% end %>
@@ -373,6 +397,46 @@ defmodule SpotterWeb.ReviewsLive do
     """
   end
 
+  defp image_modal(assigns) do
+    metadata = (assigns.ann && assigns.ann.metadata) || %{}
+
+    feedback_meta =
+      for {"feedback." <> label, value} <- metadata do
+        {label, value}
+      end
+      |> Enum.sort()
+
+    assigns = assign(assigns, feedback_meta: feedback_meta)
+
+    ~H"""
+    <div
+      :if={@ann}
+      class="image-modal-overlay"
+      phx-window-keydown="keydown"
+      data-testid="image-modal"
+    >
+      <div class="image-modal-content" phx-click-away="close_image">
+        <div class="image-modal-header">
+          <span class="text-sm text-[var(--text-primary)]">Screenshot</span>
+          <button class="btn-ghost text-xs" phx-click="close_image" data-testid="image-modal-close">&times;</button>
+        </div>
+        <img
+          src={"/api/annotations/#{@ann.id}/image"}
+          alt="Annotation screenshot"
+          class="image-modal-img"
+          data-testid="image-modal-img"
+        />
+        <div :if={@feedback_meta != []} class="image-modal-meta" data-testid="image-modal-metadata">
+          <div :for={{label, value} <- @feedback_meta} class="image-modal-meta-row" data-testid={"image-meta-#{String.replace(label, "_", "-")}"}>
+            <span class="image-modal-meta-label">{label}</span>
+            <span class="image-modal-meta-value">{value}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -456,6 +520,7 @@ defmodule SpotterWeb.ReviewsLive do
 
     <.confirm_modal show_confirm_modal={@show_confirm_modal} delete_target={@delete_target} selected_ids={@selected_ids} />
     <.batch_action_bar selection_mode={@selection_mode} selected_ids={@selected_ids} />
+    <.image_modal ann={@show_image_ann} />
     """
   end
 end
