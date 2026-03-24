@@ -4994,6 +4994,17 @@ span.commit-detail-cochange-member {
 .bead-content a { color: var(--accent-blue); text-decoration: none; }
 .bead-content a:visited { color: var(--accent-blue); }
 .bead-content a:hover { text-decoration: underline; }
+.bead-content img { cursor: zoom-in; border-radius: var(--radius-sm); transition: outline 0.15s, box-shadow 0.15s; max-width: 100%; }
+.bead-content img:hover { outline: 2px solid var(--accent-blue); outline-offset: 2px; box-shadow: 0 0 0 4px rgba(91, 156, 245, 0.12); }
+
+/* --- Sidebar Image Preview --- */
+.sidebar-image-preview { display: flex; flex-direction: column; gap: var(--space-3); }
+.sidebar-image-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.sidebar-image-alt { font-size: var(--text-xs); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-image-img { max-width: 100%; max-height: 60vh; object-fit: contain; border-radius: var(--radius-sm); border: 1px solid var(--border-default); background: var(--surface-0); }
+.sidebar-image-img:hover { border-color: var(--accent-blue); }
+.sidebar-image-link { font-size: var(--text-xs); color: var(--accent-blue); text-decoration: none; }
+.sidebar-image-link:hover { text-decoration: underline; }
 
 /* --- Bead Annotation Highlights --- */
 .bead-annotation-highlight {

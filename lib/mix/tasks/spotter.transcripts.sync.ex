@@ -3,9 +3,10 @@ defmodule Mix.Tasks.Spotter.Transcripts.Sync do
   @shortdoc "Sync transcripts and derive tool call runs"
   use Mix.Task
 
+  alias Spotter.Services.TranscriptAnalytics
+
   alias Spotter.Transcripts.Jobs.SyncTranscripts
   alias Spotter.Transcripts.Session
-  alias Spotter.Services.TranscriptAnalytics
 
   require Ash.Query
 
