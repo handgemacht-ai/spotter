@@ -71,6 +71,10 @@ just logs      # Tail service logs
 just reset     # Stop, wipe state, restart clean
 ```
 
+### Transcript Analytics CLI
+
+Spotter includes Mix tasks for searching, inspecting, and comparing tool call runs derived from transcript data. Run `mix spotter.transcripts` to list all available commands. See [docs/telemetry/transcript-analytics-cli.md](docs/telemetry/transcript-analytics-cli.md) for full usage.
+
 ### Startup Sequence (`just up`)
 
 1. Check prerequisites (`just`, `overmind`, `docker`) — batch all missing into one error

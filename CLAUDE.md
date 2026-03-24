@@ -14,6 +14,18 @@ Use `just` recipes from the repository root for day-to-day local runtime control
 - `just otel-restart` / `just otel-status` - Restart and inspect OTEL stack health.
 - `just test-smoke` - Run runtime smoke tests.
 
+# Transcript Analytics CLI
+
+Run `mix spotter.transcripts` to list all available commands. Use these when investigating tool usage across sessions:
+
+- `mix spotter.transcripts.sync` — Import transcripts and derive tool call runs
+- `mix spotter.transcripts.search` — Find tool calls by name, duration, status, or command
+- `mix spotter.transcripts.inspect` — Drill into a single session's tool call timeline
+- `mix spotter.transcripts.compare` — Compare tool usage between session cohorts
+- `mix spotter.transcripts.slice.register` — Bookmark session segments for focused review
+
+Full docs: `docs/telemetry/transcript-analytics-cli.md`
+
 # Worktrees
 
 ## Daily workflow
@@ -216,3 +228,14 @@ bd automatically syncs with git:
 For more details, see README.md and docs/QUICKSTART.md.
 
 <!-- END BEADS INTEGRATION -->
+
+# Requesting Features
+
+To request a feature or improvement for Spotter, create a bead from the spotter directory:
+
+```bash
+cd /srv/handgemacht/handgemacht/spotter
+bd create "Feature title" --description="What you want and why" -t feature -p 2
+```
+
+Use `bd ready` to see what's available to work on.
