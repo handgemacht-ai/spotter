@@ -29,7 +29,8 @@ defmodule SpotterWeb.PlanDetailLive do
        highlighted_annotation: nil,
        active_sidebar_tab: :annotations,
        graph_data: nil,
-       graph_expanded: false
+       graph_expanded: false,
+       preview_image: nil
      )}
   end
 
@@ -136,6 +137,17 @@ defmodule SpotterWeb.PlanDetailLive do
   @impl true
   def handle_event("clear_selection", _params, socket) do
     {:noreply, assign(socket, selection: nil)}
+  end
+
+  @impl true
+  def handle_event("plan_image_clicked", %{"src" => src, "alt" => alt}, socket) do
+    {:noreply,
+     assign(socket, preview_image: %{src: src, alt: alt}, active_sidebar_tab: :image)}
+  end
+
+  @impl true
+  def handle_event("close_image_preview", _params, socket) do
+    {:noreply, assign(socket, preview_image: nil, active_sidebar_tab: :annotations)}
   end
 
   defp maybe_focus_annotations_tab(socket) do
@@ -456,6 +468,16 @@ defmodule SpotterWeb.PlanDetailLive do
                 >
                   Annotations ({length(@annotations)})
                 </button>
+                <button
+                  :if={@preview_image}
+                  id="sidebar-tab-image"
+                  class={"sidebar-tab #{if @active_sidebar_tab == :image, do: "is-active"}"}
+                  phx-click="switch_sidebar_tab"
+                  phx-value-tab="image"
+                  data-testid="sidebar-tab-image"
+                >
+                  Image
+                </button>
               </div>
               <div
                 :if={@active_sidebar_tab == :annotations}
@@ -468,6 +490,39 @@ defmodule SpotterWeb.PlanDetailLive do
                   selection_label="Selected plan text"
                 />
                 <.annotation_cards annotations={@annotations} />
+              </div>
+              <div
+                :if={@active_sidebar_tab == :image && @preview_image}
+                class="sidebar-tab-content sidebar-image-preview"
+                data-testid="sidebar-image-preview"
+              >
+                <div class="sidebar-image-header">
+                  <span :if={@preview_image.alt != ""} class="sidebar-image-alt">
+                    {@preview_image.alt}
+                  </span>
+                  <button
+                    class="btn-ghost text-xs"
+                    phx-click="close_image_preview"
+                    data-testid="close-image-preview"
+                  >
+                    &times;
+                  </button>
+                </div>
+                <img
+                  src={@preview_image.src}
+                  alt={@preview_image.alt}
+                  class="sidebar-image-img"
+                  data-testid="sidebar-image-img"
+                  loading="lazy"
+                />
+                <a
+                  href={@preview_image.src}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="sidebar-image-link"
+                >
+                  Open original
+                </a>
               </div>
             </div>
           </div>

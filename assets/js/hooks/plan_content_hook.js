@@ -25,6 +25,7 @@ const PlanContentHook = {
     this._highlightCode()
     this._applyAnnotations()
     this._setupSelection()
+    this._setupImageClick()
     this._setupAttentionHandler()
   },
   updated() {
@@ -40,6 +41,9 @@ const PlanContentHook = {
     }
     if (this._keyupHandler) {
       this.el.removeEventListener("keyup", this._keyupHandler)
+    }
+    if (this._imageClickHandler) {
+      this.el.removeEventListener("click", this._imageClickHandler)
     }
   },
 
@@ -125,6 +129,21 @@ const PlanContentHook = {
       }
       requestAnimationFrame(() => tick(2))
     })
+  },
+
+  _setupImageClick() {
+    this._imageClickHandler = (e) => {
+      const img = e.target.closest(".bead-content img")
+      if (!img) return
+      if (window.getSelection()?.toString().trim()) return
+      e.preventDefault()
+      e.stopPropagation()
+      this.pushEvent("plan_image_clicked", {
+        src: img.src,
+        alt: img.alt || "",
+      })
+    }
+    this.el.addEventListener("click", this._imageClickHandler)
   },
 
   _setupSelection() {
