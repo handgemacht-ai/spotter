@@ -7,7 +7,7 @@ defmodule Mix.Tasks.Spotter.Transcripts.Compare do
 
   @impl true
   def run(args) do
-    Mix.Task.run("app.start")
+    Mix.Tasks.Spotter.CliHelpers.start_app_without_server()
 
     {opts, _rest, _invalid} =
       OptionParser.parse(args,
