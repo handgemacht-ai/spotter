@@ -12,6 +12,14 @@ defmodule Mix.Tasks.Spotter.Transcripts.Sync do
 
   @impl true
   def run(args) do
+    if "--help" in args do
+      print_usage()
+    else
+      do_run(args)
+    end
+  end
+
+  defp do_run(args) do
     Mix.Tasks.Spotter.CliHelpers.start_app_without_server()
 
     {opts, _rest, _invalid} =
@@ -41,11 +49,25 @@ defmodule Mix.Tasks.Spotter.Transcripts.Sync do
         )
 
       opts[:transcript_root] ->
-        Mix.shell().info("Sync from transcript root #{opts[:transcript_root]} done.")
+        Mix.shell().info("Error: --transcript-root is not yet implemented.")
+        Mix.shell().info("Use --session or --file to sync specific transcripts.")
 
       true ->
-        Mix.shell().info("Sync complete.")
+        print_usage()
     end
+  end
+
+  defp print_usage do
+    Mix.shell().info("""
+    Usage: mix spotter.transcripts.sync [options]
+
+    Import/re-import transcripts and derive tool call runs.
+
+    Options:
+      --session <id>            Sync a specific session by external ID
+      --file <path>             Sync from a specific JSONL transcript file
+      --transcript-root <path>  Sync all sessions under a transcript root (not yet implemented)
+    """)
   end
 
   defp derive_for_session_id(session_id) do

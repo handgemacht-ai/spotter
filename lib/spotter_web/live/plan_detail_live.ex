@@ -141,8 +141,7 @@ defmodule SpotterWeb.PlanDetailLive do
 
   @impl true
   def handle_event("plan_image_clicked", %{"src" => src, "alt" => alt}, socket) do
-    {:noreply,
-     assign(socket, preview_image: %{src: src, alt: alt}, active_sidebar_tab: :image)}
+    {:noreply, assign(socket, preview_image: %{src: src, alt: alt}, active_sidebar_tab: :image)}
   end
 
   @impl true

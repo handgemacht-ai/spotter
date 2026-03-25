@@ -1,8 +1,11 @@
 defmodule Mix.Tasks.Spotter.CliHelpers do
   @moduledoc false
 
+  require Logger
+
   @doc "Load config and start only the Repo (no Oban, no PubSub, no Endpoint)."
   def start_app_without_server do
+    Logger.configure(level: :info)
     Mix.Task.run("app.config")
     {:ok, _} = Application.ensure_all_started(:ecto_sqlite3)
     {:ok, _} = Application.ensure_all_started(:ash)

@@ -191,14 +191,37 @@ defmodule Spotter.Services.TranscriptAnalytics do
   def inspect(opts) do
     OpenTelemetry.Tracer.with_span "spotter.transcript_analytics.inspect" do
       session_id = opts[:session_id]
+      tool_use_id = opts[:tool_use_id]
+      context = opts[:context]
 
-      query =
+      if tool_use_id && context do
+        with {:ok, runs} <-
+               ToolCallRun
+               |> Ash.Query.new()
+               |> Ash.Query.filter(session_id == ^session_id)
+               |> Ash.Query.sort(start_ordinal: :asc_nils_last)
+               |> Ash.read() do
+          {:ok, context_window(runs, tool_use_id, context)}
+        end
+      else
         ToolCallRun
         |> Ash.Query.new()
         |> Ash.Query.filter(session_id == ^session_id)
-        |> maybe_filter_tool_use_id(opts[:tool_use_id])
+        |> maybe_filter_tool_use_id(tool_use_id)
+        |> Ash.read()
+      end
+    end
+  end
 
-      Ash.read(query)
+  defp context_window(runs, tool_use_id, context) do
+    case Enum.find_index(runs, &(&1.tool_use_id == tool_use_id)) do
+      nil ->
+        []
+
+      idx ->
+        start_idx = max(0, idx - context)
+        end_idx = min(length(runs) - 1, idx + context)
+        Enum.slice(runs, start_idx..end_idx)
     end
   end
 

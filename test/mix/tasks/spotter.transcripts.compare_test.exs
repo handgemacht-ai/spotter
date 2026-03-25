@@ -4,42 +4,63 @@ defmodule Mix.Tasks.Spotter.Transcripts.CompareTest do
   import ExUnit.CaptureIO
 
   alias Ecto.Adapters.SQL.Sandbox
+  alias Spotter.Transcripts.{Project, Session}
 
   setup do
     pid = Sandbox.start_owner!(Spotter.Repo, shared: true)
     on_exit(fn -> Sandbox.stop_owner(pid) end)
-    :ok
+
+    project = Ash.create!(Project, %{name: "compare-test", pattern: "^compare"})
+
+    session_a = Ash.UUID.generate()
+    session_b = Ash.UUID.generate()
+    session_c = Ash.UUID.generate()
+
+    for sid <- [session_a, session_b, session_c] do
+      Ash.create!(Session, %{
+        session_id: sid,
+        transcript_dir: "test-dir",
+        cwd: "/tmp/test",
+        project_id: project.id
+      })
+    end
+
+    %{session_a: session_a, session_b: session_b, session_c: session_c}
   end
 
   describe "option parsing" do
-    test "parses --left-session and --right-session (repeated)" do
+    test "parses --left-session and --right-session (repeated)", %{
+      session_a: sa,
+      session_b: sb,
+      session_c: sc
+    } do
       Mix.Task.reenable("spotter.transcripts.compare")
 
       output =
         capture_io(fn ->
           Mix.Task.run("spotter.transcripts.compare", [
             "--left-session",
-            "session-a",
+            sa,
             "--left-session",
-            "session-b",
+            sb,
             "--right-session",
-            "session-c"
+            sc
           ])
         end)
 
       assert is_binary(output)
     end
 
-    test "parses --tool filter" do
+    test "parses --tool filter", %{session_a: sa, session_b: sb} do
       Mix.Task.reenable("spotter.transcripts.compare")
 
       output =
         capture_io(fn ->
           Mix.Task.run("spotter.transcripts.compare", [
             "--left-session",
-            "session-a",
+            sa,
             "--right-session",
-            "session-b",
+            sb,
             "--tool",
             "Bash"
           ])
@@ -48,16 +69,16 @@ defmodule Mix.Tasks.Spotter.Transcripts.CompareTest do
       assert is_binary(output)
     end
 
-    test "parses --command-contains filter" do
+    test "parses --command-contains filter", %{session_a: sa, session_b: sb} do
       Mix.Task.reenable("spotter.transcripts.compare")
 
       output =
         capture_io(fn ->
           Mix.Task.run("spotter.transcripts.compare", [
             "--left-session",
-            "session-a",
+            sa,
             "--right-session",
-            "session-b",
+            sb,
             "--command-contains",
             "mix test"
           ])
@@ -66,16 +87,16 @@ defmodule Mix.Tasks.Spotter.Transcripts.CompareTest do
       assert is_binary(output)
     end
 
-    test "parses --group-by option" do
+    test "parses --group-by option", %{session_a: sa, session_b: sb} do
       Mix.Task.reenable("spotter.transcripts.compare")
 
       output =
         capture_io(fn ->
           Mix.Task.run("spotter.transcripts.compare", [
             "--left-session",
-            "session-a",
+            sa,
             "--right-session",
-            "session-b",
+            sb,
             "--group-by",
             "command_fingerprint"
           ])
@@ -86,16 +107,16 @@ defmodule Mix.Tasks.Spotter.Transcripts.CompareTest do
   end
 
   describe "output formats" do
-    test "supports --format table" do
+    test "supports --format table", %{session_a: sa, session_b: sb} do
       Mix.Task.reenable("spotter.transcripts.compare")
 
       output =
         capture_io(fn ->
           Mix.Task.run("spotter.transcripts.compare", [
             "--left-session",
-            "session-a",
+            sa,
             "--right-session",
-            "session-b",
+            sb,
             "--format",
             "table"
           ])
@@ -104,16 +125,16 @@ defmodule Mix.Tasks.Spotter.Transcripts.CompareTest do
       assert is_binary(output)
     end
 
-    test "supports --format json" do
+    test "supports --format json", %{session_a: sa, session_b: sb} do
       Mix.Task.reenable("spotter.transcripts.compare")
 
       output =
         capture_io(fn ->
           Mix.Task.run("spotter.transcripts.compare", [
             "--left-session",
-            "session-a",
+            sa,
             "--right-session",
-            "session-b",
+            sb,
             "--format",
             "json"
           ])

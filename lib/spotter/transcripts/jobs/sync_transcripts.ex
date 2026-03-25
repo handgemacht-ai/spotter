@@ -618,24 +618,16 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
   end
 
   defp create_subagent_messages!(session, subagent, messages) do
-    existing_count =
-      Spotter.Transcripts.Message
-      |> Ash.Query.filter(subagent_id == ^subagent.id)
-      |> Ash.read!()
-      |> length()
-
-    if existing_count > 0 do
-      Logger.debug(
-        "Subagent #{subagent.agent_id} already has #{existing_count} messages, skipping"
+    messages
+    |> Enum.map(&build_message_attrs(&1, session.id, subagent.id))
+    |> Enum.chunk_every(@batch_size)
+    |> Enum.each(fn batch ->
+      Ash.bulk_create(batch, Spotter.Transcripts.Message, :upsert,
+        stop_on_error?: false,
+        return_errors?: false,
+        return_records?: false
       )
-    else
-      messages
-      |> Enum.map(&build_message_attrs(&1, session.id, subagent.id))
-      |> Enum.chunk_every(@batch_size)
-      |> Enum.each(fn batch ->
-        Ash.bulk_create!(batch, Spotter.Transcripts.Message, :create)
-      end)
-    end
+    end)
   end
 
   defp find_transcript_file(session_id, transcript_path, transcript_roots_override) do
@@ -715,7 +707,11 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
     msg_attrs
     |> Enum.chunk_every(@batch_size)
     |> Enum.each(fn batch ->
-      Ash.bulk_create!(batch, Spotter.Transcripts.Message, :upsert)
+      Ash.bulk_create(batch, Spotter.Transcripts.Message, :upsert,
+        stop_on_error?: false,
+        return_errors?: false,
+        return_records?: false
+      )
     end)
 
     update_ingest_quality!(session, messages)

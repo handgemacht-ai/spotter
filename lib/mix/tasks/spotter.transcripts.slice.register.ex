@@ -10,6 +10,14 @@ defmodule Mix.Tasks.Spotter.Transcripts.Slice.Register do
 
   @impl true
   def run(args) do
+    if "--help" in args do
+      print_usage()
+    else
+      do_run(args)
+    end
+  end
+
+  defp do_run(args) do
     Mix.Tasks.Spotter.CliHelpers.start_app_without_server()
 
     {opts, _rest, _invalid} =
@@ -52,6 +60,27 @@ defmodule Mix.Tasks.Spotter.Transcripts.Slice.Register do
         Mix.shell().error("Error: #{reason}")
         exit({:shutdown, 1})
     end
+  end
+
+  defp print_usage do
+    Mix.shell().info("""
+    Usage: mix spotter.transcripts.slice.register --session <id> [options]
+
+    Save a session slice for focused transcript review.
+
+    Options:
+      --session <id>              Session ID (required)
+      --tool-use-id <id>          Specific tool use ID to highlight (repeatable)
+      --tool <name>               Filter by tool name
+      --command-contains <text>   Filter commands containing text
+      --min-duration-ms <ms>      Minimum duration in milliseconds
+      --max-duration-ms <ms>      Maximum duration in milliseconds
+      --status <status>           Filter by status (completed, error, ongoing, orphan)
+      --title <text>              Slice title (default: auto-generated with timestamp)
+      --context-before <n>        Context lines before highlighted runs (default: 5)
+      --context-after <n>         Context lines after highlighted runs (default: 5)
+      --format <fmt>              Output format: text (default) or json
+    """)
   end
 
   defp resolve_session(session_id) do

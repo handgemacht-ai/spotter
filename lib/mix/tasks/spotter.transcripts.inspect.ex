@@ -10,6 +10,14 @@ defmodule Mix.Tasks.Spotter.Transcripts.Inspect do
 
   @impl true
   def run(args) do
+    if "--help" in args do
+      print_usage()
+    else
+      do_run(args)
+    end
+  end
+
+  defp do_run(args) do
     Mix.Tasks.Spotter.CliHelpers.start_app_without_server()
 
     {opts, _rest, _invalid} =
@@ -39,11 +47,26 @@ defmodule Mix.Tasks.Spotter.Transcripts.Inspect do
 
     case TranscriptAnalytics.inspect(inspect_opts) do
       {:ok, results} ->
+        results = Ash.load!(results, :session)
         output(results, format)
 
       {:error, reason} ->
         Mix.shell().info("Error: #{Kernel.inspect(reason)}")
     end
+  end
+
+  defp print_usage do
+    Mix.shell().info("""
+    Usage: mix spotter.transcripts.inspect --session <id> [options]
+
+    Inspect tool call runs for a specific session.
+
+    Options:
+      --session <id>          Session ID (required)
+      --tool-use-id <id>      Filter to a specific tool use ID
+      --context <n>           Number of surrounding messages to include
+      --format <fmt>          Output format: table (default) or json
+    """)
   end
 
   defp output(results, "json") do
@@ -75,7 +98,10 @@ defmodule Mix.Tasks.Spotter.Transcripts.Inspect do
       status: run.status,
       duration_ms: run.duration_ms,
       started_at: run.started_at && DateTime.to_iso8601(run.started_at),
-      finished_at: run.finished_at && DateTime.to_iso8601(run.finished_at)
+      finished_at: run.finished_at && DateTime.to_iso8601(run.finished_at),
+      session_id: run.session && run.session.session_id,
+      project_id: run.project_id,
+      worktree_name: run.worktree_name
     }
   end
 
