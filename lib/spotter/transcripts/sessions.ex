@@ -64,18 +64,24 @@ defmodule Spotter.Transcripts.Sessions do
   """
   @spec resolve_project_by_cwd(String.t()) :: {:ok, Project.t()} | {:error, term()}
   def resolve_project_by_cwd(cwd) when is_binary(cwd) do
-    canonical = canonicalize_cwd(cwd)
+    # Try original path first (handles subdirectory projects in monorepos),
+    # then fall back to canonicalized path (handles worktree paths).
+    with :no_match <- match_project_by_cwd(cwd),
+         canonical = canonicalize_cwd(cwd),
+         true <- canonical != cwd,
+         {:ok, name, _pattern} <- match_project_by_cwd(canonical) do
+      lookup_project(name, cwd)
+    else
+      {:ok, name, _pattern} -> lookup_project(name, cwd)
+      _ -> {:error, {:project_not_found, cwd}}
+    end
+  end
 
-    case match_project_by_cwd(canonical) do
-      {:ok, name, _pattern} ->
-        case Project |> Ash.Query.filter(name == ^name) |> Ash.read_one() do
-          {:ok, %Project{} = project} -> {:ok, project}
-          {:ok, nil} -> {:error, {:project_not_found, cwd}}
-          {:error, _} = error -> error
-        end
-
-      :no_match ->
-        {:error, {:project_not_found, cwd}}
+  defp lookup_project(name, cwd) do
+    case Project |> Ash.Query.filter(name == ^name) |> Ash.read_one() do
+      {:ok, %Project{} = project} -> {:ok, project}
+      {:ok, nil} -> {:error, {:project_not_found, cwd}}
+      {:error, _} = error -> error
     end
   end
 

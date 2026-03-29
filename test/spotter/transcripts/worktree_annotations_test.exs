@@ -29,6 +29,19 @@ defmodule Spotter.Transcripts.WorktreeAnnotationsTest do
       assert {:error, {:project_not_found, _}} =
                Sessions.resolve_project_by_cwd("/nonexistent/path")
     end
+
+    test "prefers subdirectory project over git-root project in monorepo" do
+      parent_cwd = "/home/test/monorepo"
+      sub_cwd = "/home/test/monorepo/subproject"
+
+      {:ok, _parent_session} = Sessions.find_or_create(Ash.UUID.generate(), cwd: parent_cwd)
+      {:ok, sub_session} = Sessions.find_or_create(Ash.UUID.generate(), cwd: sub_cwd)
+      sub_project = Ash.get!(Project, sub_session.project_id)
+
+      assert {:ok, resolved} = Sessions.resolve_project_by_cwd(sub_cwd)
+      assert resolved.id == sub_project.id
+      assert resolved.name == "subproject"
+    end
   end
 
   describe "extract_worktree_name/2" do
