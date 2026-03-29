@@ -64,7 +64,9 @@ defmodule Spotter.Transcripts.Sessions do
   """
   @spec resolve_project_by_cwd(String.t()) :: {:ok, Project.t()} | {:error, term()}
   def resolve_project_by_cwd(cwd) when is_binary(cwd) do
-    case match_project_by_cwd(cwd) do
+    canonical = canonicalize_cwd(cwd)
+
+    case match_project_by_cwd(canonical) do
       {:ok, name, _pattern} ->
         case Project |> Ash.Query.filter(name == ^name) |> Ash.read_one() do
           {:ok, %Project{} = project} -> {:ok, project}
@@ -121,6 +123,23 @@ defmodule Spotter.Transcripts.Sessions do
       {:error, _} = error -> error
     end
   end
+
+  @doc """
+  Extracts a worktree name by comparing a raw cwd against its canonical root.
+
+  Returns `nil` when both paths are equal (main checkout) or a short
+  identifier derived from the raw path basename when they differ.
+  """
+  @spec extract_worktree_name(String.t(), String.t()) :: String.t() | nil
+  def extract_worktree_name(raw_cwd, canonical_cwd)
+      when is_binary(raw_cwd) and is_binary(canonical_cwd) do
+    raw = String.trim_trailing(raw_cwd, "/")
+    canonical = String.trim_trailing(canonical_cwd, "/")
+
+    if raw == canonical, do: nil, else: Path.basename(raw)
+  end
+
+  def extract_worktree_name(_, _), do: nil
 
   @doc """
   Resolves a worktree cwd to its canonical main repository root.

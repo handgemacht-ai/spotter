@@ -4,7 +4,8 @@
       "type": "http",
       "url": "${SPOTTER_URL:-http://127.0.0.1:1100}/api/mcp?session_id=${SPOTTER_SESSION_ID:-}",
       "headers": {
-        "x-spotter-project-dir": "${SPOTTER_PROJECT_DIR:-${PWD}}"
+        "x-spotter-project-dir": "${SPOTTER_PROJECT_DIR:-${PWD}}",
+        "x-spotter-cwd": "${PWD}"
       }
     }
   }

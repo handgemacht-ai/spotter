@@ -25,12 +25,29 @@ defmodule Spotter.Transcripts.Annotation do
         require Ash.Query
 
         case query.context[:spotter_mcp_scope] do
-          %{project_id: project_id} when is_binary(project_id) ->
+          %{project_id: project_id} = scope when is_binary(project_id) ->
             query = Ash.Query.filter(query, project_id == ^project_id)
 
-            case query.arguments[:bead_id] do
-              nil -> query
-              bead_id -> Ash.Query.filter(query, bead_id == ^bead_id)
+            query =
+              case query.arguments[:bead_id] do
+                nil -> query
+                bead_id -> Ash.Query.filter(query, bead_id == ^bead_id)
+              end
+
+            case scope[:worktree_name] do
+              nil ->
+                query
+
+              wt_name ->
+                Ash.Query.filter(
+                  query,
+                  fragment(
+                    "json_extract(?, '$.worktree_name') = ? OR json_extract(?, '$.worktree_name') IS NULL",
+                    metadata,
+                    ^wt_name,
+                    metadata
+                  )
+                )
             end
 
           _ ->

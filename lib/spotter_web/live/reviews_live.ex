@@ -5,6 +5,7 @@ defmodule SpotterWeb.ReviewsLive do
 
   alias Spotter.Services.ReviewUpdates
   alias Spotter.Transcripts.{Annotation, Project, Session}
+  alias Spotter.Transcripts.Sessions
   require Ash.Query
   require OpenTelemetry.Tracer
 
@@ -20,7 +21,9 @@ defmodule SpotterWeb.ReviewsLive do
        show_confirm_modal: false,
        selection_mode: false,
        selected_ids: MapSet.new(),
-       show_image_ann: nil
+       show_image_ann: nil,
+       worktree_filter: "all",
+       worktree_names: []
      )}
   end
 
@@ -148,6 +151,10 @@ defmodule SpotterWeb.ReviewsLive do
 
   def handle_event("keydown", _params, socket), do: {:noreply, socket}
 
+  def handle_event("filter_worktree", %{"worktree" => value}, socket) do
+    {:noreply, socket |> assign(worktree_filter: value) |> load_review_data()}
+  end
+
   defp find_annotation(socket, id) do
     Enum.find(socket.assigns.open_annotations, &(&1.id == id)) ||
       Enum.find(socket.assigns.resolved_annotations, &(&1.id == id))
@@ -162,21 +169,38 @@ defmodule SpotterWeb.ReviewsLive do
 
     projects_by_id = load_projects_by_id(sessions)
 
+    # Derive canonical project path from any session for worktree detection
+    canonical_cwd = derive_canonical_cwd(sessions)
+
     open_annotations =
       load_review_annotations(session_ids, project_id, :open)
+      |> attach_worktree_names(sessions_by_id, canonical_cwd)
+      |> filter_by_worktree(socket.assigns.worktree_filter)
       |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
       |> Ash.load!([:has_image, :subagent, :file_refs, message_refs: :message])
 
     resolved_annotations =
       load_review_annotations(session_ids, project_id, :closed)
+      |> attach_worktree_names(sessions_by_id, canonical_cwd)
+      |> filter_by_worktree(socket.assigns.worktree_filter)
       |> Enum.sort_by(& &1.updated_at, {:desc, DateTime})
       |> Ash.load!([:has_image, :subagent, :file_refs, message_refs: :message])
+
+    all_annotations = open_annotations ++ resolved_annotations
+
+    worktree_names =
+      all_annotations
+      |> Enum.map(& &1.__worktree_name__)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Enum.sort()
 
     assign(socket,
       open_annotations: open_annotations,
       resolved_annotations: resolved_annotations,
       sessions_by_id: sessions_by_id,
-      projects_by_id: projects_by_id
+      projects_by_id: projects_by_id,
+      worktree_names: worktree_names
     )
   end
 
@@ -231,6 +255,48 @@ defmodule SpotterWeb.ReviewsLive do
     |> Ash.read!()
   end
 
+  defp derive_canonical_cwd(sessions) do
+    sessions
+    |> Enum.map(& &1.cwd)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(&Sessions.canonicalize_cwd/1)
+    |> Enum.frequencies()
+    |> Enum.max_by(fn {_cwd, count} -> count end, fn -> {nil, 0} end)
+    |> elem(0)
+  end
+
+  defp attach_worktree_names(annotations, sessions_by_id, canonical_cwd) do
+    Enum.map(annotations, fn ann ->
+      wt_name = resolve_worktree_name(ann, sessions_by_id, canonical_cwd)
+      Map.put(ann, :__worktree_name__, wt_name)
+    end)
+  end
+
+  defp resolve_worktree_name(ann, sessions_by_id, canonical_cwd) do
+    case ann.metadata["worktree_name"] do
+      wt when is_binary(wt) and wt != "" ->
+        wt
+
+      _ ->
+        session = Map.get(sessions_by_id, ann.session_id)
+
+        if session && is_binary(session.cwd) && is_binary(canonical_cwd) do
+          Sessions.extract_worktree_name(session.cwd, canonical_cwd)
+        end
+    end
+  end
+
+  defp filter_by_worktree(annotations, "all"), do: annotations
+
+  defp filter_by_worktree(annotations, "main"),
+    do: Enum.filter(annotations, &is_nil(&1.__worktree_name__))
+
+  defp filter_by_worktree(annotations, wt_name) do
+    Enum.filter(annotations, fn ann ->
+      ann.__worktree_name__ == wt_name || is_nil(ann.__worktree_name__)
+    end)
+  end
+
   defp session_label(session) do
     session.slug || String.slice(session.session_id, 0, 8)
   end
@@ -256,9 +322,17 @@ defmodule SpotterWeb.ReviewsLive do
     selected = assigns.selection_mode && MapSet.member?(assigns.selected_ids, ann.id)
     sub_label = subagent_label(ann)
 
+    worktree_name = Map.get(ann, :__worktree_name__)
+
     assigns =
       assigns
-      |> assign(session: session, project: project, selected: selected, sub_label: sub_label)
+      |> assign(
+        session: session,
+        project: project,
+        selected: selected,
+        sub_label: sub_label,
+        worktree_name: worktree_name
+      )
 
     ~H"""
     <div class={["annotation-card", @selected && "border-[var(--accent-blue)] bg-[color-mix(in_srgb,var(--accent-blue)_4%,transparent)]"]} data-testid={"annotation-card-#{@ann.id}"}>
@@ -276,6 +350,9 @@ defmodule SpotterWeb.ReviewsLive do
         </span>
         <span :if={@ann.source == :transcript && @ann.message_refs != []} class="text-muted text-xs">
           {length(@ann.message_refs)} messages
+        </span>
+        <span :if={@worktree_name} class="badge text-xs px-1.5 py-0.5 rounded bg-[color-mix(in_srgb,var(--accent-purple)_15%,transparent)] text-[var(--accent-purple)] border border-[color-mix(in_srgb,var(--accent-purple)_30%,transparent)]">
+          {@worktree_name}
         </span>
         <span :if={@project} class="text-muted text-xs">
           {@project.name}
@@ -462,10 +539,17 @@ defmodule SpotterWeb.ReviewsLive do
       </div>
 
       <%= if @current_project_id do %>
-        <div class="review-header">
+        <div class="review-header flex items-center gap-4">
           <span class="review-count">
             {length(@open_annotations)} open annotations
           </span>
+          <form :if={@worktree_names != []} phx-change="filter_worktree" class="ml-auto">
+            <select name="worktree" class="select select-sm bg-[var(--surface-1)] border-[var(--border-default)] text-[var(--text-primary)]">
+              <option value="all" selected={@worktree_filter == "all"}>All worktrees</option>
+              <option value="main" selected={@worktree_filter == "main"}>Main</option>
+              <option :for={wt <- @worktree_names} value={wt} selected={@worktree_filter == wt}>{wt}</option>
+            </select>
+          </form>
         </div>
 
         <div class="instruction-panel" data-testid="mcp-review-instructions">

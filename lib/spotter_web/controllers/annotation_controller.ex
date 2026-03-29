@@ -253,12 +253,20 @@ defmodule SpotterWeb.AnnotationController do
   defp resolve_project(_params), do: {:error, :project_not_found}
 
   defp build_attrs(params, project_id) do
+    metadata = params["metadata"] || %{}
+
+    metadata =
+      case params["worktree_name"] do
+        wt when is_binary(wt) and wt != "" -> Map.put(metadata, "worktree_name", wt)
+        _ -> metadata
+      end
+
     attrs = %{
       source: parse_source(params["source"]),
       comment: params["comment"] || "",
       selected_text: params["selected_text"] || "",
       project_id: project_id,
-      metadata: params["metadata"] || %{}
+      metadata: metadata
     }
 
     if params["bead_id"], do: Map.put(attrs, :bead_id, params["bead_id"]), else: attrs
