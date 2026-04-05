@@ -27,11 +27,11 @@ defmodule Mix.Tasks.Spotter.Transcripts.InspectTest do
     test "requires --session option" do
       Mix.Task.reenable("spotter.transcripts.inspect")
 
-      assert_raise Mix.Error, ~r/--session/i, fn ->
-        capture_io(fn ->
-          Mix.Task.run("spotter.transcripts.inspect", [])
-        end)
-      end
+      assert catch_exit(
+               capture_io(fn ->
+                 Mix.Task.run("spotter.transcripts.inspect", [])
+               end)
+             ) == {:shutdown, 1}
     end
 
     test "accepts --session option", %{session_id: sid} do

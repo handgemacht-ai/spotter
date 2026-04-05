@@ -189,7 +189,7 @@ defmodule Spotter.Services.TranscriptAnalyticsTest do
 
   describe "inspect/1" do
     test "returns tool call run detail for a session", %{project: project, session: session} do
-      run = create_run(session, project, %{tool_use_id: "i-detail-1"})
+      _run = create_run(session, project, %{tool_use_id: "i-detail-1"})
 
       {:ok, result} =
         TranscriptAnalytics.inspect(%{session_id: session.id})
@@ -306,6 +306,281 @@ defmodule Spotter.Services.TranscriptAnalyticsTest do
                  left_sessions: [session.id],
                  right_sessions: []
                })
+    end
+  end
+
+  describe "search/1 error_contains filter" do
+    test "filters by error_content text", %{project: project, session: session} do
+      create_run(session, project, %{
+        tool_use_id: "ec-1",
+        status: :error,
+        error_content: "File has not been read yet"
+      })
+
+      create_run(session, project, %{
+        tool_use_id: "ec-2",
+        status: :error,
+        error_content: "Exit code 1"
+      })
+
+      {:ok, results} =
+        TranscriptAnalytics.search(%{
+          project_id: project.id,
+          error_contains: "not been read"
+        })
+
+      assert length(results) == 1
+      assert hd(results).tool_use_id == "ec-1"
+    end
+  end
+
+  describe "classify_error/1" do
+    test "classifies user rejection" do
+      assert :user_rejected ==
+               TranscriptAnalytics.classify_error(
+                 "The user doesn't want to proceed with this tool use."
+               )
+    end
+
+    test "classifies sibling errors" do
+      assert :sibling_errored ==
+               TranscriptAnalytics.classify_error(
+                 "<tool_use_error>Sibling tool call errored</tool_use_error>"
+               )
+    end
+
+    test "classifies hook blocked" do
+      assert :hook_blocked ==
+               TranscriptAnalytics.classify_error(
+                 "PreToolUse:Bash hook error: BLOCKED: Do not manipulate"
+               )
+
+      assert :hook_blocked ==
+               TranscriptAnalytics.classify_error("Hook PreToolUse:Bash denied this tool")
+    end
+
+    test "classifies file not read first" do
+      assert :file_not_read_first ==
+               TranscriptAnalytics.classify_error(
+                 "<tool_use_error>File has not been read yet.</tool_use_error>"
+               )
+    end
+
+    test "classifies file modified since read" do
+      assert :file_modified_since_read ==
+               TranscriptAnalytics.classify_error(
+                 "File has been modified since read, either by the user or by a linter."
+               )
+    end
+
+    test "classifies file not found" do
+      assert :file_not_found ==
+               TranscriptAnalytics.classify_error("File does not exist. Note: your cwd is /foo")
+
+      assert :file_not_found ==
+               TranscriptAnalytics.classify_error("No such file or directory")
+    end
+
+    test "classifies token limit exceeded" do
+      assert :token_limit_exceeded ==
+               TranscriptAnalytics.classify_error(
+                 "File content (11243 tokens) exceeds maximum allowed tokens (10000)."
+               )
+    end
+
+    test "classifies MCP errors" do
+      assert :mcp_error ==
+               TranscriptAnalytics.classify_error("MCP error -32000: Tool execution failed")
+    end
+
+    test "classifies pre-commit failures" do
+      assert :pre_commit_failed ==
+               TranscriptAnalytics.classify_error(
+                 "Precommit failed:\n\nNo vulnerabilities found."
+               )
+    end
+
+    test "classifies exit code errors" do
+      assert :exit_code == TranscriptAnalytics.classify_error("Exit code 1")
+    end
+
+    test "classifies nil and empty as other" do
+      assert :other == TranscriptAnalytics.classify_error(nil)
+      assert :other == TranscriptAnalytics.classify_error("")
+    end
+
+    test "classifies unknown errors as other" do
+      assert :other == TranscriptAnalytics.classify_error("Something unexpected happened")
+    end
+  end
+
+  describe "error_preventability/1" do
+    test "preventable categories" do
+      for cat <- [
+            :file_not_read_first,
+            :file_modified_since_read,
+            :file_not_found,
+            :path_error,
+            :token_limit_exceeded
+          ] do
+        assert :preventable == TranscriptAnalytics.error_preventability(cat)
+      end
+    end
+
+    test "user-driven categories" do
+      for cat <- [:user_rejected, :hook_blocked] do
+        assert :user_driven == TranscriptAnalytics.error_preventability(cat)
+      end
+    end
+
+    test "systemic categories" do
+      for cat <- [:exit_code, :mcp_error, :pre_commit_failed] do
+        assert :systemic == TranscriptAnalytics.error_preventability(cat)
+      end
+    end
+
+    test "cascading category" do
+      assert :cascading == TranscriptAnalytics.error_preventability(:sibling_errored)
+    end
+  end
+
+  describe "error_analysis/1 with classify" do
+    test "adds classification fields when classify is true", %{
+      project: project,
+      session: session
+    } do
+      create_run(session, project, %{
+        tool_use_id: "ea-c-1",
+        tool_name: "Edit",
+        status: :error,
+        error_content: "File has not been read yet."
+      })
+
+      create_run(session, project, %{tool_use_id: "ea-c-ok", tool_name: "Edit"})
+
+      results = TranscriptAnalytics.error_analysis(%{project_id: project.id, classify: true})
+
+      assert [pattern] = results
+      assert pattern.category == :file_not_read_first
+      assert pattern.preventability == :preventable
+      assert pattern.total_tool_calls == 2
+      assert pattern.error_rate > 0
+    end
+
+    test "omits classification fields without classify flag", %{
+      project: project,
+      session: session
+    } do
+      create_run(session, project, %{
+        tool_use_id: "ea-nc-1",
+        status: :error,
+        error_content: "Exit code 1"
+      })
+
+      results = TranscriptAnalytics.error_analysis(%{project_id: project.id})
+      assert [pattern] = results
+      refute Map.has_key?(pattern, :category)
+    end
+  end
+
+  describe "inspect/1 with status_filter" do
+    test "filters runs by status", %{project: project, session: session} do
+      create_run(session, project, %{
+        tool_use_id: "if-1",
+        status: :completed,
+        start_ordinal: 1
+      })
+
+      create_run(session, project, %{
+        tool_use_id: "if-2",
+        status: :error,
+        error_content: "Exit code 1",
+        start_ordinal: 2
+      })
+
+      create_run(session, project, %{
+        tool_use_id: "if-3",
+        status: :completed,
+        start_ordinal: 3
+      })
+
+      {:ok, results} =
+        TranscriptAnalytics.inspect(%{session_id: session.id, status_filter: :error})
+
+      assert length(results) == 1
+      assert hd(results).tool_use_id == "if-2"
+    end
+
+    test "status filter with context includes surrounding runs", %{
+      project: project,
+      session: session
+    } do
+      for i <- 1..5 do
+        status = if i == 3, do: :error, else: :completed
+
+        create_run(session, project, %{
+          tool_use_id: "ifc-#{i}",
+          status: status,
+          error_content: if(i == 3, do: "Exit code 1"),
+          start_ordinal: i
+        })
+      end
+
+      {:ok, results} =
+        TranscriptAnalytics.inspect(%{
+          session_id: session.id,
+          status_filter: :error,
+          context: 1
+        })
+
+      assert length(results) == 3
+      tool_use_ids = Enum.map(results, & &1.tool_use_id)
+      assert "ifc-2" in tool_use_ids
+      assert "ifc-3" in tool_use_ids
+      assert "ifc-4" in tool_use_ids
+    end
+  end
+
+  describe "sequence_analysis/1 with recovery" do
+    test "returns recovery stats when recovery flag is set", %{
+      project: project,
+      session: session
+    } do
+      create_run(session, project, %{
+        tool_use_id: "sr-1",
+        tool_name: "Edit",
+        status: :error,
+        error_content: "File has not been read yet.",
+        start_ordinal: 1
+      })
+
+      create_run(session, project, %{
+        tool_use_id: "sr-2",
+        tool_name: "Edit",
+        status: :completed,
+        start_ordinal: 2
+      })
+
+      result =
+        TranscriptAnalytics.sequence_analysis(%{
+          project_id: project.id,
+          recovery: true,
+          min_occurrences: 1
+        })
+
+      assert is_list(result.recovery_stats)
+      assert result.recovery_stats != []
+
+      file_not_read = Enum.find(result.recovery_stats, &(&1.category == :file_not_read_first))
+      assert file_not_read
+      assert file_not_read.total_errors == 1
+      assert file_not_read.retry_rate > 0
+      assert file_not_read.recovery_rate > 0
+    end
+
+    test "omits recovery stats without flag", %{project: project} do
+      result = TranscriptAnalytics.sequence_analysis(%{project_id: project.id})
+      refute Map.has_key?(result, :recovery_stats)
     end
   end
 end

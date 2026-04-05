@@ -35,7 +35,8 @@ defmodule Spotter.Transcripts.ToolCallRun do
         :worktree_name,
         :canonical_cwd,
         :session_id,
-        :project_id
+        :project_id,
+        :error_content
       ]
 
       change fn changeset, _context ->
@@ -65,7 +66,8 @@ defmodule Spotter.Transcripts.ToolCallRun do
         :worktree_name,
         :canonical_cwd,
         :session_id,
-        :project_id
+        :project_id,
+        :error_content
       ]
 
       upsert? true
@@ -88,7 +90,8 @@ defmodule Spotter.Transcripts.ToolCallRun do
         :subagent_id,
         :parent_tool_use_id,
         :worktree_name,
-        :canonical_cwd
+        :canonical_cwd,
+        :error_content
       ]
 
       change fn changeset, _context ->
@@ -129,6 +132,7 @@ defmodule Spotter.Transcripts.ToolCallRun do
     attribute :parent_tool_use_id, :string
     attribute :worktree_name, :string
     attribute :canonical_cwd, :string
+    attribute :error_content, :string
 
     create_timestamp :inserted_at
     update_timestamp :updated_at

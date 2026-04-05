@@ -28,6 +28,7 @@ defmodule Mix.Tasks.Spotter.Transcripts.Search do
           session: :string,
           tool: :string,
           command_contains: :string,
+          error_contains: :string,
           min_duration: :integer,
           max_duration: :integer,
           status: :string,
@@ -43,6 +44,7 @@ defmodule Mix.Tasks.Spotter.Transcripts.Search do
       |> put_if(:session_id, resolve_session_id(opts[:session]))
       |> put_if(:tool, opts[:tool])
       |> put_if(:command_contains, opts[:command_contains])
+      |> put_if(:error_contains, opts[:error_contains])
       |> put_if(:min_duration_ms, opts[:min_duration])
       |> put_if(:max_duration_ms, opts[:max_duration])
       |> put_if_atom(:status, opts[:status])
@@ -72,6 +74,7 @@ defmodule Mix.Tasks.Spotter.Transcripts.Search do
       --session <id>            Filter by session ID
       --tool <name>             Filter by tool name (e.g. Bash, Read, Grep)
       --command-contains <text> Filter commands containing text
+      --error-contains <text>   Filter by error content containing text
       --min-duration <ms>       Minimum duration in milliseconds
       --max-duration <ms>       Maximum duration in milliseconds
       --status <status>         Filter by status (completed, error, ongoing, orphan)
@@ -110,7 +113,9 @@ defmodule Mix.Tasks.Spotter.Transcripts.Search do
       tool_use_id: run.tool_use_id,
       tool_name: run.tool_name,
       command: run.command,
+      input_summary: run.input_summary,
       status: run.status,
+      error_content: run.error_content,
       duration_ms: run.duration_ms,
       started_at: run.started_at && DateTime.to_iso8601(run.started_at),
       finished_at: run.finished_at && DateTime.to_iso8601(run.finished_at),

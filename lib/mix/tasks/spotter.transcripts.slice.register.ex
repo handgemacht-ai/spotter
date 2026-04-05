@@ -8,6 +8,20 @@ defmodule Mix.Tasks.Spotter.Transcripts.Slice.Register do
   alias Spotter.Services.TranscriptAnalytics
   alias Spotter.Transcripts.{Session, SessionSlice}
 
+  @switches [
+    session: :string,
+    tool_use_id: [:string, :keep],
+    tool: :string,
+    command_contains: :string,
+    min_duration_ms: :integer,
+    max_duration_ms: :integer,
+    status: :string,
+    title: :string,
+    context_before: :integer,
+    context_after: :integer,
+    format: :string
+  ]
+
   @impl true
   def run(args) do
     if "--help" in args do
@@ -20,22 +34,7 @@ defmodule Mix.Tasks.Spotter.Transcripts.Slice.Register do
   defp do_run(args) do
     Mix.Tasks.Spotter.CliHelpers.start_app_without_server()
 
-    {opts, _rest, _invalid} =
-      OptionParser.parse(args,
-        strict: [
-          session: :string,
-          tool_use_id: [:string, :keep],
-          tool: :string,
-          command_contains: :string,
-          min_duration_ms: :integer,
-          max_duration_ms: :integer,
-          status: :string,
-          title: :string,
-          context_before: :integer,
-          context_after: :integer,
-          format: :string
-        ]
-      )
+    opts = Mix.Tasks.Spotter.CliHelpers.parse_args!(args, @switches, &print_usage/0)
 
     session_id = opts[:session]
     format = opts[:format] || "text"

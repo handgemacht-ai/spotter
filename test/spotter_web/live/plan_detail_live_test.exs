@@ -8,6 +8,7 @@ defmodule SpotterWeb.PlanDetailLiveTest do
          graceful degradation, back navigation.
   """
   use Spotter.DataCase, async: false
+  @moduletag :live_dolt
 
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest

@@ -1,6 +1,18 @@
 defmodule Spotter.Transcripts.JsonlParser do
   @moduledoc """
   Parses Claude Code JSONL transcript files.
+
+  ## Field exhaustiveness
+
+  `normalize_message/1` consumes fields by popping them from a working copy of
+  the decoded JSON. After all extractions, `check_unconsumed!/3` verifies
+  nothing was left behind at each nesting level (top-level, message.*, usage.*).
+
+  In dev/test an unconsumed field raises immediately so new Claude Code fields
+  are never silently dropped. In prod it logs a warning.
+
+  To handle a new field: add a `Map.pop` for it in `consume_top_level/1`,
+  `consume_message/1`, or `consume_usage/1`.
   """
 
   require Logger
@@ -49,7 +61,6 @@ defmodule Spotter.Transcripts.JsonlParser do
   def extract_session_rework_records(messages, opts \\ []) do
     session_cwd = Keyword.get(opts, :session_cwd)
 
-    # Phase 1: Collect pending file tool_use blocks from assistant messages
     pending_file_tools =
       messages
       |> Enum.reduce(%{}, fn msg, acc ->
@@ -60,7 +71,6 @@ defmodule Spotter.Transcripts.JsonlParser do
         end
       end)
 
-    # Phase 2: Walk messages in order, match tool_results, build running aggregate
     initial_state = %{
       pending_file_tools: pending_file_tools,
       file_mod_counts: %{},
@@ -79,6 +89,14 @@ defmodule Spotter.Transcripts.JsonlParser do
 
     Enum.reverse(state.rework_records)
   end
+
+  @doc "Returns `{normalized_atom, known?}` for a raw JSONL type string. Public for audit tooling."
+  @spec classify_type(String.t() | nil) :: {atom(), boolean()}
+  def classify_type(raw_type), do: parse_type_with_known(raw_type)
+
+  # ---------------------------------------------------------------------------
+  # Rework extraction helpers
+  # ---------------------------------------------------------------------------
 
   defp collect_file_tool_uses(msg, acc) do
     blocks = get_content_blocks(msg[:content])
@@ -181,7 +199,9 @@ defmodule Spotter.Transcripts.JsonlParser do
     end
   end
 
-  # Private
+  # ---------------------------------------------------------------------------
+  # Line parsing
+  # ---------------------------------------------------------------------------
 
   defp parse_lines(path, source_scope) do
     if File.exists?(path) do
@@ -218,43 +238,306 @@ defmodule Spotter.Transcripts.JsonlParser do
     end
   end
 
-  defp normalize_message(data) do
-    raw_type = data["type"]
+  # ---------------------------------------------------------------------------
+  # Message normalization — consume-by-popping
+  #
+  # Every field access pops the key from a working copy. After all extractions
+  # the residual keys are checked. This means adding a new field to the parser
+  # is just adding a Map.pop — forgetting triggers the exhaustiveness check.
+  # ---------------------------------------------------------------------------
+
+  defp normalize_message(original_data) do
+    {fields, residual_top, residual_message, residual_usage} =
+      consume_all_fields(original_data)
+
+    raw_type = fields.raw_type
     {normalized_type, known?} = parse_type_with_known(raw_type)
-    timestamp = parse_timestamp(data["timestamp"])
+    timestamp = parse_timestamp(fields.timestamp)
+    content = normalize_content(fields.message_content, fields.top_content)
+
+    check_unconsumed!("top-level", raw_type, residual_top)
+    check_unconsumed!("message", raw_type, residual_message)
+    check_unconsumed!("message.usage", raw_type, residual_usage)
+
+    unconsumed =
+      collect_unconsumed_paths(residual_top, residual_message, residual_usage)
 
     %{
-      uuid: data["uuid"],
-      parent_uuid: data["parentUuid"],
-      message_id: get_in(data, ["message", "id"]),
+      uuid: fields.uuid,
+      parent_uuid: fields.parent_uuid,
+      message_id: fields.message_id,
       type: normalized_type,
-      role: parse_role(get_in(data, ["message", "role"])),
-      content: extract_content(data),
-      raw_payload: data,
+      role: parse_role(fields.message_role),
+      content: content,
+      raw_payload: original_data,
       timestamp: timestamp,
-      is_sidechain: data["isSidechain"] == true,
-      agent_id: data["agentId"],
-      tool_use_id: data["toolUseId"],
-      session_id: data["sessionId"],
-      slug: data["slug"],
-      cwd: data["cwd"],
-      git_branch: data["gitBranch"],
-      version: data["version"],
-      team_name: data["teamName"],
-      agent_name: data["agentName"],
+      is_sidechain: fields.is_sidechain == true,
+      agent_id: fields.agent_id,
+      tool_use_id: fields.tool_use_id,
+      session_id: fields.session_id,
+      slug: fields.slug,
+      cwd: fields.cwd,
+      git_branch: fields.git_branch,
+      version: fields.version,
+      team_name: fields.team_name,
+      agent_name: fields.agent_name,
       record_type: raw_type,
-      record_subtype: data["subtype"],
+      record_subtype: fields.subtype,
       normalization_status: normalization_status(known?, timestamp),
-      parent_tool_use_id: data["parentToolUseID"] || data["parentToolUseId"]
+      parent_tool_use_id: fields.parent_tool_use_id,
+      input_tokens: fields.input_tokens,
+      output_tokens: fields.output_tokens,
+      cache_read_input_tokens: fields.cache_read_input_tokens,
+      cache_creation_input_tokens: fields.cache_creation_input_tokens,
+      model: fields.message_model,
+      unconsumed_fields: unconsumed
     }
   end
 
-  defp normalization_status(true, %DateTime{}), do: :full
-  defp normalization_status(true, _nil_ts), do: :partial
-  defp normalization_status(false, _), do: :raw_only
+  # Pop every known top-level, message, and usage field. Returns a flat
+  # struct of extracted values plus the residual maps at each level.
+  defp consume_all_fields(data) do
+    # -- Top-level fields (common across types) --
+    {raw_type, data} = Map.pop(data, "type")
+    {uuid, data} = Map.pop(data, "uuid")
+    {parent_uuid, data} = Map.pop(data, "parentUuid")
+    {session_id, data} = Map.pop(data, "sessionId")
+    {timestamp, data} = Map.pop(data, "timestamp")
+    {is_sidechain, data} = Map.pop(data, "isSidechain")
+    {agent_id, data} = Map.pop(data, "agentId")
+    {agent_name, data} = Map.pop(data, "agentName")
+    {team_name, data} = Map.pop(data, "teamName")
+    {slug, data} = Map.pop(data, "slug")
+    {cwd, data} = Map.pop(data, "cwd")
+    {git_branch, data} = Map.pop(data, "gitBranch")
+    {version, data} = Map.pop(data, "version")
+    {subtype, data} = Map.pop(data, "subtype")
 
-  defp extract_content(data) do
-    content = get_in(data, ["message", "content"]) || data["content"]
+    # toolUseID: real data uses uppercase D, pop both casings
+    {tool_use_id_upper, data} = Map.pop(data, "toolUseID")
+    {tool_use_id_lower, data} = Map.pop(data, "toolUseId")
+    tool_use_id = tool_use_id_upper || tool_use_id_lower
+
+    # parentToolUseID: same dual-casing
+    {parent_tool_use_id_upper, data} = Map.pop(data, "parentToolUseID")
+    {parent_tool_use_id_lower, data} = Map.pop(data, "parentToolUseId")
+    parent_tool_use_id = parent_tool_use_id_upper || parent_tool_use_id_lower
+
+    # -- Top-level fields (type-specific, consumed but stored in raw_payload) --
+    # "role" appears at top-level in some older/test records (redundant with message.role)
+    {_top_role, data} = Map.pop(data, "role")
+    {_entrypoint, data} = Map.pop(data, "entrypoint")
+    {_user_type, data} = Map.pop(data, "userType")
+    {_request_id, data} = Map.pop(data, "requestId")
+    {_error, data} = Map.pop(data, "error")
+    {_api_error, data} = Map.pop(data, "apiError")
+    {_is_api_error, data} = Map.pop(data, "isApiErrorMessage")
+    {_permission_mode, data} = Map.pop(data, "permissionMode")
+    {_is_compact_summary, data} = Map.pop(data, "isCompactSummary")
+    {_is_meta, data} = Map.pop(data, "isMeta")
+    {_is_visible_transcript, data} = Map.pop(data, "isVisibleInTranscriptOnly")
+    {_origin, data} = Map.pop(data, "origin")
+    {_plan_content, data} = Map.pop(data, "planContent")
+    {_prompt_id, data} = Map.pop(data, "promptId")
+    {_source_tool_assistant_uuid, data} = Map.pop(data, "sourceToolAssistantUUID")
+    {_source_tool_use_id, data} = Map.pop(data, "sourceToolUseID")
+    {_thinking_metadata, data} = Map.pop(data, "thinkingMetadata")
+    {_todos, data} = Map.pop(data, "todos")
+    {_tool_use_result, data} = Map.pop(data, "toolUseResult")
+    {_data_payload, data} = Map.pop(data, "data")
+    {_level, data} = Map.pop(data, "level")
+    {_cause, data} = Map.pop(data, "cause")
+    {_compact_metadata, data} = Map.pop(data, "compactMetadata")
+    {_duration_ms, data} = Map.pop(data, "durationMs")
+    {_has_output, data} = Map.pop(data, "hasOutput")
+    {_hook_count, data} = Map.pop(data, "hookCount")
+    {_hook_errors, data} = Map.pop(data, "hookErrors")
+    {_hook_infos, data} = Map.pop(data, "hookInfos")
+    {_logical_parent_uuid, data} = Map.pop(data, "logicalParentUuid")
+    {_max_retries, data} = Map.pop(data, "maxRetries")
+    {_message_count, data} = Map.pop(data, "messageCount")
+    {_prevented_continuation, data} = Map.pop(data, "preventedContinuation")
+    {_retry_attempt, data} = Map.pop(data, "retryAttempt")
+    {_retry_in_ms, data} = Map.pop(data, "retryInMs")
+    {_stop_reason, data} = Map.pop(data, "stopReason")
+    {_url, data} = Map.pop(data, "url")
+    {_verb, data} = Map.pop(data, "verb")
+    {_written_paths, data} = Map.pop(data, "writtenPaths")
+    {_operation, data} = Map.pop(data, "operation")
+    {_message_id_fhs, data} = Map.pop(data, "messageId")
+    {_snapshot, data} = Map.pop(data, "snapshot")
+    {_is_snapshot_update, data} = Map.pop(data, "isSnapshotUpdate")
+    {_last_prompt, data} = Map.pop(data, "lastPrompt")
+    {_attachment, data} = Map.pop(data, "attachment")
+    {_custom_title, data} = Map.pop(data, "customTitle")
+    {_worktree_session, data} = Map.pop(data, "worktreeSession")
+    {_pr_number, data} = Map.pop(data, "prNumber")
+    {_pr_repository, data} = Map.pop(data, "prRepository")
+    {_pr_url, data} = Map.pop(data, "prUrl")
+
+    # -- Top-level "content" (used by system, queue-operation, thinking) --
+    {top_content, data} = Map.pop(data, "content")
+
+    # -- Nested: message object --
+    {message_map, data} = Map.pop(data, "message")
+
+    {message_id, message_role, message_content, message_model, residual_message, residual_usage,
+     usage_tokens} =
+      consume_message(message_map)
+
+    fields = %{
+      raw_type: raw_type,
+      uuid: uuid,
+      parent_uuid: parent_uuid,
+      session_id: session_id,
+      timestamp: timestamp,
+      is_sidechain: is_sidechain,
+      agent_id: agent_id,
+      agent_name: agent_name,
+      team_name: team_name,
+      slug: slug,
+      cwd: cwd,
+      git_branch: git_branch,
+      version: version,
+      subtype: subtype,
+      tool_use_id: tool_use_id,
+      parent_tool_use_id: parent_tool_use_id,
+      message_id: message_id,
+      message_role: message_role,
+      message_content: message_content,
+      message_model: message_model,
+      top_content: top_content,
+      input_tokens: usage_tokens.input_tokens,
+      output_tokens: usage_tokens.output_tokens,
+      cache_read_input_tokens: usage_tokens.cache_read_input_tokens,
+      cache_creation_input_tokens: usage_tokens.cache_creation_input_tokens
+    }
+
+    {fields, data, residual_message, residual_usage}
+  end
+
+  defp consume_message(nil) do
+    {nil, nil, nil, nil, %{}, :no_message,
+     %{
+       input_tokens: nil,
+       output_tokens: nil,
+       cache_read_input_tokens: nil,
+       cache_creation_input_tokens: nil
+     }}
+  end
+
+  defp consume_message(message) when is_map(message) do
+    {msg_id, message} = Map.pop(message, "id")
+    {msg_role, message} = Map.pop(message, "role")
+    {msg_content, message} = Map.pop(message, "content")
+    {msg_model, message} = Map.pop(message, "model")
+    {_msg_type, message} = Map.pop(message, "type")
+    {_stop_reason, message} = Map.pop(message, "stop_reason")
+    {_stop_sequence, message} = Map.pop(message, "stop_sequence")
+    {_stop_details, message} = Map.pop(message, "stop_details")
+    {_container, message} = Map.pop(message, "container")
+    {_context_management, message} = Map.pop(message, "context_management")
+
+    {usage_map, message} = Map.pop(message, "usage")
+    {residual_usage, usage_tokens} = consume_usage(usage_map)
+
+    {msg_id, msg_role, msg_content, msg_model, message, residual_usage, usage_tokens}
+  end
+
+  defp consume_message(_other) do
+    {nil, nil, nil, nil, %{}, :no_message,
+     %{
+       input_tokens: nil,
+       output_tokens: nil,
+       cache_read_input_tokens: nil,
+       cache_creation_input_tokens: nil
+     }}
+  end
+
+  defp consume_usage(nil) do
+    {%{},
+     %{
+       input_tokens: nil,
+       output_tokens: nil,
+       cache_read_input_tokens: nil,
+       cache_creation_input_tokens: nil
+     }}
+  end
+
+  defp consume_usage(usage) when is_map(usage) do
+    {input_tokens, usage} = Map.pop(usage, "input_tokens")
+    {output_tokens, usage} = Map.pop(usage, "output_tokens")
+    {cache_read, usage} = Map.pop(usage, "cache_read_input_tokens")
+    {cache_creation, usage} = Map.pop(usage, "cache_creation_input_tokens")
+    {_cache_creation_flag, usage} = Map.pop(usage, "cache_creation")
+    {_server_tool_use, usage} = Map.pop(usage, "server_tool_use")
+    {_service_tier, usage} = Map.pop(usage, "service_tier")
+    {_speed, usage} = Map.pop(usage, "speed")
+    {_iterations, usage} = Map.pop(usage, "iterations")
+    {_inference_geo, usage} = Map.pop(usage, "inference_geo")
+
+    tokens = %{
+      input_tokens: input_tokens,
+      output_tokens: output_tokens,
+      cache_read_input_tokens: cache_read,
+      cache_creation_input_tokens: cache_creation
+    }
+
+    {usage, tokens}
+  end
+
+  defp consume_usage(_other) do
+    {%{},
+     %{
+       input_tokens: nil,
+       output_tokens: nil,
+       cache_read_input_tokens: nil,
+       cache_creation_input_tokens: nil
+     }}
+  end
+
+  # ---------------------------------------------------------------------------
+  # Unconsumed field detection
+  # ---------------------------------------------------------------------------
+
+  defp check_unconsumed!(_level, _raw_type, residual) when residual == %{}, do: :ok
+  defp check_unconsumed!(_level, _raw_type, :no_message), do: :ok
+
+  defp check_unconsumed!(level, raw_type, residual) when map_size(residual) > 0 do
+    keys = Map.keys(residual) |> Enum.sort() |> Enum.join(", ")
+
+    if Mix.env() in [:dev, :test] do
+      raise "Unconsumed JSONL fields at #{level} for type=#{raw_type}: #{keys}"
+    else
+      Logger.warning("Unconsumed JSONL fields at #{level} for type=#{raw_type}: #{keys}")
+    end
+  end
+
+  defp collect_unconsumed_paths(residual_top, residual_message, residual_usage) do
+    top = Map.keys(residual_top) |> Enum.map(&"#{&1}")
+
+    msg =
+      if residual_message == :no_message,
+        do: [],
+        else: Map.keys(residual_message) |> Enum.map(&"message.#{&1}")
+
+    usg =
+      if residual_usage == :no_message,
+        do: [],
+        else: Map.keys(residual_usage) |> Enum.map(&"message.usage.#{&1}")
+
+    case top ++ msg ++ usg do
+      [] -> nil
+      paths -> paths
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Content normalization
+  # ---------------------------------------------------------------------------
+
+  defp normalize_content(message_content, top_content) do
+    content = message_content || top_content
 
     case content do
       nil -> nil
@@ -264,19 +547,35 @@ defmodule Spotter.Transcripts.JsonlParser do
     end
   end
 
+  # ---------------------------------------------------------------------------
+  # Type classification
+  # ---------------------------------------------------------------------------
+
   defp parse_type_with_known(nil), do: {:system, true}
   defp parse_type_with_known("user"), do: {:user, true}
+  defp parse_type_with_known("human"), do: {:user, true}
   defp parse_type_with_known("assistant"), do: {:assistant, true}
   defp parse_type_with_known("tool_use"), do: {:tool_use, true}
   defp parse_type_with_known("tool_result"), do: {:tool_result, true}
+  defp parse_type_with_known("result"), do: {:tool_result, true}
   defp parse_type_with_known("progress"), do: {:progress, true}
   defp parse_type_with_known("thinking"), do: {:thinking, true}
   defp parse_type_with_known("system"), do: {:system, true}
   defp parse_type_with_known("file_history_snapshot"), do: {:file_history_snapshot, true}
   defp parse_type_with_known("file-history-snapshot"), do: {:file_history_snapshot, true}
-  defp parse_type_with_known("human"), do: {:user, true}
-  defp parse_type_with_known("result"), do: {:tool_result, true}
+  defp parse_type_with_known("queue-operation"), do: {:queue_operation, true}
+  defp parse_type_with_known("last-prompt"), do: {:last_prompt, true}
+  defp parse_type_with_known("attachment"), do: {:attachment, true}
+  defp parse_type_with_known("permission-mode"), do: {:permission_mode, true}
+  defp parse_type_with_known("custom-title"), do: {:custom_title, true}
+  defp parse_type_with_known("agent-name"), do: {:agent_name, true}
+  defp parse_type_with_known("worktree-state"), do: {:worktree_state, true}
+  defp parse_type_with_known("pr-link"), do: {:pr_link, true}
   defp parse_type_with_known(_), do: {:system, false}
+
+  defp normalization_status(true, %DateTime{}), do: :full
+  defp normalization_status(true, _nil_ts), do: :partial
+  defp normalization_status(false, _), do: :raw_only
 
   defp parse_role(nil), do: nil
   defp parse_role("user"), do: :user
@@ -294,6 +593,10 @@ defmodule Spotter.Transcripts.JsonlParser do
   end
 
   defp parse_timestamp(_), do: nil
+
+  # ---------------------------------------------------------------------------
+  # Session metadata
+  # ---------------------------------------------------------------------------
 
   defp build_parsed_result(messages) do
     metadata = extract_session_metadata(messages)
@@ -314,7 +617,6 @@ defmodule Spotter.Transcripts.JsonlParser do
   end
 
   defp extract_session_metadata(messages) do
-    # Session metadata is typically in the first few messages
     first_messages = Enum.take(messages, 10)
 
     %{
@@ -345,7 +647,6 @@ defmodule Spotter.Transcripts.JsonlParser do
   end
 
   defp extract_agent_id(path) do
-    # Path like: .../subagents/agent-a78b257.jsonl
     path
     |> Path.basename(".jsonl")
     |> String.replace_prefix("agent-", "")

@@ -24,7 +24,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
 
   require Ash.Query
 
-  @batch_size 500
+  @batch_size 1000
   @max_sessions_per_sync 20
 
   @doc """
@@ -106,20 +106,27 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
           index = SessionsIndex.read(dir)
           index_meta = Map.get(index, parsed.session_id, %{})
 
-          # Ensure session and project exist
-          session_record = find_or_create_session!(parsed)
+          Spotter.Repo.transaction(fn ->
+            session_record = find_or_create_session!(parsed)
+            session = upsert_existing_session!(session_record, transcript_dir, parsed, index_meta)
+            link_team_membership!(session, parsed)
+            subagent_type_by_agent_id = build_subagent_type_index(parsed.messages)
 
-          # Upsert session with full metadata + transcript_dir backfill
-          session = upsert_existing_session!(session_record, transcript_dir, parsed, index_meta)
-          link_team_membership!(session, parsed)
-          subagent_type_by_agent_id = build_subagent_type_index(parsed.messages)
+            ingested = upsert_messages!(session, parsed.messages)
+            create_tool_calls!(session, parsed.messages)
+            create_session_reworks!(session, parsed)
+            sync_subagents(session, dir, parsed.session_id, subagent_type_by_agent_id)
 
-          ingested = upsert_messages!(session, parsed.messages)
-          create_tool_calls!(session, parsed.messages)
-          create_session_reworks!(session, parsed)
-          sync_subagents(session, dir, parsed.session_id, subagent_type_by_agent_id)
+            {parsed.session_id, ingested}
+          end)
+          |> case do
+            {:ok, {session_id, ingested}} ->
+              %{session_id: session_id, ingested_messages: ingested, status: :ok}
 
-          %{session_id: parsed.session_id, ingested_messages: ingested, status: :ok}
+            {:error, reason} ->
+              Logger.warning("Transaction failed for #{file_path}: #{inspect(reason)}")
+              %{session_id: parsed.session_id, ingested_messages: 0, status: :error}
+          end
 
         {:error, reason} ->
           ErrorReport.set_trace_error(
@@ -404,7 +411,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
         session = upsert_session!(project, transcript_dir, parsed, index_meta)
         link_team_membership!(session, parsed)
         subagent_type_by_agent_id = build_subagent_type_index(parsed.messages)
-        create_messages!(session, parsed.messages)
+        upsert_messages!(session, parsed.messages)
         create_tool_calls!(session, parsed.messages)
         create_session_reworks!(session, parsed)
         sync_subagents(session, dir, parsed.session_id, subagent_type_by_agent_id)
@@ -475,29 +482,6 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
     Map.put(attrs, field, resolved)
   end
 
-  defp create_messages!(session, messages) do
-    existing_count =
-      Spotter.Transcripts.Message
-      |> Ash.Query.filter(session_id == ^session.id)
-      |> Ash.read!()
-      |> length()
-
-    if existing_count > 0 do
-      Logger.debug(
-        "Session #{session.session_id} already has #{existing_count} messages, skipping"
-      )
-    else
-      messages
-      |> Enum.map(&build_message_attrs(&1, session.id, nil))
-      |> Enum.chunk_every(@batch_size)
-      |> Enum.each(fn batch ->
-        Ash.bulk_create!(batch, Spotter.Transcripts.Message, :create)
-      end)
-
-      update_ingest_quality!(session, messages)
-    end
-  end
-
   defp create_tool_calls!(session, messages) do
     tool_name_map = build_tool_name_map(messages)
 
@@ -509,7 +493,7 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
       |> Enum.reject(&is_nil(&1.tool_use_id))
 
     Enum.each(Enum.chunk_every(tool_calls, @batch_size), fn batch ->
-      Ash.bulk_create!(batch, Spotter.Transcripts.ToolCall, :upsert)
+      Ash.bulk_create!(batch, Spotter.Transcripts.ToolCall, :upsert, return_records?: false)
     end)
   end
 
@@ -879,7 +863,12 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscripts do
       record_type: msg[:record_type],
       record_subtype: msg[:record_subtype],
       normalization_status: msg[:normalization_status],
-      parent_tool_use_id: msg[:parent_tool_use_id]
+      parent_tool_use_id: msg[:parent_tool_use_id],
+      input_tokens: msg[:input_tokens],
+      output_tokens: msg[:output_tokens],
+      cache_read_input_tokens: msg[:cache_read_input_tokens],
+      cache_creation_input_tokens: msg[:cache_creation_input_tokens],
+      model: msg[:model]
     }
   end
 

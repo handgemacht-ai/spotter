@@ -8,6 +8,15 @@ defmodule Mix.Tasks.Spotter.Transcripts.Compare do
 
   require Ash.Query
 
+  @switches [
+    left_session: [:string, :keep],
+    right_session: [:string, :keep],
+    tool: :string,
+    command_contains: :string,
+    group_by: :string,
+    format: :string
+  ]
+
   @impl true
   def run(args) do
     if "--help" in args do
@@ -20,17 +29,7 @@ defmodule Mix.Tasks.Spotter.Transcripts.Compare do
   defp do_run(args) do
     Mix.Tasks.Spotter.CliHelpers.start_app_without_server()
 
-    {opts, _rest, _invalid} =
-      OptionParser.parse(args,
-        strict: [
-          left_session: [:string, :keep],
-          right_session: [:string, :keep],
-          tool: :string,
-          command_contains: :string,
-          group_by: :string,
-          format: :string
-        ]
-      )
+    opts = Mix.Tasks.Spotter.CliHelpers.parse_args!(args, @switches, &print_usage/0)
 
     left_sessions = Keyword.get_values(opts, :left_session)
     right_sessions = Keyword.get_values(opts, :right_session)
@@ -107,8 +106,12 @@ defmodule Mix.Tasks.Spotter.Transcripts.Compare do
 
   defp resolve_session_id(external_id) do
     case Session |> Ash.Query.filter(session_id == ^external_id) |> Ash.read_one() do
-      {:ok, %Session{id: id}} -> id
-      _ -> Mix.raise("Session not found: #{external_id}")
+      {:ok, %Session{id: id}} ->
+        id
+
+      _ ->
+        Mix.shell().error("Session not found: #{external_id}")
+        exit({:shutdown, 1})
     end
   end
 

@@ -309,6 +309,7 @@ defmodule Spotter.PlansTest do
   end
 
   describe "default config" do
+    @tag :live_dolt
     test "uses BeadsSource when no sources configured" do
       Application.delete_env(:spotter, Spotter.Plans)
 

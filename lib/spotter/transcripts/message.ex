@@ -39,7 +39,12 @@ defmodule Spotter.Transcripts.Message do
         :record_type,
         :record_subtype,
         :normalization_status,
-        :parent_tool_use_id
+        :parent_tool_use_id,
+        :input_tokens,
+        :output_tokens,
+        :cache_read_input_tokens,
+        :cache_creation_input_tokens,
+        :model
       ]
     end
 
@@ -63,12 +68,30 @@ defmodule Spotter.Transcripts.Message do
         :record_type,
         :record_subtype,
         :normalization_status,
-        :parent_tool_use_id
+        :parent_tool_use_id,
+        :input_tokens,
+        :output_tokens,
+        :cache_read_input_tokens,
+        :cache_creation_input_tokens,
+        :model
       ]
 
       upsert? true
       upsert_identity :unique_session_scope_ordinal
-      upsert_fields [:content, :raw_payload, :type, :role, :uuid, :timestamp]
+
+      upsert_fields [
+        :content,
+        :raw_payload,
+        :type,
+        :role,
+        :uuid,
+        :timestamp,
+        :input_tokens,
+        :output_tokens,
+        :cache_read_input_tokens,
+        :cache_creation_input_tokens,
+        :model
+      ]
     end
   end
 
@@ -95,7 +118,15 @@ defmodule Spotter.Transcripts.Message do
                     :progress,
                     :thinking,
                     :system,
-                    :file_history_snapshot
+                    :file_history_snapshot,
+                    :queue_operation,
+                    :last_prompt,
+                    :attachment,
+                    :permission_mode,
+                    :custom_title,
+                    :agent_name,
+                    :worktree_state,
+                    :pr_link
                   ]
     end
 
@@ -146,6 +177,12 @@ defmodule Spotter.Transcripts.Message do
     attribute :parent_tool_use_id, :string do
       allow_nil? true
     end
+
+    attribute :input_tokens, :integer
+    attribute :output_tokens, :integer
+    attribute :cache_read_input_tokens, :integer
+    attribute :cache_creation_input_tokens, :integer
+    attribute :model, :string
 
     create_timestamp :inserted_at
     update_timestamp :updated_at
