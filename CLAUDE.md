@@ -115,9 +115,10 @@ bd sync               # Sync with git
 ```
 
 ## Merging a NAME worktree
-Rebase the target branch onto main (not main onto target branch)
-Merge the target branch with fast-forward 
-Afterwards cleanup the branch and worktree (git gtr rm NAME) 
+Use `/finalize` to merge — it handles PR creation, CI gates, merge, and worktree cleanup.
+Manual merge: `gh pr merge <pr-number> --rebase --delete-branch` from any directory.
+Never run `git checkout main` from a worktree — it will fail.
+Worktree cleanup: the worktree-remove hook handles branch deletion and main rebase.
 Cleanup tmux session: tmux kill-session -t spotter-NAME
 
 ## Landing the Plane (Session Completion)
