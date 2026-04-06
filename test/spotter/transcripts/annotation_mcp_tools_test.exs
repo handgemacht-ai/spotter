@@ -251,7 +251,7 @@ defmodule Spotter.Transcripts.AnnotationMcpToolsTest do
 
   describe "project scoping" do
     test "get_annotation_image rejects annotation from different project", %{
-      session: session
+      session: _session
     } do
       other_project = Ash.create!(Project, %{name: "other-project", pattern: "^other"})
 

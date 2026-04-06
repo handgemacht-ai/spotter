@@ -14,6 +14,10 @@ Use `just` recipes from the repository root for day-to-day local runtime control
 - `just otel-restart` / `just otel-status` - Restart and inspect OTEL stack health.
 - `just test-smoke` - Run runtime smoke tests.
 
+# Transcript Sync — Data Completeness is Priority #1
+
+The most important property of transcript sync is **consuming all input**. `JsonlParser.normalize_message/1` uses a consume-by-popping pattern: every field is `Map.pop`'d from a working copy at three levels (top-level, `message.*`, `message.usage.*`). Residual keys trigger a raise in dev/test and a warning in prod. To handle a new Claude Code field, add a `Map.pop` in `consume_all_fields/1`, `consume_message/1`, or `consume_usage/1` — forgetting triggers the exhaustiveness check automatically.
+
 # Transcript Analytics CLI
 
 Run `mix spotter.transcripts` to list all available commands. Use these when investigating tool usage across sessions:

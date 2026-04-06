@@ -2,7 +2,7 @@
   "backend": "dolt",
   "database": "dolt",
   "dolt_database": "beads_spotter",
-  "dolt_mode": "server",
+  "dolt_mode": "embedded",
   "dolt_server_host": "127.0.0.1",
   "dolt_server_port": 3307,
   "dolt_server_user": "root",

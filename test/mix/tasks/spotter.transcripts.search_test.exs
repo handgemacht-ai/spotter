@@ -54,15 +54,15 @@ defmodule Mix.Tasks.Spotter.Transcripts.SearchTest do
       assert is_binary(output)
     end
 
-    test "parses --min-duration and --max-duration filters" do
+    test "parses --min-duration-ms and --max-duration-ms filters" do
       Mix.Task.reenable("spotter.transcripts.search")
 
       output =
         capture_io(fn ->
           Mix.Task.run("spotter.transcripts.search", [
-            "--min-duration",
+            "--min-duration-ms",
             "1000",
-            "--max-duration",
+            "--max-duration-ms",
             "5000"
           ])
         end)

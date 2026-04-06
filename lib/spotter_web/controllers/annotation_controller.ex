@@ -333,7 +333,7 @@ defmodule SpotterWeb.AnnotationController do
       bead_id: ann.bead_id,
       state: ann.state,
       has_image: ann.has_image,
-      metadata: ann.metadata,
+      metadata: Map.delete(ann.metadata || %{}, "feedback.breadcrumbs"),
       inserted_at: ann.inserted_at
     }
   end

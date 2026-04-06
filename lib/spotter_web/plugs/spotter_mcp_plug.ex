@@ -104,10 +104,20 @@ defmodule SpotterWeb.SpotterMcpPlug do
     handle_get_annotation_image(conn)
   end
 
+  defp handle_post(conn, _router_opts, "tools/call", "get_annotation_breadcrumbs") do
+    handle_get_annotation_breadcrumbs(conn)
+  end
+
   defp handle_post(conn, router_opts, "tools/list", _tool_name) do
     conn
     |> Plug.Conn.register_before_send(&inject_custom_tools/1)
     |> call_router_with_rescue(router_opts, nil)
+  end
+
+  defp handle_post(conn, router_opts, "tools/call", "list_review_annotations") do
+    conn
+    |> Plug.Conn.register_before_send(&strip_breadcrumbs_from_list/1)
+    |> call_router_with_rescue(router_opts, "list_review_annotations")
   end
 
   defp handle_post(conn, router_opts, _jsonrpc_method, tool_name) do
@@ -390,6 +400,130 @@ defmodule SpotterWeb.SpotterMcpPlug do
     end
   end
 
+  defp handle_get_annotation_breadcrumbs(conn) do
+    require OpenTelemetry.Tracer, as: Tracer
+
+    Tracer.with_span "spotter.mcp.get_annotation_breadcrumbs" do
+      annotation_id = get_in(conn.body_params, ["params", "arguments", "id"])
+      request_id = conn.body_params["id"]
+
+      scope = Ash.PlugHelpers.get_context(conn)[:spotter_mcp_scope]
+
+      result =
+        with {:scope, %{project_id: project_id}} <- {:scope, scope},
+             {:id, id} when is_binary(id) and id != "" <- {:id, annotation_id},
+             {:ok, annotation} <- Ash.get(Annotation, id, not_found_error?: true),
+             :ok <- validate_annotation_project(annotation, project_id) do
+          Tracer.set_attribute("spotter.mcp.annotation_id", id)
+
+          breadcrumbs = get_in(annotation.metadata || %{}, ["feedback.breadcrumbs"]) || []
+
+          timeline = Enum.map_join(breadcrumbs, "\n", &format_breadcrumb/1)
+
+          text =
+            if timeline == "" do
+              "No breadcrumbs recorded for this annotation."
+            else
+              "Breadcrumb timeline (#{length(breadcrumbs)} entries):\n\n#{timeline}"
+            end
+
+          %{"content" => [%{"type" => "text", "text" => text}]}
+        else
+          {:scope, _} ->
+            mcp_error_with_status(Tracer, "MCP project scope is required")
+
+          {:id, _} ->
+            mcp_error_with_status(Tracer, "annotation id is required")
+
+          {:error, %Ash.Error.Invalid{} = err} ->
+            mcp_error_with_status(Tracer, "annotation not found: #{Exception.message(err)}")
+
+          {:error, :project_mismatch} ->
+            mcp_error_with_status(
+              Tracer,
+              "annotation belongs to a different project than the current scope"
+            )
+
+          {:error, reason} ->
+            mcp_error_with_status(Tracer, "failed to load annotation: #{inspect(reason)}")
+        end
+
+      send_jsonrpc_response(conn, request_id, result)
+    end
+  end
+
+  defp format_breadcrumb(%{"ts" => ts, "type" => "console"} = bc) do
+    "[#{format_ts(ts)}] console [#{bc["level"]}] #{bc["message"]}"
+  end
+
+  defp format_breadcrumb(%{"ts" => ts, "type" => "network"} = bc) do
+    "[#{format_ts(ts)}] network #{bc["method"]} #{bc["url"]} #{bc["status"]} (#{bc["duration_ms"]}ms)"
+  end
+
+  defp format_breadcrumb(%{"ts" => ts, "type" => "interaction"} = bc) do
+    "[#{format_ts(ts)}] #{bc["action"]} #{bc["target"]}"
+  end
+
+  defp format_breadcrumb(%{"ts" => ts, "type" => "navigation"} = bc) do
+    "[#{format_ts(ts)}] navigation #{bc["from"]} → #{bc["to"]}"
+  end
+
+  defp format_breadcrumb(%{"ts" => ts, "type" => "error"} = bc) do
+    source = if bc["source"], do: " at #{bc["source"]}:#{bc["line"]}:#{bc["col"]}", else: ""
+    "[#{format_ts(ts)}] error #{bc["message"]}#{source}"
+  end
+
+  defp format_breadcrumb(%{"ts" => ts, "type" => type}) do
+    "[#{format_ts(ts)}] #{type}"
+  end
+
+  defp format_breadcrumb(_), do: "[?] unknown breadcrumb"
+
+  defp format_ts(ts) when is_number(ts) do
+    ts
+    |> DateTime.from_unix!(:millisecond)
+    |> Calendar.strftime("%H:%M:%S.%f")
+    |> String.slice(0, 12)
+  end
+
+  defp format_ts(_), do: "??:??:??.???"
+
+  defp strip_breadcrumbs_from_list(conn) do
+    with 200 <- conn.status,
+         {:ok, %{"result" => %{"content" => content} = result} = body} <-
+           Jason.decode(conn.resp_body) do
+      cleaned_content = Enum.map(content, &strip_breadcrumbs_from_content_item/1)
+
+      updated_body =
+        Jason.encode!(%{body | "result" => %{result | "content" => cleaned_content}})
+
+      %{conn | resp_body: updated_body}
+    else
+      _ -> conn
+    end
+  end
+
+  defp strip_breadcrumbs_from_content_item(%{"type" => "text", "text" => text} = item) do
+    case Jason.decode(text) do
+      {:ok, decoded} -> %{item | "text" => Jason.encode!(strip_breadcrumbs_deep(decoded))}
+      _ -> item
+    end
+  end
+
+  defp strip_breadcrumbs_from_content_item(item), do: item
+
+  defp strip_breadcrumbs_deep(data) when is_list(data) do
+    Enum.map(data, &strip_breadcrumbs_deep/1)
+  end
+
+  defp strip_breadcrumbs_deep(data) when is_map(data) do
+    data
+    |> Map.delete("feedback.breadcrumbs")
+    |> Map.new(fn {k, v} -> {k, strip_breadcrumbs_deep(v)} end)
+  end
+
+  defp strip_breadcrumbs_deep(data), do: data
+
   defp validate_annotation_project(annotation, project_id) do
     if is_nil(annotation.project_id) or
          to_string(annotation.project_id) == to_string(project_id) do
@@ -421,6 +555,22 @@ defmodule SpotterWeb.SpotterMcpPlug do
     |> Plug.Conn.send_resp(200, body)
   end
 
+  @get_annotation_breadcrumbs_tool %{
+    "name" => "get_annotation_breadcrumbs",
+    "description" =>
+      "Retrieve the breadcrumb timeline for a review annotation. Returns a formatted text log of console messages, network requests, user interactions, navigation, and errors that occurred before the annotation was created.",
+    "inputSchema" => %{
+      "type" => "object",
+      "properties" => %{
+        "id" => %{
+          "type" => "string",
+          "description" => "The annotation ID (UUID)"
+        }
+      },
+      "required" => ["id"]
+    }
+  }
+
   @get_annotation_image_tool %{
     "name" => "get_annotation_image",
     "description" =>
@@ -444,7 +594,11 @@ defmodule SpotterWeb.SpotterMcpPlug do
           updated_body =
             Jason.encode!(%{
               body
-              | "result" => %{result | "tools" => tools ++ [@get_annotation_image_tool]}
+              | "result" => %{
+                  result
+                  | "tools" =>
+                      tools ++ [@get_annotation_breadcrumbs_tool, @get_annotation_image_tool]
+                }
             })
 
           %{conn | resp_body: updated_body}
