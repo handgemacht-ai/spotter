@@ -253,14 +253,14 @@ defmodule Spotter.Transcripts.JsonlParser do
     raw_type = fields.raw_type
     {normalized_type, known?} = parse_type_with_known(raw_type)
     timestamp = parse_timestamp(fields.timestamp)
-    content = normalize_content(fields.message_content, fields.top_content)
+    {content, block_unconsumed} = normalize_content(fields.message_content, fields.top_content)
 
     check_unconsumed!("top-level", raw_type, residual_top)
     check_unconsumed!("message", raw_type, residual_message)
     check_unconsumed!("message.usage", raw_type, residual_usage)
 
     unconsumed =
-      collect_unconsumed_paths(residual_top, residual_message, residual_usage)
+      collect_unconsumed_paths(residual_top, residual_message, residual_usage, block_unconsumed)
 
     %{
       uuid: fields.uuid,
@@ -290,6 +290,7 @@ defmodule Spotter.Transcripts.JsonlParser do
       cache_read_input_tokens: fields.cache_read_input_tokens,
       cache_creation_input_tokens: fields.cache_creation_input_tokens,
       model: fields.message_model,
+      is_meta: fields.is_meta == true,
       unconsumed_fields: unconsumed
     }
   end
@@ -334,7 +335,7 @@ defmodule Spotter.Transcripts.JsonlParser do
     {_is_api_error, data} = Map.pop(data, "isApiErrorMessage")
     {_permission_mode, data} = Map.pop(data, "permissionMode")
     {_is_compact_summary, data} = Map.pop(data, "isCompactSummary")
-    {_is_meta, data} = Map.pop(data, "isMeta")
+    {is_meta, data} = Map.pop(data, "isMeta")
     {_is_visible_transcript, data} = Map.pop(data, "isVisibleInTranscriptOnly")
     {_origin, data} = Map.pop(data, "origin")
     {_plan_content, data} = Map.pop(data, "planContent")
@@ -410,7 +411,8 @@ defmodule Spotter.Transcripts.JsonlParser do
       input_tokens: usage_tokens.input_tokens,
       output_tokens: usage_tokens.output_tokens,
       cache_read_input_tokens: usage_tokens.cache_read_input_tokens,
-      cache_creation_input_tokens: usage_tokens.cache_creation_input_tokens
+      cache_creation_input_tokens: usage_tokens.cache_creation_input_tokens,
+      is_meta: is_meta
     }
 
     {fields, data, residual_message, residual_usage}
@@ -513,7 +515,7 @@ defmodule Spotter.Transcripts.JsonlParser do
     end
   end
 
-  defp collect_unconsumed_paths(residual_top, residual_message, residual_usage) do
+  defp collect_unconsumed_paths(residual_top, residual_message, residual_usage, block_unconsumed) do
     top = Map.keys(residual_top) |> Enum.map(&"#{&1}")
 
     msg =
@@ -526,7 +528,7 @@ defmodule Spotter.Transcripts.JsonlParser do
         do: [],
         else: Map.keys(residual_usage) |> Enum.map(&"message.usage.#{&1}")
 
-    case top ++ msg ++ usg do
+    case top ++ msg ++ usg ++ block_unconsumed do
       [] -> nil
       paths -> paths
     end
@@ -540,11 +542,83 @@ defmodule Spotter.Transcripts.JsonlParser do
     content = message_content || top_content
 
     case content do
-      nil -> nil
-      c when is_binary(c) -> %{"text" => c}
-      c when is_list(c) -> %{"blocks" => c}
-      c when is_map(c) -> c
+      nil ->
+        {nil, []}
+
+      c when is_binary(c) ->
+        {%{"text" => c}, []}
+
+      c when is_list(c) ->
+        block_unconsumed =
+          c
+          |> Enum.with_index()
+          |> Enum.flat_map(fn {block, idx} -> validate_content_block(block, idx) end)
+
+        {%{"blocks" => c}, block_unconsumed}
+
+      c when is_map(c) ->
+        {c, []}
     end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Content block validation — consume-by-popping per block type
+  #
+  # Each block type has known fields that are popped from a working copy.
+  # Residual keys are checked via check_unconsumed!/3. The original block
+  # is NOT modified — validation is a side effect only.
+  # ---------------------------------------------------------------------------
+
+  defp validate_content_block(block, idx) when is_map(block) do
+    {block_type, working} = Map.pop(block, "type")
+
+    residual =
+      case block_type do
+        "text" -> consume_text_block(working)
+        "thinking" -> consume_thinking_block(working)
+        "tool_use" -> consume_tool_use_block(working)
+        "tool_result" -> consume_tool_result_block(working)
+        other -> warn_unknown_block_type(other, idx)
+      end
+
+    check_unconsumed!("content_block[#{block_type}]", block_type, residual)
+
+    residual
+    |> Map.keys()
+    |> Enum.map(&"content.blocks[#{idx}].#{&1}")
+  end
+
+  defp validate_content_block(_non_map, _idx), do: []
+
+  defp consume_text_block(working) do
+    {_text, working} = Map.pop(working, "text")
+    working
+  end
+
+  defp consume_thinking_block(working) do
+    {_thinking, working} = Map.pop(working, "thinking")
+    {_signature, working} = Map.pop(working, "signature")
+    working
+  end
+
+  defp consume_tool_use_block(working) do
+    {_id, working} = Map.pop(working, "id")
+    {_name, working} = Map.pop(working, "name")
+    {_input, working} = Map.pop(working, "input")
+    {_caller, working} = Map.pop(working, "caller")
+    working
+  end
+
+  defp consume_tool_result_block(working) do
+    {_tool_use_id, working} = Map.pop(working, "tool_use_id")
+    {_is_error, working} = Map.pop(working, "is_error")
+    {_content, working} = Map.pop(working, "content")
+    working
+  end
+
+  defp warn_unknown_block_type(block_type, idx) do
+    Logger.warning("Unknown content block type at index #{idx}: #{inspect(block_type)}")
+    %{}
   end
 
   # ---------------------------------------------------------------------------

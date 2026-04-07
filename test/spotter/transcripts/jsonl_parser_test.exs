@@ -653,6 +653,117 @@ defmodule Spotter.Transcripts.JsonlParserTest do
     end
   end
 
+  describe "content block exhaustiveness" do
+    test "known content block fields pass without raising" do
+      file = Path.join(@fixtures_dir, "known_blocks.jsonl")
+
+      File.write!(
+        file,
+        Jason.encode!(%{
+          "uuid" => "msg-1",
+          "type" => "assistant",
+          "timestamp" => "2026-01-01T00:00:00.000Z",
+          "message" => %{
+            "role" => "assistant",
+            "content" => [
+              %{"type" => "text", "text" => "Hello"},
+              %{"type" => "thinking", "thinking" => "Let me think...", "signature" => "sig123"},
+              %{
+                "type" => "tool_use",
+                "id" => "toolu_1",
+                "name" => "Skill",
+                "input" => %{"skill" => "ash-framework"},
+                "caller" => %{"type" => "direct"}
+              }
+            ]
+          }
+        })
+      )
+
+      assert {:ok, result} = JsonlParser.parse_session_file(file)
+      msg = hd(result.messages)
+      assert msg.unconsumed_fields == nil
+    end
+
+    test "tool_result block with known fields passes" do
+      file = Path.join(@fixtures_dir, "tool_result_block.jsonl")
+
+      File.write!(
+        file,
+        Jason.encode!(%{
+          "uuid" => "msg-1",
+          "type" => "user",
+          "timestamp" => "2026-01-01T00:00:00.000Z",
+          "message" => %{
+            "role" => "user",
+            "content" => [
+              %{
+                "type" => "tool_result",
+                "tool_use_id" => "toolu_1",
+                "is_error" => false,
+                "content" => "OK"
+              }
+            ]
+          }
+        })
+      )
+
+      assert {:ok, result} = JsonlParser.parse_session_file(file)
+      msg = hd(result.messages)
+      assert msg.unconsumed_fields == nil
+    end
+
+    test "unknown field in content block raises in test env" do
+      file = Path.join(@fixtures_dir, "unknown_block_field.jsonl")
+
+      File.write!(
+        file,
+        Jason.encode!(%{
+          "uuid" => "msg-1",
+          "type" => "assistant",
+          "timestamp" => "2026-01-01T00:00:00.000Z",
+          "message" => %{
+            "role" => "assistant",
+            "content" => [
+              %{
+                "type" => "text",
+                "text" => "Hello",
+                "citations" => [%{"url" => "http://example.com"}]
+              }
+            ]
+          }
+        })
+      )
+
+      assert_raise RuntimeError, ~r/Unconsumed JSONL fields at content_block\[text\]/, fn ->
+        JsonlParser.parse_session_file(file)
+      end
+    end
+
+    test "unknown content block type warns but does not raise" do
+      file = Path.join(@fixtures_dir, "unknown_block_type.jsonl")
+
+      File.write!(
+        file,
+        Jason.encode!(%{
+          "uuid" => "msg-1",
+          "type" => "assistant",
+          "timestamp" => "2026-01-01T00:00:00.000Z",
+          "message" => %{
+            "role" => "assistant",
+            "content" => [
+              %{"type" => "server_tool_use", "id" => "stu_1", "name" => "web_search"}
+            ]
+          }
+        })
+      )
+
+      assert {:ok, result} = JsonlParser.parse_session_file(file)
+      msg = hd(result.messages)
+      assert msg.unconsumed_fields == nil
+    end
+  end
+
   describe "lossless import: timestamp-less records preserved" do
     test "messages without timestamps are NOT dropped from parse results" do
       file = Path.join(@fixtures_dir, "timestampless.jsonl")

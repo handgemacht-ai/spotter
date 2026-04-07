@@ -1,6 +1,8 @@
 defmodule Spotter.Services.TranscriptAnalyticsTest do
   use ExUnit.Case, async: false
 
+  require Ash.Query
+
   alias Ecto.Adapters.SQL.Sandbox
   alias Spotter.Services.TranscriptAnalytics
   alias Spotter.Transcripts.{Project, Session, ToolCallRun}
@@ -581,6 +583,71 @@ defmodule Spotter.Services.TranscriptAnalyticsTest do
     test "omits recovery stats without flag", %{project: project} do
       result = TranscriptAnalytics.sequence_analysis(%{project_id: project.id})
       refute Map.has_key?(result, :recovery_stats)
+    end
+  end
+
+  describe "tool_input extraction" do
+    test "stores skill name in tool_input", %{session: session, project: project} do
+      run =
+        create_run(session, project, %{
+          tool_name: "Skill",
+          command: nil,
+          command_fingerprint: nil,
+          tool_input: %{"skill" => "ash-framework", "args" => "-v"}
+        })
+
+      assert run.tool_input == %{"skill" => "ash-framework", "args" => "-v"}
+    end
+
+    test "stores file_path in tool_input for Read", %{session: session, project: project} do
+      run =
+        create_run(session, project, %{
+          tool_name: "Read",
+          command: nil,
+          command_fingerprint: nil,
+          tool_input: %{"file_path" => "/srv/project/lib/foo.ex"}
+        })
+
+      assert run.tool_input["file_path"] == "/srv/project/lib/foo.ex"
+    end
+
+    test "tool_input can be nil", %{session: session, project: project} do
+      run =
+        create_run(session, project, %{
+          tool_name: "Bash",
+          tool_input: nil
+        })
+
+      assert run.tool_input == nil
+    end
+
+    test "skill runs are filterable via tool_input", %{session: session, project: project} do
+      create_run(session, project, %{
+        tool_name: "Skill",
+        command: nil,
+        command_fingerprint: nil,
+        tool_input: %{"skill" => "ash-framework"}
+      })
+
+      create_run(session, project, %{
+        tool_name: "Skill",
+        command: nil,
+        command_fingerprint: nil,
+        tool_input: %{"skill" => "commit"}
+      })
+
+      create_run(session, project, %{
+        tool_name: "Bash",
+        tool_input: nil
+      })
+
+      all_skills =
+        ToolCallRun
+        |> Ash.Query.filter(tool_name == "Skill")
+        |> Ash.Query.filter(session_id == ^session.id)
+        |> Ash.read!()
+
+      assert length(all_skills) == 2
     end
   end
 end

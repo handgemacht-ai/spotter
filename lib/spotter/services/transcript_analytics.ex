@@ -4,10 +4,24 @@ defmodule Spotter.Services.TranscriptAnalytics do
   require Ash.Query
   require OpenTelemetry.Tracer
 
-  alias Spotter.Transcripts.{Message, ToolCallRun}
+  alias Spotter.Services.TranscriptRenderer
+  alias Spotter.Transcripts.{Message, Session, ToolCallRun}
 
   @default_limit 50
+
+  @tool_input_keys %{
+    "Skill" => ["skill", "args"],
+    "Read" => ["file_path"],
+    "Write" => ["file_path"],
+    "Edit" => ["file_path"],
+    "Glob" => ["pattern", "path"],
+    "Grep" => ["pattern", "path", "output_mode"],
+    "Agent" => ["description", "subagent_type", "model"],
+    "WebSearch" => ["query"],
+    "WebFetch" => ["url"]
+  }
   @batch_size 500
+  @max_session_scan 50
 
   @doc """
   Derives ToolCallRun records from a session's messages.
@@ -64,6 +78,7 @@ defmodule Spotter.Services.TranscriptAnalytics do
          tool_name: block["name"] || "Unknown",
          command: extract_command(block),
          input_summary: extract_input_summary(block),
+         tool_input: extract_tool_input(block),
          started_at: msg.timestamp,
          start_ordinal: msg.ordinal,
          source_scope: msg.source_scope,
@@ -133,6 +148,7 @@ defmodule Spotter.Services.TranscriptAnalytics do
       command: use_info[:command],
       command_fingerprint: normalize_fingerprint(use_info[:command]),
       input_summary: use_info[:input_summary],
+      tool_input: use_info[:tool_input],
       status: status,
       started_at: use_info[:started_at],
       finished_at: result_info[:finished_at],
@@ -156,11 +172,24 @@ defmodule Spotter.Services.TranscriptAnalytics do
     end
   end
 
+  defp extract_tool_input(block) do
+    input = block["input"] || %{}
+
+    case Map.get(@tool_input_keys, block["name"]) do
+      nil ->
+        nil
+
+      keys ->
+        extracted = Map.take(input, keys)
+        if extracted == %{}, do: nil, else: extracted
+    end
+  end
+
   defp extract_input_summary(block) do
     case block["input"] do
       input when is_map(input) ->
         input
-        |> Map.take(["file_path", "pattern", "command", "description"])
+        |> Map.take(["file_path", "pattern", "command", "description", "skill", "args"])
         |> Enum.map_join(", ", fn {k, v} -> "#{k}=#{String.slice(to_string(v), 0, 80)}" end)
         |> String.slice(0, 200)
 
@@ -406,6 +435,15 @@ defmodule Spotter.Services.TranscriptAnalytics do
 
   defp maybe_filter(query, :worktree_name, value),
     do: Ash.Query.filter(query, worktree_name == ^value)
+
+  defp maybe_filter(query, :type, value) when not is_nil(value),
+    do: Ash.Query.filter(query, type == ^value)
+
+  defp maybe_filter(query, :role, value) when not is_nil(value),
+    do: Ash.Query.filter(query, role == ^value)
+
+  defp maybe_filter(query, :is_meta, value) when is_boolean(value),
+    do: Ash.Query.filter(query, is_meta == ^value)
 
   defp maybe_filter_tool(query, nil), do: query
   defp maybe_filter_tool(query, tool), do: Ash.Query.filter(query, tool_name == ^tool)
@@ -776,5 +814,107 @@ defmodule Spotter.Services.TranscriptAnalytics do
       }
     end)
     |> Enum.sort_by(& &1.total_errors, :desc)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Message grep
+  # ---------------------------------------------------------------------------
+
+  @doc "Search message text content across all messages, batched by session."
+  def grep_messages(opts \\ %{}) do
+    OpenTelemetry.Tracer.with_span "spotter.transcript_analytics.grep_messages" do
+      limit = opts[:limit] || @default_limit
+      text_pattern = opts[:text]
+      min_size = opts[:min_size]
+      downcased_pattern = text_pattern && String.downcase(text_pattern)
+
+      sessions = resolve_target_sessions(opts)
+
+      sessions
+      |> Stream.flat_map(fn session ->
+        grep_session_messages(session, opts, downcased_pattern, min_size)
+      end)
+      |> Stream.take(limit)
+      |> Enum.to_list()
+    end
+  end
+
+  defp resolve_target_sessions(opts) do
+    query =
+      Session
+      |> Ash.Query.new()
+      |> Ash.Query.sort(started_at: :desc)
+
+    query =
+      if opts[:session_id] do
+        Ash.Query.filter(query, id == ^opts[:session_id])
+      else
+        query
+      end
+
+    query =
+      if opts[:project_id] do
+        Ash.Query.filter(query, project_id == ^opts[:project_id])
+      else
+        query
+      end
+
+    query
+    |> Ash.Query.limit(@max_session_scan)
+    |> Ash.read!()
+  end
+
+  defp grep_session_messages(session, opts, downcased_pattern, min_size) do
+    query =
+      Message
+      |> Ash.Query.filter(session_id == ^session.id)
+      |> maybe_filter(:type, opts[:type])
+      |> maybe_filter(:role, opts[:role])
+      |> maybe_filter(:is_meta, opts[:is_meta])
+      |> Ash.Query.select([:id, :ordinal, :type, :role, :is_meta, :content, :timestamp])
+      |> Ash.Query.sort(ordinal: :asc)
+
+    messages = Ash.read!(query, timeout: :timer.seconds(60))
+
+    messages
+    |> Stream.map(fn msg ->
+      text = TranscriptRenderer.extract_text(msg.content)
+      {msg, text}
+    end)
+    |> Stream.filter(fn {_msg, text} ->
+      (is_nil(downcased_pattern) or String.contains?(String.downcase(text), downcased_pattern)) and
+        (is_nil(min_size) or byte_size(text) >= min_size)
+    end)
+    |> Stream.map(fn {msg, text} ->
+      %{
+        session_id: session.session_id,
+        ordinal: msg.ordinal,
+        type: msg.type,
+        role: msg.role,
+        is_meta: msg.is_meta,
+        text_size: byte_size(text),
+        snippet: truncate_around_match(text, downcased_pattern, 120),
+        timestamp: msg.timestamp
+      }
+    end)
+  end
+
+  defp truncate_around_match(text, nil, max), do: String.slice(text, 0, max)
+
+  defp truncate_around_match(text, pattern, max) do
+    downcased = String.downcase(text)
+
+    case :binary.match(downcased, pattern) do
+      {pos, _len} ->
+        start = max(0, pos - div(max, 3))
+        slice = String.slice(text, start, max)
+
+        prefix = if start > 0, do: "...", else: ""
+        suffix = if start + max < String.length(text), do: "...", else: ""
+        prefix <> slice <> suffix
+
+      :nomatch ->
+        String.slice(text, 0, max)
+    end
   end
 end

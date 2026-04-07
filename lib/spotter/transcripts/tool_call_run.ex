@@ -21,6 +21,7 @@ defmodule Spotter.Transcripts.ToolCallRun do
         :command,
         :command_fingerprint,
         :input_summary,
+        :tool_input,
         :status,
         :started_at,
         :finished_at,
@@ -52,6 +53,7 @@ defmodule Spotter.Transcripts.ToolCallRun do
         :command,
         :command_fingerprint,
         :input_summary,
+        :tool_input,
         :status,
         :started_at,
         :finished_at,
@@ -78,6 +80,7 @@ defmodule Spotter.Transcripts.ToolCallRun do
         :command,
         :command_fingerprint,
         :input_summary,
+        :tool_input,
         :status,
         :started_at,
         :finished_at,
@@ -133,6 +136,7 @@ defmodule Spotter.Transcripts.ToolCallRun do
     attribute :worktree_name, :string
     attribute :canonical_cwd, :string
     attribute :error_content, :string
+    attribute :tool_input, :map
 
     create_timestamp :inserted_at
     update_timestamp :updated_at
