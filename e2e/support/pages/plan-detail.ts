@@ -105,18 +105,14 @@ export class PlanDetailPage {
     return this.page.getByTestId("child-tasks");
   }
 
-  allChildTaskRows(): Locator {
-    return this.page.getByTestId("child-task-row");
+  allChildTaskDetails(): Locator {
+    return this.page.getByTestId("child-task-detail");
   }
 
-  childTaskRow(taskId: string): Locator {
+  childTaskDetail(taskId: string): Locator {
     return this.root.locator(
-      `[data-testid="child-task-row"][data-task-id="${taskId}"]`,
+      `[data-testid="child-task-detail"][data-task-id="${taskId}"]`,
     );
-  }
-
-  taskLink(taskId: string): Locator {
-    return this.childTaskRow(taskId).locator(".plan-task-link");
   }
 
   // --- Sidebar ---
@@ -196,7 +192,7 @@ export class PlanDetailPage {
   }
 
   async expectChildTaskCount(count: number) {
-    await expect(this.allChildTaskRows()).toHaveCount(count);
+    await expect(this.allChildTaskDetails()).toHaveCount(count);
   }
 
   async expectDependencyCount(count: number) {

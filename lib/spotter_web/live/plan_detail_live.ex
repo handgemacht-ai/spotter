@@ -205,6 +205,11 @@ defmodule SpotterWeb.PlanDetailLive do
 
       parsed = parse_bead_content(bead && bead.description)
 
+      children_with_content =
+        Enum.map(children, fn task ->
+          Map.put(task, :parsed_content, parse_bead_content(task.description))
+        end)
+
       dolt_available = bead != nil
 
       graph_data = build_graph_payload(graph, bead_id)
@@ -218,7 +223,7 @@ defmodule SpotterWeb.PlanDetailLive do
       socket =
         assign(socket,
           bead: bead,
-          children: children,
+          children: children_with_content,
           dependencies: deps,
           annotations: annotations,
           parsed_content: parsed,
@@ -448,11 +453,48 @@ defmodule SpotterWeb.PlanDetailLive do
               <%= if @children != [] do %>
                 <div class="plan-children" data-testid="child-tasks">
                   <h3>Tasks ({length(@children)})</h3>
-                  <div class="plan-task-list">
-                    <%= for task <- @children do %>
-                      <.task_row task={task} project={@project} />
-                    <% end %>
-                  </div>
+
+                  <%= for task <- @children do %>
+                    <div
+                      class="plan-child-detail"
+                      data-testid="child-task-detail"
+                      data-task-id={task.id}
+                    >
+                      <.bead_header bead={task} />
+
+                      <%= if task.parsed_content do %>
+                        <.classification_chips items={task.parsed_content.classification} />
+
+                        <%= for {heading, _body, type, rendered} <- task.parsed_content.sections, type == :narrative do %>
+                          <div
+                            class="plan-section bead-content-section"
+                            data-plan-section={heading}
+                          >
+                            <h4 class="plan-section-heading bead-section-heading">
+                              {heading}
+                            </h4>
+                            <div class="plan-section-body bead-content">
+                              {render_section(rendered)}
+                            </div>
+                          </div>
+                        <% end %>
+
+                        <%= for {block, idx} <- Enum.with_index(task.parsed_content.mermaid_blocks) do %>
+                          <div
+                            class="plan-mermaid-block"
+                            id={"task-#{task.id}-mermaid-#{idx}"}
+                            phx-hook="MermaidHook"
+                            data-mermaid-source={block}
+                            data-testid="mermaid-block"
+                          >
+                            <pre class="mermaid-fallback"><code>{block}</code></pre>
+                          </div>
+                        <% end %>
+
+                        <.acceptance_cards rows={task.parsed_content.acceptance_rows} />
+                      <% end %>
+                    </div>
+                  <% end %>
                 </div>
               <% end %>
             </div>

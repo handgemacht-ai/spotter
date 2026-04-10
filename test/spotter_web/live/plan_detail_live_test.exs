@@ -70,21 +70,15 @@ defmodule SpotterWeb.PlanDetailLiveTest do
   end
 
   describe "child tasks" do
-    test "lists child tasks with id, title, status, and priority" do
+    test "renders child tasks inline with full content" do
       {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
 
       html = render(view)
 
       assert html =~ ~s(data-testid="child-tasks")
-      assert html =~ ~s(data-testid="child-task-row")
-    end
-
-    test "child task rows are navigable links" do
-      {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
-
-      html = render(view)
-
-      assert html =~ ~s(data-testid="child-task-row")
+      assert html =~ ~s(data-testid="child-task-detail")
+      # Each child task renders its own bead_header
+      assert html =~ ~s(data-testid="bead-detail-header")
       refute html =~ "toggle_task"
     end
   end
@@ -446,17 +440,15 @@ defmodule SpotterWeb.PlanDetailLiveTest do
     end
   end
 
-  describe "task_row/1 navigable link" do
-    test "renders task ID and title as a single navigable link" do
+  describe "inline child task rendering" do
+    test "renders child task header with id, title, and badges" do
       {:ok, view, _html} = live(build_conn(), "/plans/beads_spotter/spotter-uok")
 
       html = render(view)
 
-      assert html =~ ~s(data-testid="child-task-row")
-      assert html =~ ~s(class="plan-task-link")
+      assert html =~ ~s(data-testid="child-task-detail")
       assert html =~ "spotter-task-1"
       assert html =~ "Implement BeadQueries"
-      assert html =~ ~r/href="[^"]*spotter-task-1/
       refute html =~ "toggle_task"
     end
   end

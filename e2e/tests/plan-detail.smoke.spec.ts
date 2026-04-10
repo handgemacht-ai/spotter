@@ -224,7 +224,7 @@ test.describe("plan detail — /plans/:project/:bead_id", () => {
     });
   });
 
-  test("child task navigation to bead detail", async ({ page }) => {
+  test("child tasks rendered inline with full content", async ({ page }) => {
     await test.step("GIVEN an epic with child tasks", async () => {
       await navigateToTestBead(page, detail);
     });
@@ -233,36 +233,20 @@ test.describe("plan detail — /plans/:project/:bead_id", () => {
       await expect(detail.childTasksContainer()).toBeVisible();
     });
 
-    await test.step("THEN child task rows are listed", async () => {
-      const taskCount = await detail.allChildTaskRows().count();
+    await test.step("THEN child task details are rendered inline", async () => {
+      const taskCount = await detail.allChildTaskDetails().count();
       expect(
         taskCount,
-        "expected at least 1 child task",
+        "expected at least 1 inline child task",
       ).toBeGreaterThanOrEqual(1);
     });
 
-    await test.step("THEN each task row shows ID, title, status, priority", async () => {
-      const firstTask = detail.allChildTaskRows().first();
-      await expect(firstTask.locator(".plan-task-id")).toBeVisible();
-      await expect(firstTask.locator(".plan-task-title")).toBeVisible();
+    await test.step("THEN each child task has a bead header with ID, title, status, priority", async () => {
+      const firstTask = detail.allChildTaskDetails().first();
+      await expect(firstTask.getByTestId("bead-detail-header")).toBeVisible();
+      await expect(firstTask.getByTestId("bead-id")).toBeVisible();
       await expect(firstTask.locator("[data-status]")).toBeVisible();
       await expect(firstTask.locator("[data-priority]")).toBeVisible();
-    });
-
-    await test.step("WHEN user clicks a task link", async () => {
-      const firstTaskId = await detail
-        .allChildTaskRows()
-        .first()
-        .getAttribute("data-task-id");
-      expect(firstTaskId).toBeTruthy();
-      await detail.taskLink(firstTaskId!).click();
-    });
-
-    await test.step("THEN navigates to that task's bead detail page", async () => {
-      await waitForLiveViewReady(page, "plan-detail-root");
-      await expect(detail.beadDetail()).toBeVisible();
-      // Should now be on a different bead (the task, not the epic)
-      await expect(page).not.toHaveURL(new RegExp(E2E_BEAD_ID));
     });
   });
 
