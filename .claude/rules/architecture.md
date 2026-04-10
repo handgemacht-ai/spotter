@@ -42,10 +42,11 @@ Plan source abstraction for aggregating plans from multiple backends.
 
 ## Beads Layer (`lib/spotter/beads/`)
 
-Read-only Dolt client for querying beads issue data across projects.
+Read-only client for querying beads issue data across projects via JSONL files.
 
-- **Client**: Raw MyXQL pool management and query execution (lazy-started per project)
-- **DoltConfig**: Connection configuration for Dolt databases (`beads_<project>`)
+- **JsonlStore**: GenServer per project — loads `issues.jsonl` + `dependencies.jsonl` from `.beads/backup/`, indexes in-memory, polls mtimes every 5s
+- **Client**: In-memory lookups against JsonlStore (lazy-started per project)
+- **DoltConfig**: Display/tracing name resolution for projects
 - **BeadQueries**: High-level query interface returning typed structs with OTEL spans
 - **BeadStructs**: Typed structs — Epic, Task, Dependency — with `from_row/1` converters
 - **BeadContentParser**: Markdown parser — section splitting, mermaid extraction, GIVEN/WHEN/THEN tables

@@ -33,6 +33,7 @@ site/dist/
 .logs/
 .claude/worktrees
 .beads/issues.jsonl
+.beads/embeddeddolt/
 
 # E2E
 e2e/screenshots

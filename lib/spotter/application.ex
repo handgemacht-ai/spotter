@@ -22,6 +22,8 @@ defmodule Spotter.Application do
 
     children =
       [
+        {Registry, keys: :unique, name: Spotter.Beads.JsonlStore.Registry},
+        {DynamicSupervisor, name: Spotter.Beads.JsonlStore.Supervisor, strategy: :one_for_one},
         {Phoenix.PubSub, name: Spotter.PubSub},
         Spotter.Services.TranscriptFileLinks,
         Spotter.Observability.FlowHub,

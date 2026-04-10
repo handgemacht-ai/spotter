@@ -35,7 +35,13 @@ config :spotter, SpotterWeb.SpotterMcpPlug,
   sse_keepalive_ms: 10,
   sse_max_duration_ms: 25
 
-# Static test fixture data for PlanDetailLive (Dolt is unavailable in tests)
+# Beads JSONL store — test fixtures
+config :spotter, Spotter.Beads.JsonlStore,
+  project_paths: %{
+    "spotter" => Path.expand("../test/fixtures/beads/spotter/backup", __DIR__)
+  }
+
+# Static test fixture data for PlanDetailLive
 config :spotter, :plan_detail_test_data, %{
   "beads_spotter/spotter-uok" => %{
     epic: %{

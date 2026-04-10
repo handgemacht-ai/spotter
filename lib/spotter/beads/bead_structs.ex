@@ -1,9 +1,9 @@
 defmodule Spotter.Beads.BeadStructs do
   @moduledoc """
-  Typed structs for bead data returned by Dolt queries.
+  Typed structs for bead data.
 
   Provides `Epic`, `Task`, and `Dependency` structs with `from_row/1`
-  and `from_rows/1` helpers for converting raw MyXQL result maps.
+  and `from_rows/1` helpers for converting raw result maps.
   """
 
   defmodule Epic do

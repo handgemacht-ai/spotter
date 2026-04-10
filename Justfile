@@ -99,6 +99,12 @@ up: _check-prereqs _ensure-shared-otel _ensure-dev-setup
       bash {{project_root}}/scripts/runtime/wait-for-phoenix.sh
     fi
 
+    # Register preview route with the ingress proxy (idempotent, no-op if ingress is down)
+    workspace_root="{{project_root}}/.."
+    if [ -x "${workspace_root}/.runtime/tailnet-ingress/ensure-preview.sh" ]; then
+      "${workspace_root}/.runtime/tailnet-ingress/ensure-preview.sh" "{{project_root}}" || true
+    fi
+
 # Stop all services
 down:
     #!/usr/bin/env bash

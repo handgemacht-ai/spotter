@@ -2,7 +2,7 @@ defmodule Spotter.Beads.BeadQueries do
   @moduledoc """
   High-level query interface for bead data, returning typed structs.
 
-  Wraps `Spotter.Beads.Client` raw MyXQL queries and converts results
+  Wraps `Spotter.Beads.Client` lookups and converts results
   into `Spotter.Beads.BeadStructs` structs.
   """
 

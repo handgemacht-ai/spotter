@@ -1,36 +1,19 @@
 defmodule Spotter.Beads.Client do
   @moduledoc """
-  Read-only Dolt client for querying beads issue data.
+  Read-only client for querying beads issue data from JSONL files.
 
-  Manages lazy-started MyXQL connection pools per project. Each project maps
-  directly to a Dolt database by name.
+  Delegates to `Spotter.Beads.JsonlStore` for in-memory lookups against
+  data loaded from `.beads/backup/` JSONL exports.
   """
 
   require OpenTelemetry.Tracer, as: Tracer
 
   alias Spotter.Beads.DoltConfig
+  alias Spotter.Beads.JsonlStore
 
-  @pool_prefix __MODULE__.Pool
-  @query_timeout 5_000
-  @connect_timeout 500
+  @parent_types ["parent-child", "parent"]
 
   # -- Public API --
-
-  @doc """
-  Executes a raw SQL query against the given project's beads database.
-  """
-  @spec query(String.t(), String.t(), list()) ::
-          {:ok, MyXQL.Result.t()} | {:error, atom()}
-  def query(project, sql, params \\ []) do
-    Tracer.with_span "spotter.beads.client.query" do
-      Tracer.set_attribute("spotter.beads.database", DoltConfig.database_name(project))
-      Tracer.set_attribute("spotter.beads.query_name", "raw")
-
-      with {:ok, pool} <- ensure_pool(project) do
-        run_query(pool, sql, params)
-      end
-    end
-  end
 
   @doc """
   Lists epic issues for a project, optionally filtered by status.
@@ -42,21 +25,19 @@ defmodule Spotter.Beads.Client do
       Tracer.set_attribute("spotter.beads.database", DoltConfig.database_name(project))
       Tracer.set_attribute("spotter.beads.query_name", "list_epics")
 
-      {where_clause, params} = epic_filter_clause(filter)
+      with {:ok, state} <- JsonlStore.get_state(project) do
+        epics =
+          state.issues_by_id
+          |> Map.values()
+          |> Enum.filter(&(&1.issue_type == "epic"))
+          |> filter_by_status(filter)
+          |> Enum.map(fn epic ->
+            task_count = count_children(state, epic.id)
+            Map.put(epic, :task_count, task_count)
+          end)
+          |> sort_by_priority_created()
 
-      sql = """
-      SELECT id, title, status, priority, issue_type, description,
-             created_at, updated_at, closed_at, assignee
-      FROM issues
-      WHERE issue_type = 'epic' #{where_clause}
-      ORDER BY priority ASC, created_at DESC
-      """
-
-      with {:ok, pool} <- ensure_pool(project) do
-        case run_query(pool, sql, params) do
-          {:ok, result} -> {:ok, rows_to_maps(result)}
-          {:error, _} = err -> err
-        end
+        {:ok, epics}
       end
     end
   end
@@ -71,18 +52,10 @@ defmodule Spotter.Beads.Client do
       Tracer.set_attribute("spotter.beads.database", DoltConfig.database_name(project))
       Tracer.set_attribute("spotter.beads.query_name", "get_issue")
 
-      sql = """
-      SELECT id, title, status, priority, issue_type, description,
-             created_at, updated_at, closed_at, assignee
-      FROM issues
-      WHERE id = ?
-      """
-
-      with {:ok, pool} <- ensure_pool(project) do
-        case run_query(pool, sql, [issue_id]) do
-          {:ok, %{num_rows: 0}} -> {:error, :not_found}
-          {:ok, %{num_rows: 1} = result} -> {:ok, result |> rows_to_maps() |> hd()}
-          {:error, _} = err -> err
+      with {:ok, state} <- JsonlStore.get_state(project) do
+        case Map.fetch(state.issues_by_id, issue_id) do
+          {:ok, issue} -> {:ok, issue}
+          :error -> {:error, :not_found}
         end
       end
     end
@@ -98,20 +71,17 @@ defmodule Spotter.Beads.Client do
       Tracer.set_attribute("spotter.beads.database", DoltConfig.database_name(project))
       Tracer.set_attribute("spotter.beads.query_name", "get_children")
 
-      sql = """
-      SELECT i.id, i.title, i.status, i.priority, i.issue_type, i.description,
-             i.created_at, i.updated_at, i.closed_at, i.assignee
-      FROM issues i
-      INNER JOIN dependencies d ON d.issue_id = i.id
-      WHERE d.depends_on_id = ? AND d.type IN ('parent-child', 'parent')
-      ORDER BY i.priority ASC, i.created_at DESC
-      """
+      with {:ok, state} <- JsonlStore.get_state(project) do
+        children =
+          state.deps_by_target
+          |> Map.get(parent_id, [])
+          |> Enum.filter(&(&1.type in @parent_types))
+          |> Enum.map(& &1.issue_id)
+          |> Enum.map(&Map.get(state.issues_by_id, &1))
+          |> Enum.reject(&is_nil/1)
+          |> sort_by_priority_created()
 
-      with {:ok, pool} <- ensure_pool(project) do
-        case run_query(pool, sql, [parent_id]) do
-          {:ok, result} -> {:ok, rows_to_maps(result)}
-          {:error, _} = err -> err
-        end
+        {:ok, children}
       end
     end
   end
@@ -119,28 +89,32 @@ defmodule Spotter.Beads.Client do
   @doc """
   Returns a map of project names to their epic counts.
 
-  Queries the shared workspace Dolt server for all non-system databases,
-  then counts epics in each.
+  Iterates configured projects and counts epics in each.
   """
   @spec epic_counts_by_project() :: {:ok, map()} | {:error, atom()}
   def epic_counts_by_project do
     Tracer.with_span "spotter.beads.client.epic_counts_by_project" do
       Tracer.set_attribute("spotter.beads.query_name", "epic_counts_by_project")
 
-      config = DoltConfig.connection_opts("__admin__")
-      admin_opts = Keyword.put(config, :database, "information_schema")
+      counts =
+        JsonlStore.configured_projects()
+        |> Enum.reduce(%{}, fn project, acc ->
+          case JsonlStore.get_state(project) do
+            {:ok, state} ->
+              count =
+                state.issues_by_id
+                |> Map.values()
+                |> Enum.count(&(&1.issue_type == "epic"))
 
-      case MyXQL.start_link(admin_opts) do
-        {:ok, conn} ->
-          try do
-            fetch_epic_counts(conn, config)
-          after
-            GenServer.stop(conn)
+              db_name = DoltConfig.database_name(project)
+              Map.put(acc, db_name, count)
+
+            {:error, _} ->
+              acc
           end
+        end)
 
-        {:error, err} ->
-          {:error, classify_error(err)}
-      end
+      {:ok, counts}
     end
   end
 
@@ -163,17 +137,18 @@ defmodule Spotter.Beads.Client do
       Tracer.set_attribute("spotter.beads.database", DoltConfig.database_name(project))
       Tracer.set_attribute("spotter.beads.query_name", "search_beads")
 
-      search_opts = %{
-        query: normalize_query(opts[:query]),
-        status: opts[:status] || :open,
-        order: "ORDER BY #{validate_sort(opts[:sort])} #{validate_dir(opts[:dir])}",
-        types: opts[:types] || [:epic, :orphan]
-      }
+      query = normalize_query(opts[:query])
+      status = opts[:status] || :open
+      sort = opts[:sort] || :priority
+      dir = opts[:dir] || :desc
+      types = opts[:types] || [:epic, :orphan]
 
-      with {:ok, pool} <- ensure_pool(project) do
-        epics = search_epics(pool, search_opts)
-        orphans = search_orphans(pool, search_opts)
-        {:ok, epics ++ orphans}
+      with {:ok, state} <- JsonlStore.get_state(project) do
+        epics = search_epics(state, types, status, query)
+        orphans = search_orphans(state, types, status, query)
+
+        sorted = sort_results(epics ++ orphans, sort, dir)
+        {:ok, sorted}
       end
     end
   end
@@ -188,25 +163,15 @@ defmodule Spotter.Beads.Client do
       Tracer.set_attribute("spotter.beads.database", DoltConfig.database_name(project))
       Tracer.set_attribute("spotter.beads.query_name", "list_orphan_issues")
 
-      {where_clause, params} = orphan_filter_clause(filter)
+      with {:ok, state} <- JsonlStore.get_state(project) do
+        orphans =
+          state.issues_by_id
+          |> Map.values()
+          |> Enum.filter(&orphan?(&1, state.child_ids))
+          |> filter_by_status(filter)
+          |> sort_by_priority_created()
 
-      sql = """
-      SELECT id, title, status, priority, issue_type, description,
-             created_at, updated_at, closed_at, assignee
-      FROM issues
-      WHERE issue_type != 'epic'
-      AND id NOT IN (
-        SELECT issue_id FROM dependencies WHERE type IN ('parent-child', 'parent')
-      )
-      #{where_clause}
-      ORDER BY priority ASC, created_at DESC
-      """
-
-      with {:ok, pool} <- ensure_pool(project) do
-        case run_query(pool, sql, params) do
-          {:ok, result} -> {:ok, rows_to_maps(result)}
-          {:error, _} = err -> err
-        end
+        {:ok, orphans}
       end
     end
   end
@@ -221,20 +186,24 @@ defmodule Spotter.Beads.Client do
       Tracer.set_attribute("spotter.beads.database", DoltConfig.database_name(project))
       Tracer.set_attribute("spotter.beads.query_name", "get_dependencies")
 
-      sql = """
-      SELECT d.depends_on_id, d.type, d.created_at,
-             i.title AS depends_on_title, i.status AS depends_on_status
-      FROM dependencies d
-      LEFT JOIN issues i ON i.id = d.depends_on_id
-      WHERE d.issue_id = ?
-      ORDER BY d.created_at ASC
-      """
+      with {:ok, state} <- JsonlStore.get_state(project) do
+        deps =
+          state.deps_by_issue
+          |> Map.get(issue_id, [])
+          |> Enum.map(fn dep ->
+            target = Map.get(state.issues_by_id, dep.depends_on_id)
 
-      with {:ok, pool} <- ensure_pool(project) do
-        case run_query(pool, sql, [issue_id]) do
-          {:ok, result} -> {:ok, rows_to_maps(result)}
-          {:error, _} = err -> err
-        end
+            %{
+              depends_on_id: dep.depends_on_id,
+              type: dep.type,
+              created_at: dep.created_at,
+              depends_on_title: if(target, do: target.title),
+              depends_on_status: if(target, do: target.status)
+            }
+          end)
+          |> Enum.sort_by(& &1.created_at, NaiveDateTime)
+
+        {:ok, deps}
       end
     end
   end
@@ -255,212 +224,88 @@ defmodule Spotter.Beads.Client do
       Tracer.set_attribute("spotter.beads.database", DoltConfig.database_name(project))
       Tracer.set_attribute("spotter.beads.issue_id", issue_id)
 
-      with {:ok, pool} <- ensure_pool(project) do
-        parent_id = find_parent_id(pool, issue_id)
-        build_sibling_graph(pool, parent_id || issue_id)
+      with {:ok, state} <- JsonlStore.get_state(project) do
+        parent_id = find_parent_id(state, issue_id)
+        build_sibling_graph(state, parent_id || issue_id)
       end
     end
   end
 
-  defp build_sibling_graph(pool, parent_id) do
-    with {:ok, siblings} when length(siblings) >= 2 <- fetch_siblings(pool, parent_id),
-         sibling_ids = Enum.map(siblings, & &1.id),
-         {:ok, edges} <- fetch_cross_deps(pool, sibling_ids) do
-      {:ok, %{nodes: siblings_to_nodes(siblings), edges: edges}}
+  # -- Helpers --
+
+  defp count_children(state, parent_id) do
+    state.deps_by_target
+    |> Map.get(parent_id, [])
+    |> Enum.count(&(&1.type in @parent_types))
+  end
+
+  defp orphan?(issue, child_ids) do
+    issue.issue_type != "epic" && !MapSet.member?(child_ids, issue.id)
+  end
+
+  defp search_epics(state, types, status, query) do
+    if :epic in types do
+      state.issues_by_id
+      |> Map.values()
+      |> Enum.filter(&(&1.issue_type == "epic"))
+      |> filter_by_status(status)
+      |> filter_by_query(query)
+      |> Enum.map(&Map.put(&1, :task_count, count_children(state, &1.id)))
     else
-      {:ok, _few} -> {:ok, nil}
-      {:error, _} = err -> err
+      []
     end
   end
 
-  defp siblings_to_nodes(siblings) do
-    Enum.map(siblings, fn s ->
-      %{
-        id: s.id,
-        title: s.title,
-        status: s.status,
-        priority: s.priority,
-        issue_type: s.issue_type
-      }
+  defp search_orphans(state, types, status, query) do
+    if :orphan in types do
+      state.issues_by_id
+      |> Map.values()
+      |> Enum.filter(&orphan?(&1, state.child_ids))
+      |> filter_by_status(status)
+      |> filter_by_query(query)
+      |> Enum.map(&Map.put(&1, :task_count, 0))
+    else
+      []
+    end
+  end
+
+  defp filter_by_status(issues, :all), do: issues
+  defp filter_by_status(issues, :open), do: Enum.filter(issues, &(&1.status == "open"))
+  defp filter_by_status(issues, :closed), do: Enum.filter(issues, &(&1.status == "closed"))
+  defp filter_by_status(issues, _), do: Enum.filter(issues, &(&1.status == "open"))
+
+  defp filter_by_query(issues, nil), do: issues
+
+  defp filter_by_query(issues, query) do
+    down = String.downcase(query)
+
+    Enum.filter(issues, fn issue ->
+      String.contains?(String.downcase(issue.id || ""), down) ||
+        String.contains?(String.downcase(issue.title || ""), down) ||
+        String.contains?(String.downcase(issue.description || ""), down)
     end)
   end
 
-  defp find_parent_id(pool, issue_id) do
-    sql = """
-    SELECT depends_on_id FROM dependencies
-    WHERE issue_id = ? AND type IN ('parent-child', 'parent')
-    LIMIT 1
-    """
-
-    case run_query(pool, sql, [issue_id]) do
-      {:ok, %{num_rows: 1} = result} ->
-        result |> rows_to_maps() |> hd() |> Map.get(:depends_on_id)
-
-      _ ->
-        nil
-    end
+  defp sort_by_priority_created(issues) do
+    Enum.sort_by(issues, &{&1.priority, neg_datetime(&1.created_at)})
   end
 
-  defp fetch_siblings(pool, parent_id) do
-    sql = """
-    SELECT i.id, i.title, i.status, i.priority, i.issue_type
-    FROM issues i
-    INNER JOIN dependencies d ON d.issue_id = i.id
-    WHERE d.depends_on_id = ? AND d.type IN ('parent-child', 'parent')
-    ORDER BY i.priority ASC, i.created_at ASC
-    """
+  defp sort_results(issues, :priority, :asc), do: Enum.sort_by(issues, & &1.priority)
+  defp sort_results(issues, :priority, :desc), do: Enum.sort_by(issues, & &1.priority, :desc)
 
-    case run_query(pool, sql, [parent_id]) do
-      {:ok, result} -> {:ok, rows_to_maps(result)}
-      {:error, _} = err -> err
-    end
-  end
+  defp sort_results(issues, :created_at, :asc),
+    do: Enum.sort_by(issues, & &1.created_at, NaiveDateTime)
 
-  defp fetch_cross_deps(pool, sibling_ids) when sibling_ids != [] do
-    placeholders = Enum.map_join(sibling_ids, ", ", fn _ -> "?" end)
+  defp sort_results(issues, :created_at, :desc),
+    do: Enum.sort_by(issues, & &1.created_at, {:desc, NaiveDateTime})
 
-    sql = """
-    SELECT d.issue_id AS `from`, d.depends_on_id AS `to`, d.type
-    FROM dependencies d
-    WHERE d.issue_id IN (#{placeholders})
-      AND d.depends_on_id IN (#{placeholders})
-      AND d.type NOT IN ('parent-child', 'parent')
-    """
+  defp sort_results(issues, _, _), do: sort_by_priority_created(issues)
 
-    params = sibling_ids ++ sibling_ids
+  defp neg_datetime(nil), do: 0
 
-    case run_query(pool, sql, params) do
-      {:ok, result} ->
-        edges =
-          Enum.map(rows_to_maps(result), fn row ->
-            %{from: row.from, to: row.to, type: row.type}
-          end)
-
-        {:ok, edges}
-
-      {:error, _} = err ->
-        err
-    end
-  end
-
-  defp fetch_cross_deps(_pool, []), do: {:ok, []}
-
-  # -- Pool Management --
-
-  defp ensure_pool(project) do
-    pool_name = pool_name(project)
-
-    case Process.whereis(pool_name) do
-      nil -> start_pool(project)
-      _pid -> {:ok, pool_name}
-    end
-  end
-
-  defp start_pool(project) do
-    pool_name = pool_name(project)
-    opts = DoltConfig.connection_opts(project)
-
-    myxql_opts =
-      opts
-      |> Keyword.put(:name, pool_name)
-      |> Keyword.put(:pool_size, 2)
-      |> Keyword.put(:queue_target, 1_000)
-      |> Keyword.put(:queue_interval, 5_000)
-
-    case MyXQL.start_link(myxql_opts) do
-      {:ok, pid} ->
-        case verify_connection(pool_name) do
-          :ok ->
-            {:ok, pool_name}
-
-          {:error, reason} ->
-            GenServer.stop(pid)
-            {:error, reason}
-        end
-
-      {:error, err} ->
-        {:error, classify_error(err)}
-    end
-  end
-
-  defp verify_connection(pool_name) do
-    case MyXQL.query(pool_name, "SELECT 1", [], timeout: @connect_timeout) do
-      {:ok, _} -> :ok
-      {:error, err} -> {:error, classify_error(err)}
-    end
-  rescue
-    DBConnection.ConnectionError -> {:error, :connection_refused}
-  end
-
-  defp pool_name(project) do
-    Module.concat(@pool_prefix, Macro.camelize(project))
-  end
-
-  # -- Query Execution --
-
-  defp run_query(pool, sql, params) do
-    case MyXQL.query(pool, sql, params, timeout: @query_timeout) do
-      {:ok, result} -> {:ok, result}
-      {:error, err} -> {:error, classify_error(err)}
-    end
-  rescue
-    DBConnection.ConnectionError -> {:error, :connection_refused}
-  end
-
-  # -- Helpers --
-
-  defp epic_filter_clause(:all), do: {"", []}
-  defp epic_filter_clause(:open), do: {"AND status = ?", ["open"]}
-  defp epic_filter_clause(:closed), do: {"AND status = ?", ["closed"]}
-
-  defp orphan_filter_clause(:all), do: {"", []}
-  defp orphan_filter_clause(:open), do: {"AND status = ?", ["open"]}
-  defp orphan_filter_clause(:closed), do: {"AND status = ?", ["closed"]}
-
-  defp search_epics(pool, %{types: types} = opts) do
-    if :epic in types, do: do_search_epics(pool, opts), else: []
-  end
-
-  defp do_search_epics(pool, %{status: status, query: query, order: order}) do
-    {where, params} = search_where_clause(status, query, "i.issue_type = 'epic'")
-
-    sql = """
-    SELECT i.*, (
-      SELECT COUNT(*) FROM dependencies d
-      WHERE d.depends_on_id = i.id AND d.type IN ('parent-child', 'parent')
-    ) AS task_count
-    FROM issues i
-    WHERE #{where}
-    #{order}
-    """
-
-    case run_query(pool, sql, params) do
-      {:ok, result} -> rows_to_maps(result)
-      {:error, _} -> []
-    end
-  end
-
-  defp search_orphans(pool, %{types: types} = opts) do
-    if :orphan in types, do: do_search_orphans(pool, opts), else: []
-  end
-
-  defp do_search_orphans(pool, %{status: status, query: query, order: order}) do
-    base =
-      "i.issue_type != 'epic' AND i.id NOT IN (SELECT issue_id FROM dependencies WHERE type IN ('parent-child', 'parent'))"
-
-    {where, params} = search_where_clause(status, query, base)
-
-    sql = """
-    SELECT i.*, 0 AS task_count
-    FROM issues i
-    WHERE #{where}
-    #{order}
-    """
-
-    case run_query(pool, sql, params) do
-      {:ok, result} -> rows_to_maps(result)
-      {:error, _} -> []
-    end
+  defp neg_datetime(%NaiveDateTime{} = ndt) do
+    {seconds, _microseconds} = NaiveDateTime.to_gregorian_seconds(ndt)
+    -seconds
   end
 
   defp normalize_query(nil), do: nil
@@ -470,104 +315,54 @@ defmodule Spotter.Beads.Client do
     if trimmed == "", do: nil, else: trimmed
   end
 
-  @allowed_sorts %{priority: "i.priority", created_at: "i.created_at"}
-  defp validate_sort(col) when is_atom(col), do: Map.get(@allowed_sorts, col, "i.priority")
-  defp validate_sort(_), do: "i.priority"
-
-  defp validate_dir(:asc), do: "ASC"
-  defp validate_dir(:desc), do: "DESC"
-  defp validate_dir(_), do: "DESC"
-
-  defp search_where_clause(status, query, base_condition) do
-    {status_clause, status_params} = search_status_clause(status)
-    {query_clause, query_params} = search_query_clause(query)
-
-    where =
-      Enum.join(
-        [base_condition, status_clause, query_clause] |> Enum.reject(&(&1 == "")),
-        " AND "
-      )
-
-    {where, status_params ++ query_params}
-  end
-
-  defp search_status_clause(:all), do: {"", []}
-  defp search_status_clause(:open), do: {"i.status = ?", ["open"]}
-  defp search_status_clause(:closed), do: {"i.status = ?", ["closed"]}
-  defp search_status_clause(_), do: {"i.status = ?", ["open"]}
-
-  defp search_query_clause(nil), do: {"", []}
-
-  defp search_query_clause(q) do
-    pattern = "%#{q}%"
-    {"(i.id LIKE ? OR i.title LIKE ? OR i.description LIKE ?)", [pattern, pattern, pattern]}
-  end
-
-  defp rows_to_maps(%MyXQL.Result{columns: columns, rows: rows}) do
-    Enum.map(rows, fn row ->
-      columns
-      |> Enum.zip(row)
-      |> Map.new(fn {col, val} -> {String.to_atom(col), val} end)
-    end)
-  end
-
-  defp fetch_epic_counts(conn, config) do
-    case MyXQL.query(
-           conn,
-           "SELECT SCHEMA_NAME FROM SCHEMATA WHERE SCHEMA_NAME NOT IN ('information_schema', 'mysql', 'dolt', 'performance_schema')",
-           [],
-           timeout: @query_timeout
-         ) do
-      {:ok, %{rows: rows}} ->
-        db_names = Enum.map(rows, fn [db_name] -> db_name end)
-        {:ok, aggregate_epic_counts(db_names, config)}
-
-      {:error, err} ->
-        {:error, classify_error(err)}
+  defp find_parent_id(state, issue_id) do
+    state.deps_by_issue
+    |> Map.get(issue_id, [])
+    |> Enum.find(&(&1.type in @parent_types))
+    |> case do
+      nil -> nil
+      dep -> dep.depends_on_id
     end
   end
 
-  defp aggregate_epic_counts(db_names, config) do
-    Enum.reduce(db_names, %{}, fn db_name, acc ->
-      case count_epics_in(config, db_name) do
-        {:ok, count} -> Map.put(acc, db_name, count)
-        {:error, _} -> acc
-      end
-    end)
-  end
+  defp build_sibling_graph(state, parent_id) do
+    siblings =
+      state.deps_by_target
+      |> Map.get(parent_id, [])
+      |> Enum.filter(&(&1.type in @parent_types))
+      |> Enum.map(& &1.issue_id)
+      |> Enum.map(&Map.get(state.issues_by_id, &1))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.sort_by(&{&1.priority, &1.created_at})
 
-  defp count_epics_in(base_config, db_name) do
-    opts = Keyword.put(base_config, :database, db_name)
+    if length(siblings) < 2 do
+      {:ok, nil}
+    else
+      sibling_ids = MapSet.new(siblings, & &1.id)
 
-    with {:ok, conn} <- MyXQL.start_link(opts) do
-      result = query_epic_count(conn)
-      GenServer.stop(conn)
-      result
+      edges =
+        state.all_deps
+        |> Enum.filter(fn dep ->
+          dep.type not in @parent_types &&
+            MapSet.member?(sibling_ids, dep.issue_id) &&
+            MapSet.member?(sibling_ids, dep.depends_on_id)
+        end)
+        |> Enum.map(fn dep ->
+          %{from: dep.issue_id, to: dep.depends_on_id, type: dep.type}
+        end)
+
+      nodes =
+        Enum.map(siblings, fn s ->
+          %{
+            id: s.id,
+            title: s.title,
+            status: s.status,
+            priority: s.priority,
+            issue_type: s.issue_type
+          }
+        end)
+
+      {:ok, %{nodes: nodes, edges: edges}}
     end
   end
-
-  defp query_epic_count(conn) do
-    case MyXQL.query(conn, "SELECT COUNT(*) FROM issues WHERE issue_type = 'epic'", [],
-           timeout: @query_timeout
-         ) do
-      {:ok, %{rows: [[count]]}} -> {:ok, count}
-      {:error, _} = err -> err
-    end
-  end
-
-  defp classify_error(%MyXQL.Error{mysql: %{code: 1044}}), do: :access_denied
-  defp classify_error(%MyXQL.Error{mysql: %{code: 1049}}), do: :unknown_project
-  defp classify_error(%MyXQL.Error{mysql: %{code: 2003}}), do: :connection_refused
-  defp classify_error(%MyXQL.Error{mysql: %{code: 2005}}), do: :connection_refused
-
-  defp classify_error(%MyXQL.Error{message: msg}) when is_binary(msg) do
-    cond do
-      msg =~ "refused" -> :connection_refused
-      msg =~ "timeout" -> :query_timeout
-      true -> :unknown_error
-    end
-  end
-
-  defp classify_error(%DBConnection.ConnectionError{}), do: :connection_refused
-  defp classify_error(_), do: :unknown_error
 end

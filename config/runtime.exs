@@ -21,12 +21,11 @@ if dsn = System.get_env("SENTRY_DSN") do
   config :sentry, dsn: dsn
 end
 
-# Beads Dolt client configuration — connects to the shared workspace Dolt server (port 3307)
-config :spotter, Spotter.Beads.DoltConfig,
-  hostname: System.get_env("BEADS_DOLT_HOST", "localhost"),
-  port: String.to_integer(System.get_env("BEADS_DOLT_PORT", "3307")),
-  username: System.get_env("BEADS_DOLT_USERNAME", "root"),
-  password: System.get_env("BEADS_DOLT_PASSWORD", "")
+# Beads JSONL store — reads .beads/backup/ directories per project
+# Override project paths via BEADS_JSONL_PATHS (JSON object: {"project": "/path/to/backup"})
+if jsonl_paths = System.get_env("BEADS_JSONL_PATHS") do
+  config :spotter, Spotter.Beads.JsonlStore, project_paths: Jason.decode!(jsonl_paths)
+end
 
 # Product Spec (Dolt) configuration
 config :spotter, Spotter.ProductSpec.Repo,

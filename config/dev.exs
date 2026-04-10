@@ -17,8 +17,11 @@ config :spotter, Spotter.Repo,
 
 config :ash, policies: [show_policy_breakdowns?: true]
 
-config :spotter, Spotter.Beads.DoltConfig,
-  database_mapping: %{"spotter" => "beads_spotter", "levio" => "le"}
+config :spotter, Spotter.Beads.JsonlStore,
+  project_paths: %{
+    "spotter" => "/srv/handgemacht/handgemacht/spotter/.beads/backup",
+    "levio" => "/srv/handgemacht/handgemacht/levio/.beads/backup"
+  }
 
 # Temporary containment for le-bdy:
 # co-change full rebuilds repeatedly OOM the dev BEAM on the Hetzner rig.

@@ -3,7 +3,6 @@ defmodule Spotter.Beads.ClientTest do
 
   import Spotter.Test.OtelHelpers
 
-  @moduletag :live_dolt
   @moduletag timeout: 30_000
 
   alias Spotter.Beads.Client
@@ -13,23 +12,12 @@ defmodule Spotter.Beads.ClientTest do
     :ok
   end
 
-  describe "start_link/1 and basic connectivity" do
-    test "starts a pool and executes SELECT 1" do
-      assert {:ok, _result} = Client.query("spotter", "SELECT 1")
-
-      # TELEMETRY: query span emitted with correct attributes
-      assert_span_attributes("spotter.beads.client.query", %{
-        "spotter.beads.query_name" => "raw"
-      })
-    end
-  end
-
   describe "list_epics/2" do
     test "returns {:ok, list} of epic issues and emits span" do
       assert {:ok, epics} = Client.list_epics("spotter", :all)
       assert is_list(epics)
+      assert epics != []
 
-      # TELEMETRY: list_epics span with database and query_name attributes
       assert_span_attributes("spotter.beads.client.list_epics", %{
         "spotter.beads.database" => "spotter",
         "spotter.beads.query_name" => "list_epics"
@@ -38,7 +26,6 @@ defmodule Spotter.Beads.ClientTest do
 
     test "filters by open status" do
       assert {:ok, epics} = Client.list_epics("spotter", :open)
-      assert is_list(epics)
 
       Enum.each(epics, fn epic ->
         assert epic.status == "open"
@@ -47,7 +34,6 @@ defmodule Spotter.Beads.ClientTest do
 
     test "filters by closed status" do
       assert {:ok, epics} = Client.list_epics("spotter", :closed)
-      assert is_list(epics)
 
       Enum.each(epics, fn epic ->
         assert epic.status == "closed"
@@ -55,100 +41,56 @@ defmodule Spotter.Beads.ClientTest do
     end
 
     test "returns epics with expected fields" do
-      assert {:ok, epics} = Client.list_epics("spotter", :all)
+      assert {:ok, [epic | _]} = Client.list_epics("spotter", :all)
 
-      case epics do
-        [epic | _] ->
-          assert Map.has_key?(epic, :id)
-          assert Map.has_key?(epic, :title)
-          assert Map.has_key?(epic, :status)
-          assert Map.has_key?(epic, :priority)
-          assert Map.has_key?(epic, :issue_type)
-          assert epic.issue_type == "epic"
-
-        [] ->
-          :ok
-      end
+      assert Map.has_key?(epic, :id)
+      assert Map.has_key?(epic, :title)
+      assert Map.has_key?(epic, :status)
+      assert Map.has_key?(epic, :priority)
+      assert Map.has_key?(epic, :issue_type)
+      assert epic.issue_type == "epic"
+      assert Map.has_key?(epic, :task_count)
     end
   end
 
   describe "get_issue/2" do
     test "returns {:ok, issue} for existing bead ID" do
-      {:ok, epics} = Client.list_epics("spotter", :all)
+      assert {:ok, issue} = Client.get_issue("spotter", "spotter-epic-1")
+      assert issue.id == "spotter-epic-1"
+      assert is_binary(issue.title)
 
-      case epics do
-        [epic | _] ->
-          assert {:ok, issue} = Client.get_issue("spotter", epic.id)
-          assert issue.id == epic.id
-          assert is_binary(issue.title)
-
-          # TELEMETRY: get_issue span emitted
-          assert_span_attributes("spotter.beads.client.get_issue", %{
-            "spotter.beads.database" => "spotter",
-            "spotter.beads.query_name" => "get_issue"
-          })
-
-        [] ->
-          assert {:error, :not_found} = Client.get_issue("spotter", "nonexistent-999")
-      end
+      assert_span_attributes("spotter.beads.client.get_issue", %{
+        "spotter.beads.database" => "spotter",
+        "spotter.beads.query_name" => "get_issue"
+      })
     end
 
     test "returns {:error, :not_found} for nonexistent bead ID" do
       assert {:error, :not_found} = Client.get_issue("spotter", "nonexistent-999")
 
-      # TELEMETRY: span still emitted for not_found case
       assert_span_recorded("spotter.beads.client.get_issue")
     end
   end
 
   describe "get_children/2" do
-    test "returns {:ok, list} of child issues for a parent and emits span" do
-      {:ok, epics} = Client.list_epics("spotter", :all)
+    test "returns child issues for a parent epic" do
+      assert {:ok, children} = Client.get_children("spotter", "spotter-epic-1")
+      assert length(children) == 3
 
-      case epics do
-        [epic | _] ->
-          assert {:ok, children} = Client.get_children("spotter", epic.id)
-          assert is_list(children)
+      child_ids = Enum.map(children, & &1.id)
+      assert "spotter-task-1" in child_ids
+      assert "spotter-task-2" in child_ids
+      assert "spotter-task-3" in child_ids
 
-          # TELEMETRY: get_children span with correct attributes
-          assert_span_attributes("spotter.beads.client.get_children", %{
-            "spotter.beads.database" => "spotter",
-            "spotter.beads.query_name" => "get_children"
-          })
-
-        [] ->
-          assert {:ok, []} = Client.get_children("spotter", "nonexistent-999")
-      end
+      assert_span_attributes("spotter.beads.client.get_children", %{
+        "spotter.beads.database" => "spotter",
+        "spotter.beads.query_name" => "get_children"
+      })
     end
 
     test "returns {:ok, []} for bead with no children" do
       assert {:ok, children} = Client.get_children("spotter", "nonexistent-999")
       assert children == []
-    end
-
-    test "returns children linked via parent-child deps, not blocks" do
-      # Find an epic that has parent-child dependencies pointing to it
-      {:ok, result} =
-        Client.query("spotter", """
-        SELECT d.depends_on_id
-        FROM dependencies d
-        JOIN issues i ON i.id = d.depends_on_id AND i.issue_type = 'epic'
-        WHERE d.type = 'parent-child'
-        GROUP BY d.depends_on_id
-        HAVING COUNT(*) > 0
-        LIMIT 1
-        """)
-
-      case result.rows do
-        [[epic_id]] ->
-          assert {:ok, children} = Client.get_children("spotter", epic_id)
-
-          assert children != [],
-                 "Epic #{epic_id} has parent-child deps but get_children returned []"
-
-        [] ->
-          :ok
-      end
     end
   end
 
@@ -163,58 +105,75 @@ defmodule Spotter.Beads.ClientTest do
         assert count >= 0
       end)
 
-      # TELEMETRY: epic_counts_by_project span emitted
       assert_span_attributes("spotter.beads.client.epic_counts_by_project", %{
         "spotter.beads.query_name" => "epic_counts_by_project"
       })
     end
+  end
 
-    test "discovers databases without beads_ prefix (e.g. aufgabenschmiede, le)" do
-      assert {:ok, counts} = Client.epic_counts_by_project()
-      project_names = Map.keys(counts)
+  describe "get_dependencies/2" do
+    test "returns dependencies for an issue" do
+      assert {:ok, deps} = Client.get_dependencies("spotter", "spotter-epic-1")
+      assert length(deps) == 1
 
-      # System databases must never appear in results
-      refute "information_schema" in project_names
-      refute "mysql" in project_names
-      refute "dolt" in project_names
+      [dep] = deps
+      assert dep.depends_on_id == "spotter-epic-2"
+      assert dep.type == "discovered-from"
 
-      # Project names should be used as-is from database names (no prefix stripping)
-      # If a database is named "aufgabenschmiede", it should appear as "aufgabenschmiede"
-      # not as some stripped version
-      Enum.each(project_names, fn name ->
-        # No project name should have had "beads_" artificially stripped
-        # (a database literally named "beads_spotter" should appear as "beads_spotter")
-        refute String.starts_with?(name, "__"),
-               "System/admin database leaked into project list: #{name}"
+      assert_span_attributes("spotter.beads.client.get_dependencies", %{
+        "spotter.beads.database" => "spotter",
+        "spotter.beads.query_name" => "get_dependencies"
+      })
+    end
+
+    test "returns empty list for issue with no dependencies" do
+      assert {:ok, []} = Client.get_dependencies("spotter", "spotter-orphan-1")
+    end
+  end
+
+  describe "list_orphan_issues/2" do
+    test "returns non-epic issues without parent dependencies" do
+      assert {:ok, orphans} = Client.list_orphan_issues("spotter", :all)
+      orphan_ids = Enum.map(orphans, & &1.id)
+
+      assert "spotter-orphan-1" in orphan_ids
+      refute "spotter-task-1" in orphan_ids
+      refute "spotter-epic-1" in orphan_ids
+    end
+  end
+
+  describe "search_beads/2" do
+    test "searches by query string" do
+      assert {:ok, results} = Client.search_beads("spotter", query: "Plans")
+      assert Enum.any?(results, &(&1.id == "spotter-epic-1"))
+    end
+
+    test "filters by status" do
+      assert {:ok, results} = Client.search_beads("spotter", status: :closed)
+
+      Enum.each(results, fn r ->
+        assert r.status == "closed"
       end)
     end
   end
 
-  describe "get_dependencies/2" do
-    test "returns {:ok, list} of dependencies and emits span" do
-      {:ok, epics} = Client.list_epics("spotter", :all)
+  describe "get_sibling_graph/2" do
+    test "returns graph for a task with siblings" do
+      assert {:ok, graph} = Client.get_sibling_graph("spotter", "spotter-task-1")
+      assert is_map(graph)
+      assert is_list(graph.nodes)
+      assert is_list(graph.edges)
+      assert length(graph.nodes) == 3
+    end
 
-      case epics do
-        [epic | _] ->
-          assert {:ok, deps} = Client.get_dependencies("spotter", epic.id)
-          assert is_list(deps)
-
-          # TELEMETRY: get_dependencies span with correct attributes
-          assert_span_attributes("spotter.beads.client.get_dependencies", %{
-            "spotter.beads.database" => "spotter",
-            "spotter.beads.query_name" => "get_dependencies"
-          })
-
-        [] ->
-          assert {:ok, []} = Client.get_dependencies("spotter", "nonexistent-999")
-      end
+    test "returns nil when fewer than 2 siblings" do
+      assert {:ok, nil} = Client.get_sibling_graph("spotter", "spotter-orphan-1")
     end
   end
 
   describe "error handling" do
-    test "returns {:error, :connection_refused} for invalid project" do
-      assert {:error, reason} = Client.list_epics("nonexistent_project", :all)
-      assert reason in [:connection_refused, :unknown_project]
+    test "returns {:error, :not_configured} for unknown project" do
+      assert {:error, :not_configured} = Client.list_epics("nonexistent_project", :all)
     end
   end
 end

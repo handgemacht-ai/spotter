@@ -1,6 +1,6 @@
 defmodule Spotter.Plans.BeadsSource do
   @moduledoc """
-  PlanSource implementation backed by Dolt beads databases.
+  PlanSource implementation backed by beads JSONL data.
 
   Pure delegation to `Spotter.Beads.BeadQueries` — no additional logic,
   caching, or error transformation. OTEL spans are handled by BeadQueries.
