@@ -447,51 +447,54 @@ defmodule SpotterWeb.PlanDetailLive do
                   <% end %>
 
                   <.acceptance_cards rows={@parsed_content.acceptance_rows} />
-                </div>
-              <% end %>
 
-              <%= if @children != [] do %>
-                <div class="plan-children" data-testid="child-tasks">
-                  <h3>Tasks ({length(@children)})</h3>
+                  <%= if @children != [] do %>
+                    <hr class="plan-tasks-divider" />
+                    <div class="plan-children" data-testid="child-tasks">
+                      <h2 class="plan-children-heading">
+                        Tasks ({length(@children)})
+                      </h2>
 
-                  <%= for task <- @children do %>
-                    <div
-                      class="plan-child-detail"
-                      data-testid="child-task-detail"
-                      data-task-id={task.id}
-                    >
-                      <.bead_header bead={task} />
+                      <%= for task <- @children do %>
+                        <div
+                          class="plan-child-detail"
+                          data-testid="child-task-detail"
+                          data-task-id={task.id}
+                        >
+                          <.bead_header bead={task} />
 
-                      <%= if task.parsed_content do %>
-                        <.classification_chips items={task.parsed_content.classification} />
+                          <%= if task.parsed_content do %>
+                            <.classification_chips items={task.parsed_content.classification} />
 
-                        <%= for {heading, _body, type, rendered} <- task.parsed_content.sections, type == :narrative do %>
-                          <div
-                            class="plan-section bead-content-section"
-                            data-plan-section={heading}
-                          >
-                            <h4 class="plan-section-heading bead-section-heading">
-                              {heading}
-                            </h4>
-                            <div class="plan-section-body bead-content">
-                              {render_section(rendered)}
-                            </div>
-                          </div>
-                        <% end %>
+                            <%= for {heading, _body, type, rendered} <- task.parsed_content.sections, type == :narrative do %>
+                              <div
+                                class="plan-section bead-content-section"
+                                data-plan-section={heading}
+                              >
+                                <h4 class="plan-section-heading bead-section-heading">
+                                  {heading}
+                                </h4>
+                                <div class="plan-section-body bead-content">
+                                  {render_section(rendered)}
+                                </div>
+                              </div>
+                            <% end %>
 
-                        <%= for {block, idx} <- Enum.with_index(task.parsed_content.mermaid_blocks) do %>
-                          <div
-                            class="plan-mermaid-block"
-                            id={"task-#{task.id}-mermaid-#{idx}"}
-                            phx-hook="MermaidHook"
-                            data-mermaid-source={block}
-                            data-testid="mermaid-block"
-                          >
-                            <pre class="mermaid-fallback"><code>{block}</code></pre>
-                          </div>
-                        <% end %>
+                            <%= for {block, idx} <- Enum.with_index(task.parsed_content.mermaid_blocks) do %>
+                              <div
+                                class="plan-mermaid-block"
+                                id={"task-#{task.id}-mermaid-#{idx}"}
+                                phx-hook="MermaidHook"
+                                data-mermaid-source={block}
+                                data-testid="mermaid-block"
+                              >
+                                <pre class="mermaid-fallback"><code>{block}</code></pre>
+                              </div>
+                            <% end %>
 
-                        <.acceptance_cards rows={task.parsed_content.acceptance_rows} />
+                            <.acceptance_cards rows={task.parsed_content.acceptance_rows} />
+                          <% end %>
+                        </div>
                       <% end %>
                     </div>
                   <% end %>

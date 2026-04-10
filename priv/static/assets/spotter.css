@@ -1084,6 +1084,41 @@ input::placeholder, textarea::placeholder {
   }
 }
 
+/* --- Plan: Epic / Task hierarchy --- */
+.plan-tasks-divider {
+  border: none;
+  border-top: 2px solid var(--border-strong, var(--border-default));
+  margin: var(--space-6, 1.5rem) 0 var(--space-4, 1rem);
+}
+
+.plan-children-heading {
+  font-size: var(--text-lg, 1.125rem);
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-4, 1rem);
+}
+
+.plan-child-detail {
+  background: var(--surface-1, #1a1a2e);
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--accent-blue, #60a5fa);
+  border-radius: var(--radius-md, 6px);
+  padding: var(--space-4, 1rem);
+  margin-bottom: var(--space-4, 1rem);
+}
+
+.plan-child-detail .bead-detail-header {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin-bottom: var(--space-3, 0.75rem);
+}
+
+.plan-child-detail .plan-section-heading {
+  font-size: var(--text-sm, 0.875rem);
+  color: var(--text-secondary);
+}
+
 /* --- Commit cards --- */
 .commit-card {
   background: var(--surface-2);
