@@ -30,6 +30,11 @@ config :ash, policies: [show_policy_breakdowns?: true], disable_async?: true
 
 config :spotter, Spotter.Config.Runtime, transcript_roots: []
 
+config :spotter, Spotter.Beads.DoltStore,
+  projects: %{
+    "test_project" => %{fixture_path: Path.expand("../test/fixtures/beads", __DIR__)}
+  }
+
 # Bound SSE stream duration so GET /api/mcp tests return quickly
 config :spotter, SpotterWeb.SpotterMcpPlug,
   sse_keepalive_ms: 10,

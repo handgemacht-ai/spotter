@@ -3,6 +3,7 @@ defmodule Spotter.Application do
 
   use Application
 
+  alias Spotter.Beads.DoltStore
   alias Spotter.Observability.ObanTelemetry
   alias Spotter.Observability.ParallelLanesTelemetry
   alias Spotter.Telemetry.Otel
@@ -29,6 +30,8 @@ defmodule Spotter.Application do
         Spotter.Observability.FlowHub,
         {Registry, keys: :unique, name: Spotter.Services.TranscriptTailRegistry},
         Spotter.Services.TranscriptTailSupervisor,
+        {Registry, keys: :unique, name: Spotter.Beads.DoltStore.Registry},
+        dolt_store_supervisor(),
         Spotter.Repo,
         {Oban,
          AshOban.config(
@@ -40,5 +43,17 @@ defmodule Spotter.Application do
 
     opts = [strategy: :one_for_one, name: Spotter.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  defp dolt_store_supervisor do
+    children =
+      DoltStore.configured_projects()
+      |> Enum.map(&DoltStore.child_spec/1)
+
+    %{
+      id: DoltStore.Supervisor,
+      type: :supervisor,
+      start: {Supervisor, :start_link, [children, [strategy: :one_for_one]]}
+    }
   end
 end

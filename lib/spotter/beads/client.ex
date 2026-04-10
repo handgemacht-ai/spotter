@@ -1,14 +1,16 @@
 defmodule Spotter.Beads.Client do
   @moduledoc """
-  Read-only client for querying beads issue data from JSONL files.
+  Read-only client for querying beads issue data.
 
-  Delegates to `Spotter.Beads.JsonlStore` for in-memory lookups against
-  data loaded from `.beads/backup/` JSONL exports.
+  Resolves state from the best available backend per project:
+  1. `DoltStore` (embedded Dolt CLI) — if the project is configured there
+  2. `JsonlStore` (JSONL backup files) — fallback for all other projects
   """
 
   require OpenTelemetry.Tracer, as: Tracer
 
   alias Spotter.Beads.DoltConfig
+  alias Spotter.Beads.DoltStore
   alias Spotter.Beads.JsonlStore
 
   @parent_types ["parent-child", "parent"]
@@ -25,7 +27,7 @@ defmodule Spotter.Beads.Client do
       Tracer.set_attribute("spotter.beads.database", DoltConfig.database_name(project))
       Tracer.set_attribute("spotter.beads.query_name", "list_epics")
 
-      with {:ok, state} <- JsonlStore.get_state(project) do
+      with {:ok, state} <- get_state(project) do
         epics =
           state.issues_by_id
           |> Map.values()
@@ -52,7 +54,7 @@ defmodule Spotter.Beads.Client do
       Tracer.set_attribute("spotter.beads.database", DoltConfig.database_name(project))
       Tracer.set_attribute("spotter.beads.query_name", "get_issue")
 
-      with {:ok, state} <- JsonlStore.get_state(project) do
+      with {:ok, state} <- get_state(project) do
         case Map.fetch(state.issues_by_id, issue_id) do
           {:ok, issue} -> {:ok, issue}
           :error -> {:error, :not_found}
@@ -71,7 +73,7 @@ defmodule Spotter.Beads.Client do
       Tracer.set_attribute("spotter.beads.database", DoltConfig.database_name(project))
       Tracer.set_attribute("spotter.beads.query_name", "get_children")
 
-      with {:ok, state} <- JsonlStore.get_state(project) do
+      with {:ok, state} <- get_state(project) do
         children =
           state.deps_by_target
           |> Map.get(parent_id, [])
@@ -89,32 +91,18 @@ defmodule Spotter.Beads.Client do
   @doc """
   Returns a map of project names to their epic counts.
 
-  Iterates configured projects and counts epics in each.
+  Merges results from DoltStore and JsonlStore backends.
+  DoltStore projects win on conflict (fresher data).
   """
   @spec epic_counts_by_project() :: {:ok, map()} | {:error, atom()}
   def epic_counts_by_project do
     Tracer.with_span "spotter.beads.client.epic_counts_by_project" do
       Tracer.set_attribute("spotter.beads.query_name", "epic_counts_by_project")
 
-      counts =
-        JsonlStore.configured_projects()
-        |> Enum.reduce(%{}, fn project, acc ->
-          case JsonlStore.get_state(project) do
-            {:ok, state} ->
-              count =
-                state.issues_by_id
-                |> Map.values()
-                |> Enum.count(&(&1.issue_type == "epic"))
+      jsonl_counts = count_epics_for(JsonlStore.configured_projects(), &JsonlStore.get_state/1)
+      dolt_counts = count_epics_for(DoltStore.configured_projects(), &DoltStore.get_state/1)
 
-              db_name = DoltConfig.database_name(project)
-              Map.put(acc, db_name, count)
-
-            {:error, _} ->
-              acc
-          end
-        end)
-
-      {:ok, counts}
+      {:ok, Map.merge(jsonl_counts, dolt_counts)}
     end
   end
 
@@ -143,7 +131,7 @@ defmodule Spotter.Beads.Client do
       dir = opts[:dir] || :desc
       types = opts[:types] || [:epic, :orphan]
 
-      with {:ok, state} <- JsonlStore.get_state(project) do
+      with {:ok, state} <- get_state(project) do
         epics = search_epics(state, types, status, query)
         orphans = search_orphans(state, types, status, query)
 
@@ -163,7 +151,7 @@ defmodule Spotter.Beads.Client do
       Tracer.set_attribute("spotter.beads.database", DoltConfig.database_name(project))
       Tracer.set_attribute("spotter.beads.query_name", "list_orphan_issues")
 
-      with {:ok, state} <- JsonlStore.get_state(project) do
+      with {:ok, state} <- get_state(project) do
         orphans =
           state.issues_by_id
           |> Map.values()
@@ -186,7 +174,7 @@ defmodule Spotter.Beads.Client do
       Tracer.set_attribute("spotter.beads.database", DoltConfig.database_name(project))
       Tracer.set_attribute("spotter.beads.query_name", "get_dependencies")
 
-      with {:ok, state} <- JsonlStore.get_state(project) do
+      with {:ok, state} <- get_state(project) do
         deps =
           state.deps_by_issue
           |> Map.get(issue_id, [])
@@ -224,11 +212,44 @@ defmodule Spotter.Beads.Client do
       Tracer.set_attribute("spotter.beads.database", DoltConfig.database_name(project))
       Tracer.set_attribute("spotter.beads.issue_id", issue_id)
 
-      with {:ok, state} <- JsonlStore.get_state(project) do
+      with {:ok, state} <- get_state(project) do
         parent_id = find_parent_id(state, issue_id)
         build_sibling_graph(state, parent_id || issue_id)
       end
     end
+  end
+
+  # -- State Resolution --
+
+  defp get_state(project) do
+    case DoltStore.project_config(project) do
+      nil ->
+        JsonlStore.get_state(project)
+
+      _config ->
+        case DoltStore.get_state(project) do
+          {:ok, _} = ok -> ok
+          {:error, _} -> JsonlStore.get_state(project)
+        end
+    end
+  end
+
+  defp count_epics_for(projects, get_state_fn) do
+    Enum.reduce(projects, %{}, fn project, acc ->
+      case get_state_fn.(project) do
+        {:ok, state} ->
+          count =
+            state.issues_by_id
+            |> Map.values()
+            |> Enum.count(&(&1.issue_type == "epic"))
+
+          db_name = DoltConfig.database_name(project)
+          Map.put(acc, db_name, count)
+
+        {:error, _} ->
+          acc
+      end
+    end)
   end
 
   # -- Helpers --

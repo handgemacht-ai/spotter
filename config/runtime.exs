@@ -27,6 +27,22 @@ if jsonl_paths = System.get_env("BEADS_JSONL_PATHS") do
   config :spotter, Spotter.Beads.JsonlStore, project_paths: Jason.decode!(jsonl_paths)
 end
 
+# Beads embedded Dolt projects (JSON map: {"project": {"data_dir": "...", "database": "..."}})
+if beads_json = System.get_env("BEADS_DOLT_PROJECTS") do
+  case Jason.decode(beads_json) do
+    {:ok, projects} when is_map(projects) ->
+      parsed =
+        Map.new(projects, fn {name, opts} ->
+          {name, Map.new(opts, fn {k, v} -> {String.to_atom(k), v} end)}
+        end)
+
+      config :spotter, Spotter.Beads.DoltStore, projects: parsed
+
+    _ ->
+      :ok
+  end
+end
+
 # Product Spec (Dolt) configuration
 config :spotter, Spotter.ProductSpec.Repo,
   hostname: System.get_env("SPOTTER_DOLT_HOST", "localhost"),

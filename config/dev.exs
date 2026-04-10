@@ -23,6 +23,18 @@ config :spotter, Spotter.Beads.JsonlStore,
     "levio" => "/srv/handgemacht/handgemacht/levio/.beads/backup"
   }
 
+config :spotter, Spotter.Beads.DoltStore,
+  projects: %{
+    "spotter" => %{
+      data_dir: "/srv/handgemacht/handgemacht/spotter/.beads/embeddeddolt",
+      database: "beads_spotter"
+    },
+    "levio" => %{
+      data_dir: "/srv/handgemacht/handgemacht/levio/.beads/embeddeddolt",
+      database: "le"
+    }
+  }
+
 # Temporary containment for le-bdy:
 # co-change full rebuilds repeatedly OOM the dev BEAM on the Hetzner rig.
 config :spotter, co_change_enabled: false
