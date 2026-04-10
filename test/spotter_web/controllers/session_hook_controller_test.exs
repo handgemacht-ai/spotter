@@ -17,6 +17,8 @@ defmodule SpotterWeb.SessionHookControllerTest do
       :ets.delete_all_objects(FlowHub)
     end
 
+    Ash.create!(Project, %{name: "project", pattern: "^-home-user-project"})
+
     :ok
   end
 

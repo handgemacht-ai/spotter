@@ -11,6 +11,9 @@ defmodule Spotter.Transcripts.WorktreeRetroRegressionTest do
     :ok = Sandbox.checkout(Spotter.Repo)
     Sandbox.mode(Spotter.Repo, {:shared, self()})
     OtelHelpers.setup_otel_test(%{})
+
+    Ash.create!(Project, %{name: "myapp", pattern: "^-home-test-projects-myapp"})
+
     :ok
   end
 

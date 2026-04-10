@@ -1,6 +1,8 @@
 export function initProjectSelector() {
   const el = document.getElementById("project-selector")
   if (!el) return
+  if (el.dataset.initialized) return
+  el.dataset.initialized = "true"
 
   const button = el.querySelector(".project-selector")
   const dropdown = el.querySelector(".project-selector-dropdown")

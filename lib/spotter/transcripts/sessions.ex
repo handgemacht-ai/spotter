@@ -91,10 +91,7 @@ defmodule Spotter.Transcripts.Sessions do
         upsert_project(name, pattern)
 
       :no_match ->
-        name = cwd |> Path.basename() |> String.downcase()
-        dir_name = String.replace(cwd, "/", "-")
-        pattern = "^#{Regex.escape(dir_name)}$"
-        upsert_project(name, pattern)
+        {:error, :no_matching_project}
     end
   end
 

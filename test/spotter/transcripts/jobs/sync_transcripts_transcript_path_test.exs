@@ -12,6 +12,11 @@ defmodule Spotter.Transcripts.Jobs.SyncTranscriptsTranscriptPathTest do
     :ok = Sandbox.checkout(Repo)
     Sandbox.mode(Repo, {:shared, self()})
 
+    Ash.create!(Spotter.Transcripts.Project, %{
+      name: "project",
+      pattern: "^test-sync-project$"
+    })
+
     tmp_dir =
       Path.join(System.tmp_dir!(), "spotter_tp_test_#{System.unique_integer([:positive])}")
 

@@ -106,6 +106,11 @@ function initReviewsBadge() {
 initReviewsBadge()
 initGlobalSearchPalette()
 initProjectSelector()
+window.addEventListener("phx:page-loading-stop", () => {
+  const el = document.getElementById("project-selector")
+  if (el) delete el.dataset.initialized
+  initProjectSelector()
+})
 
 const Hooks = {}
 

@@ -1,5 +1,8 @@
 # Transcript source directories
 transcript_roots = ["~/.claude/projects", "~/.claude_agents/projects"]
 
-[projects.todo]
-pattern = "^-home-marco-projects-todo"
+[projects.levio]
+pattern = "^-.*-levio"
+
+[projects.spotter]
+pattern = "^-.*-spotter"

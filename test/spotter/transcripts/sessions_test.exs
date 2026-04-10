@@ -19,8 +19,9 @@ defmodule Spotter.Transcripts.SessionsTest do
   end
 
   describe "find_or_create/2 with worktree cwd canonicalization" do
-    test "worktree cwd auto-creates project from canonical repo root, not worktree leaf" do
-      # No pre-existing project — auto-creation should use canonical repo root
+    test "worktree cwd resolves to canonical repo root project" do
+      create_project!("spotter", "^-home-marco-projects-spotter")
+
       session_id = Ash.UUID.generate()
       worktree_cwd = "/home/marco/projects/spotter/.claude/worktrees/my-feature"
 
@@ -113,24 +114,13 @@ defmodule Spotter.Transcripts.SessionsTest do
       assert project.name == "todo2"
     end
 
-    test "auto-creates project when no pattern matches" do
+    test "returns error when no pattern matches" do
       create_project!("todo", "^-home-marco-projects-todo")
 
       session_id = Ash.UUID.generate()
-      {:ok, session} = Sessions.find_or_create(session_id, cwd: "/home/marco/projects/unrelated")
 
-      project = Project |> Ash.Query.filter(id == ^session.project_id) |> Ash.read_one!()
-      assert project.name == "unrelated"
-      assert project.pattern == "^\\-home\\-marco\\-projects\\-unrelated$"
-    end
-
-    test "auto-created project is reused on subsequent sessions" do
-      cwd = "/home/marco/projects/newapp"
-
-      {:ok, session1} = Sessions.find_or_create(Ash.UUID.generate(), cwd: cwd)
-      {:ok, session2} = Sessions.find_or_create(Ash.UUID.generate(), cwd: cwd)
-
-      assert session1.project_id == session2.project_id
+      assert {:error, :no_matching_project} =
+               Sessions.find_or_create(session_id, cwd: "/home/marco/projects/unrelated")
     end
 
     test "returns error when cwd is nil" do

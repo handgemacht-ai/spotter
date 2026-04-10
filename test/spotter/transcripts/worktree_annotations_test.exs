@@ -11,6 +11,12 @@ defmodule Spotter.Transcripts.WorktreeAnnotationsTest do
     :ok = Sandbox.checkout(Spotter.Repo)
     Sandbox.mode(Spotter.Repo, {:shared, self()})
     OtelHelpers.setup_otel_test(%{})
+
+    Ash.create!(Project, %{name: "myapp", pattern: "^-home-test-projects-myapp"})
+    Ash.create!(Project, %{name: "monorepo", pattern: "^-home-test-monorepo$"})
+    Ash.create!(Project, %{name: "subproject", pattern: "^-home-test-monorepo-subproject"})
+    Ash.create!(Project, %{name: "testapp", pattern: "^-home-test-projects-testapp"})
+
     :ok
   end
 
