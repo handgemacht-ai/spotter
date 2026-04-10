@@ -36,7 +36,6 @@ defmodule Spotter.Beads.DoltStore do
   require OpenTelemetry.Tracer, as: Tracer
 
   @poll_interval_ms 10_000
-  @cli_timeout_ms 15_000
   @max_retries 3
   @retry_backoff_ms 500
 
@@ -167,11 +166,9 @@ defmodule Spotter.Beads.DoltStore do
 
           Tracer.set_status(:error, inspect(reason))
 
-          if state.loaded? do
-            state
-          else
-            %{state | loaded?: true}
-          end
+          # Keep stale cache if previously loaded; stay unloaded on first failure
+          # so get_state returns {:error, :loading} and Client falls back to JsonlStore
+          state
       end
     end
   end
@@ -229,7 +226,7 @@ defmodule Spotter.Beads.DoltStore do
       "json"
     ]
 
-    case System.cmd("dolt", args, stderr_to_stdout: true, timeout: @cli_timeout_ms) do
+    case System.cmd("dolt", args, stderr_to_stdout: true) do
       {output, 0} ->
         parse_json_output(output)
 

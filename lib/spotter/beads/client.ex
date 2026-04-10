@@ -243,8 +243,7 @@ defmodule Spotter.Beads.Client do
             |> Map.values()
             |> Enum.count(&(&1.issue_type == "epic"))
 
-          db_name = DoltConfig.database_name(project)
-          Map.put(acc, db_name, count)
+          Map.put(acc, project, count)
 
         {:error, _} ->
           acc
