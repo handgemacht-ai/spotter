@@ -54,9 +54,51 @@ defmodule Spotter.Beads.BeadContentParser do
   def extract_mermaid_blocks(nil), do: []
 
   def extract_mermaid_blocks(text) when is_binary(text) do
-    ~r/```mermaid\r?\n(.*?)```/s
-    |> Regex.scan(text)
-    |> Enum.map(fn [_full, content] -> String.trim(content) end)
+    text
+    |> String.split("\n")
+    |> extract_toplevel_mermaid_blocks(nil, [], [])
+  end
+
+  # Walks lines tracking whether we're inside a code fence.
+  # Only collects content from top-level ```mermaid fences.
+  defp extract_toplevel_mermaid_blocks([], nil, _acc, results), do: Enum.reverse(results)
+
+  defp extract_toplevel_mermaid_blocks([], :mermaid, acc, results),
+    do: Enum.reverse([finish_block(acc) | results])
+
+  defp extract_toplevel_mermaid_blocks([], _other, _acc, results), do: Enum.reverse(results)
+
+  defp extract_toplevel_mermaid_blocks([line | rest], nil, _acc, results) do
+    cond do
+      String.match?(line, ~r/^\s*```mermaid\s*$/) ->
+        extract_toplevel_mermaid_blocks(rest, :mermaid, [], results)
+
+      String.match?(line, ~r/^\s*```/) ->
+        extract_toplevel_mermaid_blocks(rest, :other, [], results)
+
+      true ->
+        extract_toplevel_mermaid_blocks(rest, nil, [], results)
+    end
+  end
+
+  defp extract_toplevel_mermaid_blocks([line | rest], :mermaid, acc, results) do
+    if String.match?(line, ~r/^\s*```\s*$/) do
+      extract_toplevel_mermaid_blocks(rest, nil, [], [finish_block(acc) | results])
+    else
+      extract_toplevel_mermaid_blocks(rest, :mermaid, [line | acc], results)
+    end
+  end
+
+  defp extract_toplevel_mermaid_blocks([line | rest], :other, acc, results) do
+    if String.match?(line, ~r/^\s*```\s*$/) do
+      extract_toplevel_mermaid_blocks(rest, nil, [], results)
+    else
+      extract_toplevel_mermaid_blocks(rest, :other, acc, results)
+    end
+  end
+
+  defp finish_block(acc) do
+    acc |> Enum.reverse() |> Enum.join("\n") |> String.trim()
   end
 
   @doc "Parses GIVEN/WHEN/THEN markdown tables into structured rows."
