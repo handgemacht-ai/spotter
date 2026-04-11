@@ -49,6 +49,7 @@ const MermaidHook = {
       const { svg } = await mermaid.render(id, source)
       this.el.innerHTML = DOMPurify.sanitize(svg, {
         USE_PROFILES: { svg: true, svgFilters: true },
+        ADD_TAGS: ["foreignObject"],
       })
       this.el.dataset.mermaidRendered = "done"
     } catch (err) {
