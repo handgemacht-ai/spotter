@@ -154,7 +154,14 @@ const DepGraphHook = {
 
     this._cy.on("tap", "node", (evt) => {
       const beadId = evt.target.id()
-      if (beadId !== this._currentId) {
+      if (beadId === this._currentId) return
+
+      const el = document.getElementById(`bead-${beadId}`)
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" })
+        el.classList.add("bead-highlight")
+        setTimeout(() => el.classList.remove("bead-highlight"), 2000)
+      } else {
         this.pushEvent("dep_graph_navigate", { bead_id: beadId })
       }
     })

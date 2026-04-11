@@ -37,13 +37,9 @@ defmodule SpotterWeb.PlanDetailLive do
   @impl true
   def handle_params(%{"project" => project, "bead_id" => bead_id}, _uri, socket) do
     socket =
-      if connected?(socket) do
-        socket
-        |> assign(project: project, selection: nil, highlighted_annotation: nil)
-        |> load_detail(project, bead_id)
-      else
-        assign(socket, project: project)
-      end
+      socket
+      |> assign(project: project, selection: nil, highlighted_annotation: nil)
+      |> load_detail(project, bead_id)
 
     {:noreply, socket}
   end
@@ -387,26 +383,25 @@ defmodule SpotterWeb.PlanDetailLive do
         <div class="plan-bead-detail" data-testid="bead-detail">
           <.bead_header bead={@bead} />
 
-          <%= if @graph_data do %>
-            <button
-              class="dep-graph-toggle"
-              phx-click="toggle_dep_graph"
-              data-testid="dep-graph-toggle"
-            >
-              {if @graph_expanded, do: "Hide", else: "Show"} dependency graph ({length(@graph_data.nodes)} beads)
-            </button>
-            <div
-              id="dep-graph"
-              phx-hook="DepGraphHook"
-              class={["dep-graph-container", @graph_expanded && "is-expanded"]}
-              data-testid="dep-graph"
-              data-graph={Jason.encode!(@graph_data)}
-            >
-            </div>
-          <% end %>
-
           <div class="plan-detail-layout">
             <div class="plan-detail-content">
+              <%= if @graph_data do %>
+                <button
+                  class="dep-graph-toggle"
+                  phx-click="toggle_dep_graph"
+                  data-testid="dep-graph-toggle"
+                >
+                  {if @graph_expanded, do: "Hide", else: "Show"} dependency graph ({length(@graph_data.nodes)} beads)
+                </button>
+                <div
+                  id="dep-graph"
+                  phx-hook="DepGraphHook"
+                  class={["dep-graph-container", @graph_expanded && "is-expanded"]}
+                  data-testid="dep-graph"
+                  data-graph={Jason.encode!(@graph_data)}
+                >
+                </div>
+              <% end %>
               <%= if @parsed_content do %>
                 <.classification_chips items={@parsed_content.classification} />
 
@@ -458,6 +453,7 @@ defmodule SpotterWeb.PlanDetailLive do
                       <%= for task <- @children do %>
                         <div
                           class="plan-child-detail"
+                          id={"bead-#{task.id}"}
                           data-testid="child-task-detail"
                           data-task-id={task.id}
                         >
