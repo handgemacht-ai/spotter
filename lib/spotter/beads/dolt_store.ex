@@ -187,6 +187,7 @@ defmodule Spotter.Beads.DoltStore do
   defp issues_sql do
     """
     SELECT id, title, status, priority, issue_type, description,
+           design, acceptance_criteria, notes,
            created_at, updated_at, closed_at, assignee
     FROM issues
     """
