@@ -107,10 +107,22 @@ defmodule Spotter.Beads.BeadContentParser do
   def render_section_body(""), do: ""
 
   def render_section_body(body) when is_binary(body) do
-    case Earmark.as_html(body, %Earmark.Options{code_class_prefix: "language-"}) do
-      {:ok, html, _warnings} -> sanitize_html(html)
-      {:error, _, _} -> Phoenix.HTML.html_escape(body) |> Phoenix.HTML.safe_to_string()
+    body
+    |> strip_mermaid_fences()
+    |> case do
+      "" ->
+        ""
+
+      cleaned ->
+        case Earmark.as_html(cleaned, %Earmark.Options{code_class_prefix: "language-"}) do
+          {:ok, html, _warnings} -> sanitize_html(html)
+          {:error, _, _} -> Phoenix.HTML.html_escape(body) |> Phoenix.HTML.safe_to_string()
+        end
     end
+  end
+
+  defp strip_mermaid_fences(text) do
+    Regex.replace(~r/```mermaid\r?\n.*?```/s, text, "")
   end
 
   @doc "Extracts classification key-value pairs from a Classification section."
