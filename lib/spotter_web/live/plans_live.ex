@@ -16,7 +16,7 @@ defmodule SpotterWeb.PlansLive do
        search: "",
        hide_closed: true,
        sort: :priority,
-       dir: :desc,
+       dir: :asc,
        error: nil,
        loading: false
      )}
@@ -155,7 +155,7 @@ defmodule SpotterWeb.PlansLive do
   defp toggle_dir(:desc), do: :asc
 
   defp default_dir(:created_at), do: :desc
-  defp default_dir(_), do: :desc
+  defp default_dir(_), do: :asc
 
   defp error_message(:connection_refused), do: "Dolt is not running. Start it with `just up`."
   defp error_message(:unknown_project), do: "Project not found in Dolt."
