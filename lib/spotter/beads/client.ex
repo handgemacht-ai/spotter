@@ -81,7 +81,7 @@ defmodule Spotter.Beads.Client do
           |> Enum.map(& &1.issue_id)
           |> Enum.map(&Map.get(state.issues_by_id, &1))
           |> Enum.reject(&is_nil/1)
-          |> sort_by_priority_created()
+          |> sort_by_id_suffix()
 
         {:ok, children}
       end
@@ -309,6 +309,19 @@ defmodule Spotter.Beads.Client do
   defp sort_by_priority_created(issues) do
     Enum.sort_by(issues, &{&1.priority, neg_datetime(&1.created_at)})
   end
+
+  defp sort_by_id_suffix(issues) do
+    Enum.sort_by(issues, &id_numeric_suffix/1)
+  end
+
+  defp id_numeric_suffix(%{id: id}) when is_binary(id) do
+    case Regex.run(~r/\.(\d+)$/, id) do
+      [_, n] -> String.to_integer(n)
+      _ -> 0
+    end
+  end
+
+  defp id_numeric_suffix(_), do: 0
 
   defp sort_results(issues, :priority, :asc), do: Enum.sort_by(issues, & &1.priority)
   defp sort_results(issues, :priority, :desc), do: Enum.sort_by(issues, & &1.priority, :desc)
