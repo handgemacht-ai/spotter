@@ -160,7 +160,22 @@ restart-systemd:
 
 # Show service health
 status:
-    @bash {{project_root}}/scripts/runtime/status.sh
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rig_root="{{project_root}}"
+    if [ -n "${WORKSPACE_ROOT:-}" ]; then
+      ws="$WORKSPACE_ROOT"
+    elif [ -f "$rig_root/.worktree.env" ]; then
+      main="$(grep '^WORKTREE_MAIN_PATH=' "$rig_root/.worktree.env" | head -1 | cut -d= -f2)"
+      ws="$(realpath "$main/..")"
+    else
+      ws="$(realpath "$rig_root/..")"
+    fi
+    if [ ! -x "$ws/scripts/runtime/just-status.sh" ]; then
+      echo "just-status.sh not found at $ws/scripts/runtime/" >&2
+      exit 1
+    fi
+    exec bash "$ws/scripts/runtime/just-status.sh" "$rig_root"
 
 # Tail service logs
 logs:

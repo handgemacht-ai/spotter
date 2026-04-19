@@ -9,6 +9,13 @@
     "SPOTTER_DOLT_HOST_PORT": 13307,
     "SPOTTER_DOLT_PORT": 13307
   },
+  "probes": {
+    "SPOTTER_PORT":           { "kind": "skip", "label": "Phoenix (alias of SPOTTER_PHX_PORT)" },
+    "SPOTTER_PHX_PORT":       { "kind": "http", "path": "/", "label": "Phoenix (web)" },
+    "SPOTTER_E2E_HOST_PORT":  { "kind": "skip", "label": "Phoenix (e2e)" },
+    "SPOTTER_DOLT_HOST_PORT": { "kind": "docker", "service": "dolt", "label": "Dolt" },
+    "SPOTTER_DOLT_PORT":      { "kind": "skip", "label": "Dolt (alias of SPOTTER_DOLT_HOST_PORT)" }
+  },
   "preview": [
     { "name": "spotter", "port": "SPOTTER_PHX_PORT" }
   ],
