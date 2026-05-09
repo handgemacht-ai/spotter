@@ -374,6 +374,15 @@ defmodule Spotter.Transcripts.JsonlParser do
     {_pr_number, data} = Map.pop(data, "prNumber")
     {_pr_repository, data} = Map.pop(data, "prRepository")
     {_pr_url, data} = Map.pop(data, "prUrl")
+    {_leaf_uuid, data} = Map.pop(data, "leafUuid")
+    {_ai_title, data} = Map.pop(data, "aiTitle")
+    {_attribution_plugin, data} = Map.pop(data, "attributionPlugin")
+    {_attribution_skill, data} = Map.pop(data, "attributionSkill")
+    {_attribution_agent, data} = Map.pop(data, "attributionAgent")
+    {_mcp_meta, data} = Map.pop(data, "mcpMeta")
+    {_api_error_status, data} = Map.pop(data, "apiErrorStatus")
+    {_agent_setting, data} = Map.pop(data, "agentSetting")
+    {_error_details, data} = Map.pop(data, "errorDetails")
 
     # -- Top-level "content" (used by system, queue-operation, thinking) --
     {top_content, data} = Map.pop(data, "content")
@@ -437,6 +446,7 @@ defmodule Spotter.Transcripts.JsonlParser do
     {_stop_details, message} = Map.pop(message, "stop_details")
     {_container, message} = Map.pop(message, "container")
     {_context_management, message} = Map.pop(message, "context_management")
+    {_diagnostics, message} = Map.pop(message, "diagnostics")
 
     {usage_map, message} = Map.pop(message, "usage")
     {residual_usage, usage_tokens} = consume_usage(usage_map)
@@ -568,6 +578,8 @@ defmodule Spotter.Transcripts.JsonlParser do
   defp parse_type_with_known("attachment"), do: {:attachment, true}
   defp parse_type_with_known("permission-mode"), do: {:permission_mode, true}
   defp parse_type_with_known("custom-title"), do: {:custom_title, true}
+  defp parse_type_with_known("ai-title"), do: {:ai_title, true}
+  defp parse_type_with_known("agent-setting"), do: {:agent_setting, true}
   defp parse_type_with_known("agent-name"), do: {:agent_name, true}
   defp parse_type_with_known("worktree-state"), do: {:worktree_state, true}
   defp parse_type_with_known("pr-link"), do: {:pr_link, true}
